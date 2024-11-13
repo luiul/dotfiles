@@ -183,30 +183,6 @@ alias copydirs="ls -d */ | tr -d '/' | pbcopy"
 alias countfiles="ls -1 | wc -l"
 alias copycwd="pwd | pbcopy"
 
-# Functions
-aws_sso() {
-  MY_AWS_PROFILE="$1"
-
-  # Check if SSO credentials are still valid
-  if ! yawsso --profile "$MY_AWS_PROFILE" >/dev/null 2>&1; then
-    echo "SSO credentials expired for $MY_AWS_PROFILE"
-    echo "Obtaining new SSO credentials..."
-    aws sso login --profile "$MY_AWS_PROFILE"
-    # Re-run yawsso to sync after obtaining new credentials
-    yawsso --profile "$MY_AWS_PROFILE"
-  else
-    echo "SSO credentials are still valid for $MY_AWS_PROFILE"
-  fi
-
-  # Ensure awsume is sourced, not run directly
-  if command -v awsume >/dev/null 2>&1; then
-    source awsume "$MY_AWS_PROFILE" # Use 'source' to load AWSume environment variables
-    export AWS_PROFILE="$MY_AWS_PROFILE"
-  else
-    echo "Error: AWSume not found. Ensure AWSume is correctly installed and sourced."
-  fi
-}
-
 find_duplicate_filenames() {
   # Help message
   if [[ "$1" == "--help" || "$1" == "-h" ]]; then

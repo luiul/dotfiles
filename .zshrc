@@ -17,12 +17,18 @@ export ENVIRONMENT='dev'           # Set the default environment
 # # DBT environment variables
 export ENV='staging'                               # Set the default environment for dbt
 export DBT_PROFILES_DIR='/Users/luisaceituno/.dbt' # Set the default dbt profiles directory
+
 if [[ -s ~/.github-tokens ]]; then
-  export GITHUB_TOKEN_TARDIS=$(grep '^tardis' ~/.github-tokens | cut -d = -f 2 | tr -d ' ')
+  # Extract the tardis token, if present
+  export GITHUB_TOKEN_TARDIS=$(grep '^tardis' ~/.github-tokens | cut -d '=' -f 2 | tr -d ' ')
+
+  # Extract the first token entry to set as the default GITHUB_TOKEN if not set
+  if [[ -z "$GITHUB_TOKEN" ]]; then
+    export GITHUB_TOKEN=$(head -n 1 ~/.github-tokens | cut -d '=' -f 2 | tr -d ' ')
+  fi
 else
   echo ".github-tokens file does not exist or is empty."
 fi
-# export SQLFMT_LINE_LENGTH=120 # Set the SQL formatting line length
 
 # s3 environment variables
 export S3_HOME='s3://hf-bi-dwh-uploader/luisaceituno/' # Set the default S3 home directory

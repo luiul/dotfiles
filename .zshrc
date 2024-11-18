@@ -16,15 +16,15 @@ export ENVIRONMENT="dev"
 export ENV="staging"
 export DBT_PROFILES_DIR="/Users/luisaceituno/.dbt"
 
-# GitHub Token Configuration
-if [[ -s ~/.github-tokens ]]; then
-  export GITHUB_TOKEN_TARDIS=$(grep '^tardis' ~/.github-tokens | cut -d '=' -f 2 | tr -d ' ')
-  if [[ -z "$GITHUB_TOKEN" ]]; then
-    export GITHUB_TOKEN=$(head -n 1 ~/.github-tokens | cut -d '=' -f 2 | tr -d ' ')
-  fi
-else
-  echo ".github-tokens file does not exist or is empty."
-fi
+# # GitHub Token Configuration
+# if [[ -s ~/.github-tokens ]]; then
+#   export GITHUB_TOKEN_TARDIS=$(grep '^tardis' ~/.github-tokens | cut -d '=' -f 2 | tr -d ' ')
+#   if [[ -z "$GITHUB_TOKEN" ]]; then
+#     export GITHUB_TOKEN=$(head -n 1 ~/.github-tokens | cut -d '=' -f 2 | tr -d ' ')
+#   fi
+# else
+#   echo ".github-tokens file does not exist or is empty."
+# fi
 
 # S3 Configuration
 export S3_HOME="s3://hf-bi-dwh-uploader/luisaceituno/"

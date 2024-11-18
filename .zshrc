@@ -441,12 +441,13 @@ md_to_rtf() {
 }
 
 function clean_branches() {
-  # Get all local branches, excluding the current branch (marked with `*`)
-  local all_branches=$(git branch | sed 's/^\* //')
+  # Get all local branches, excluding the current branch (marked with `*`) and trim whitespace
+  local all_branches=$(git branch | sed 's/^\* //;s/^ *//;s/ *$//')
 
-  # Display all branches to the user
+  # Display all branches to the user in a readable format
   echo "Available branches:"
-  echo "$all_branches"
+  echo "-------------------"
+  echo "$all_branches" | sed 's/^/  - /'
   echo
 
   # Prompt the user to enter branches to keep
@@ -475,11 +476,14 @@ function clean_branches() {
     return 0
   fi
 
+  # Display branches to delete in a readable format
+  echo
+  echo "Branches to be deleted:"
+  echo "-----------------------"
+  echo "$branches_to_delete" | sed 's/^/  - /'
+  echo
+
   # Confirm deletion
-  echo
-  echo "The following branches will be deleted:"
-  echo "$branches_to_delete"
-  echo
   echo "Are you sure you want to delete these branches? (y/N):"
   read -r confirm
   if [[ "$confirm" =~ ^[Yy]$ ]]; then

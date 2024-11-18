@@ -440,6 +440,56 @@ md_to_rtf() {
   echo "RTF file created at ${rtf_file} and copied to clipboard."
 }
 
+function clean_branches() {
+  # Get all local branches, excluding the current branch (marked with `*`)
+  local all_branches=$(git branch | sed 's/^\* //')
+
+  # Display all branches to the user
+  echo "Available branches:"
+  echo "$all_branches"
+  echo
+
+  # Prompt the user to enter branches to keep
+  echo "Enter the branches to keep (space-separated), or press Enter to cancel:"
+  read -r keep_branches
+
+  # Exit if no input is given
+  if [ -z "$keep_branches" ]; then
+    echo "Operation cancelled. No branches deleted."
+    return 0
+  fi
+
+  # Convert the input into an array of branches to keep
+  local keep_array=(${keep_branches})
+
+  # Filter branches to delete
+  local branches_to_delete=$(echo "$all_branches" | while read -r branch; do
+    if [[ ! " ${keep_array[@]} " =~ " ${branch} " ]]; then
+      echo "$branch"
+    fi
+  done)
+
+  # If there are no branches to delete, exit early
+  if [ -z "$branches_to_delete" ]; then
+    echo "No branches to delete."
+    return 0
+  fi
+
+  # Confirm deletion
+  echo
+  echo "The following branches will be deleted:"
+  echo "$branches_to_delete"
+  echo
+  echo "Are you sure you want to delete these branches? (y/N):"
+  read -r confirm
+  if [[ "$confirm" =~ ^[Yy]$ ]]; then
+    echo "$branches_to_delete" | xargs git branch -D
+    echo "Deleted branches."
+  else
+    echo "Operation cancelled. No branches deleted."
+  fi
+}
+
 # Download Znap, if it's not there yet.
 [[ -r ~/Repos/znap/znap.zsh ]] ||
   git clone --depth 1 -- \

@@ -1,28 +1,24 @@
-# Path
-export PATH="/Users/luisaceituno/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:$PATH" # Add local bin and Homebrew to the PATH
+# System PATH Configuration
+export PATH="/Users/luisaceituno/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
 
-# Kubernetes
-export KUBECONFIG=/Users/luisaceituno/.kube/config:/Users/luisaceituno/.kube/eksconfig
+# Kubernetes Configuration
+export KUBECONFIG="/Users/luisaceituno/.kube/config:/Users/luisaceituno/.kube/eksconfig"
 
-# UV
-export UV_PYTHON=python3.9
+# Python and Editor Settings
+export UV_PYTHON="python3.9"
+export EDITOR="code"
 
-# Editor
-export EDITOR="code" # Set Visual Studio Code as the default editor
+# Development Environment Variables
+export AWS_PROFILE="scm-analytics"
+export ENVIRONMENT="dev"
 
-# Development environment variables
-export AWS_PROFILE='scm-analytics' # Set the default AWS profile
-export ENVIRONMENT='dev'           # Set the default environment
+# DBT Configuration
+export ENV="staging"
+export DBT_PROFILES_DIR="/Users/luisaceituno/.dbt"
 
-# # DBT environment variables
-export ENV='staging'                               # Set the default environment for dbt
-export DBT_PROFILES_DIR='/Users/luisaceituno/.dbt' # Set the default dbt profiles directory
-
+# GitHub Token Configuration
 if [[ -s ~/.github-tokens ]]; then
-  # Extract the tardis token, if present
   export GITHUB_TOKEN_TARDIS=$(grep '^tardis' ~/.github-tokens | cut -d '=' -f 2 | tr -d ' ')
-
-  # Extract the first token entry to set as the default GITHUB_TOKEN if not set
   if [[ -z "$GITHUB_TOKEN" ]]; then
     export GITHUB_TOKEN=$(head -n 1 ~/.github-tokens | cut -d '=' -f 2 | tr -d ' ')
   fi
@@ -30,20 +26,19 @@ else
   echo ".github-tokens file does not exist or is empty."
 fi
 
-# s3 environment variables
-export S3_HOME='s3://hf-bi-dwh-uploader/luisaceituno/' # Set the default S3 home directory
+# S3 Configuration
+export S3_HOME="s3://hf-bi-dwh-uploader/luisaceituno/"
 
-# HelloFresh environment variables
-export VAULT_ADDR='https://vault.secrets.hellofresh.io' # Set the Vault address
+# Vault Configuration
+export VAULT_ADDR="https://vault.secrets.hellofresh.io"
 
-# Check if the .vault-token file exists and is not empty
 if [[ -s ~/.vault-token ]]; then
-  export VAULT_TOKEN=$(<~/.vault-token) # Set the Vault token
+  export VAULT_TOKEN=$(<~/.vault-token)
 else
   echo "Vault token file does not exist or is empty."
 fi
 
-# Check if the .databrickscfg file exists and is not empty
+# Databricks Configuration
 if [[ -s ~/.databrickscfg ]]; then
   export DATABRICKS_HOST=$(grep '^host' ~/.databrickscfg | cut -d = -f 2 | tr -d ' ')
   export DATABRICKS_TOKEN=$(grep '^token' ~/.databrickscfg | cut -d = -f 2 | tr -d ' ')
@@ -51,14 +46,12 @@ else
   echo ".databrickscfg file does not exist or is empty."
 fi
 
-# Check if the .databricks-http file exists and is not empty
 if [[ -s ~/.databricks-http ]]; then
-  export DATABRICKS_PATH=$(<~/.databricks-http) # Set the Vault token
+  export DATABRICKS_PATH=$(<~/.databricks-http)
 else
   echo "Databricks HTTP file does not exist or is empty."
 fi
 
-# Check if the .databrickscfg-opsdap file exists and is not empty
 if [[ -s ~/.databrickscfg-opsdap ]]; then
   export DATABRICKS_OPSDAP_HOST=$(grep '^host' ~/.databrickscfg-opsdap | cut -d = -f 2 | tr -d ' ')
   export DATABRICKS_OPSDAP_TOKEN=$(grep '^token' ~/.databrickscfg-opsdap | cut -d = -f 2 | tr -d ' ')
@@ -67,7 +60,8 @@ else
   echo ".databrickscfg-opsdap file does not exist or is empty."
 fi
 
-# Aliases
+# Pipx Configuration
+export PATH="$PATH:/Users/luisaceituno/.local/bin"
 
 # Environment Variables
 alias dev='ENV=dev'
@@ -459,9 +453,6 @@ znap source marlonrichert/zsh-autocomplete
 eval "$(gh copilot alias -- zsh)"
 eval "$(fzf --zsh)"
 eval "$(zoxide init --cmd cd zsh)"
-
-# Created by `pipx` on 2024-08-06 12:52:20
-export PATH="$PATH:/Users/luisaceituno/.local/bin"
 
 . "$HOME/.cargo/env"
 

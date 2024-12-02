@@ -9,7 +9,6 @@ export UV_PYTHON="python3.9"
 export EDITOR="code"
 
 # Development Environment Variables
-export AWS_PROFILE="scm-analytics"
 export ENVIRONMENT="dev"
 
 # DBT Configuration
@@ -63,10 +62,15 @@ fi
 # Pipx Configuration
 export PATH="$PATH:/Users/luisaceituno/.local/bin"
 
+# sqlfmt
+export SQLFMT_LINE_LENGTH=120
+
 # Environment Variables
 alias dev='ENV=dev'
 alias staging='ENV=staging'
 alias live='ENV=live'
+
+alias k=kubectl
 
 # Basic Commands
 alias ls="ls --color=auto"
@@ -181,7 +185,23 @@ alias add-git-ignore="cp ~/.gitignore ."
 # Misc
 alias copydirs="ls -d */ | tr -d '/' | pbcopy"
 alias countfiles="ls -1 | wc -l"
-alias copycwd="pwd | pbcopy"
+alias copywd="pwd | pbcopy"
+
+# aws_sso() {
+#   MY_AWS_PROFILE="$1"
+
+#   yawsso --profile "$MY_AWS_PROFILE"
+#   if [ $? -eq 0 ]; then
+#     echo "still valid SSO credentials for $MY_AWS_PROFILE"
+#   else
+#     aws sso login --profile "$MY_AWS_PROFILE"
+#     yawsso --profile "$MY_AWS_PROFILE"
+#   fi
+#   awsume "$MY_AWS_PROFILE"
+#   export AWS_PROFILE="$MY_AWS_PROFILE"
+# }
+
+alias aws-sso-it="aws_sso sso-hf-it-developer"
 
 find_duplicate_filenames() {
   # Help message

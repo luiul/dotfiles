@@ -85,8 +85,8 @@ alias rmd='rm -ri' # Interactive directory removal
 # AWS CLI
 alias s3="aws s3" # Shortcut for AWS S3 command
 
-alias act_prod="activate && export ENVIRONMENT=production" # Activate virtual environment and set ENVIRONMENT
-alias act_stg="activate && export ENVIRONMENT=staging"     # Activate virtual environment and set ENVIRONMENT
+# alias act_prod="activate && export ENVIRONMENT=production" # Activate virtual environment and set ENVIRONMENT
+# alias act_stg="activate && export ENVIRONMENT=staging"     # Activate virtual environment and set ENVIRONMENT
 
 alias pip-upgrade-all="pip freeze --local | grep -v '^\-e' | cut -d = -f 1  | xargs -n1 pip install -U" # Upgrade all pip packages
 alias pip-uninstall-all="pip uninstall -y -r <(pip freeze)"
@@ -288,17 +288,27 @@ gstore() {
   git restore --source="$commit" --staged --worktree "$file_path"
 }
 
-# Activate the virtual environment
+# Recursively activate a virtual environment
 activate() {
-  if [ -d ".venv" ]; then
-    source .venv/bin/activate
-    echo "Activated .venv"
-  elif [ -d "venv" ]; then
-    source venv/bin/activate
-    echo "Activated venv"
-  else
-    echo "No virtual environment found in .venv or venv directories."
-  fi
+  current_dir=$(pwd)
+  home_dir="$HOME"
+
+  while [ "$current_dir" != "$home_dir" ]; do
+    echo "Checking in: $current_dir"
+    if [ -d "$current_dir/.venv" ]; then
+      source "$current_dir/.venv/bin/activate"
+      echo "Activated .venv in $current_dir"
+      return
+    elif [ -d "$current_dir/venv" ]; then
+      source "$current_dir/venv/bin/activate"
+      echo "Activated venv in $current_dir"
+      return
+    fi
+    # Move to the parent directory
+    current_dir=$(dirname "$current_dir")
+  done
+
+  echo "No virtual environment found up to $home_dir."
 }
 
 remove_pycache() {

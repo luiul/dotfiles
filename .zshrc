@@ -5,7 +5,7 @@ export PATH="/Users/luisaceituno/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin
 export KUBECONFIG="/Users/luisaceituno/.kube/config:/Users/luisaceituno/.kube/eksconfig"
 
 # Python and Editor Settings
-export UV_PYTHON="python3.9"
+# export UV_PYTHON="python3.9"
 export EDITOR="code"
 
 # Development Environment Variables
@@ -539,6 +539,10 @@ eval "$(fzf --zsh)"
 eval "$(zoxide init --cmd cd zsh)"
 
 . "$HOME/.cargo/env"
+
+. "$HOME/.local/share/../bin/env"
+eval "$(uv generate-shell-completion zsh)"
+eval "$(uvx --generate-shell-completion zsh)"
 
 # Run the following command at the end of the shell config file
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh

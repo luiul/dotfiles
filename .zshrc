@@ -544,5 +544,8 @@ eval "$(zoxide init --cmd cd zsh)"
 eval "$(uv generate-shell-completion zsh)"
 eval "$(uvx --generate-shell-completion zsh)"
 
+fpath+=~/.zfunc
+autoload -Uz compinit && compinit
+
 # Run the following command at the end of the shell config file
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh

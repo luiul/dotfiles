@@ -547,5 +547,8 @@ eval "$(uvx --generate-shell-completion zsh)"
 fpath+=~/.zfunc
 autoload -Uz compinit && compinit
 
+zstyle ':completion:*' list-prompt   ''
+zstyle ':completion:*' select-prompt ''
+
 # Run the following command at the end of the shell config file
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh

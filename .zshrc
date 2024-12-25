@@ -100,7 +100,6 @@ alias gclone="git clone --recurse-submodules" # Clone a repository with submodul
 # Branch Management
 alias gco="git checkout"       # Checkout a branch
 alias gbranch="git branch -av" # List all branches, local and remote
-# alias gdeletemerged='git branch --merged | egrep -v "(^\*|master|main)" | xargs -I {} sh -c '\''echo Deleting branch: {}; read -p "Are you sure? (y/n): " ans; if [ "$ans" = "y" ]; then git branch -d {}; fi'\'
 
 # Staging and Committing Changes
 alias gadd="git add --all"    # Stage all changes for commit
@@ -269,8 +268,8 @@ gdeletemerged() {
   for branch in "${branches[@]}"; do
     echo "Deleting branch: $branch"
     echo "Do you want to delete this branch? (y/n)"
-    read ans
-    if [[ "$ans" == "y" ]]; then
+    read -r confirm
+    if [[ "$confirm" == "y" ]]; then
       git branch -d "$branch"
     fi
   done
@@ -328,8 +327,8 @@ remove_pycache() {
 
   # Display the contents of the log file (optional)
   echo "Do you want to review the deleted items log? (y/n)"
-  read answer
-  if [[ "$answer" == "y" ]]; then
+  read -r confirm
+  if [[ "$confirm" == "y" ]]; then
     cat "$tempfile"
   fi
 
@@ -362,7 +361,25 @@ cht() {
   curl cht.sh/$query
 }
 
-# Prompt
+delete_git_artifacts() {
+    echo "WARNING: This will permanently delete the .git directory and all .git* files from the current directory and its subdirectories."
+    echo -n "Are you sure you want to proceed? (y/N): "
+    read -r confirm
+
+    if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+        echo "Removing .git directory..."
+        rm -rf .git
+
+        echo "Removing all .git* files and directories..."
+        find . -name ".git*" -exec rm -rf {} +
+
+        echo "Git artifacts cleanup completed."
+    else
+        echo "Operation canceled."
+    fi
+}
+
+# Prompt Configuration
 autoload -Uz vcs_info # Load version control information
 precmd() {vcs_info}   # Run vcs_info before each prompt
 

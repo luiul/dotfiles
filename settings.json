@@ -22,7 +22,6 @@
     "workbench.sideBar.location": "right",
     "workbench.activityBar.location": "top",
     "workbench.colorTheme": "Monokai",
-    "workbench.productIconTheme": "fluent-icons",
     "workbench.editor.alwaysShowEditorActions": true,
     // === Editor Settings ===
     "editor.fontFamily": "Menlo,DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, 'Courier New', monospace",

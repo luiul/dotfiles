@@ -65,6 +65,9 @@ export PATH="$PATH:/Users/luisaceituno/.local/bin"
 # sqlfmt
 export SQLFMT_LINE_LENGTH=120
 
+# pylint
+export PYLINTRC=~/.pylintrc
+
 # Environment Variables
 alias dev='ENV=dev'
 alias staging='ENV=staging'
@@ -362,21 +365,21 @@ cht() {
 }
 
 delete_git_artifacts() {
-    echo "WARNING: This will permanently delete the .git directory and all .git* files from the current directory and its subdirectories."
-    echo -n "Are you sure you want to proceed? (y/N): "
-    read -r confirm
+  echo "WARNING: This will permanently delete the .git directory and all .git* files from the current directory and its subdirectories."
+  echo -n "Are you sure you want to proceed? (y/N): "
+  read -r confirm
 
-    if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
-        echo "Removing .git directory..."
-        rm -rf .git
+  if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+    echo "Removing .git directory..."
+    rm -rf .git
 
-        echo "Removing all .git* files and directories..."
-        find . -name ".git*" -exec rm -rf {} +
+    echo "Removing all .git* files and directories..."
+    find . -name ".git*" -exec rm -rf {} +
 
-        echo "Git artifacts cleanup completed."
-    else
-        echo "Operation canceled."
-    fi
+    echo "Git artifacts cleanup completed."
+  else
+    echo "Operation canceled."
+  fi
 }
 
 # Prompt Configuration
@@ -564,7 +567,7 @@ eval "$(uvx --generate-shell-completion zsh)"
 fpath+=~/.zfunc
 autoload -Uz compinit && compinit
 
-zstyle ':completion:*' list-prompt   ''
+zstyle ':completion:*' list-prompt ''
 zstyle ':completion:*' select-prompt ''
 
 # Run the following command at the end of the shell config file

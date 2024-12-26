@@ -217,16 +217,13 @@
     "update.mode": "manual",
     "telemetry.telemetryLevel": "off",
     "redhat.telemetry.enabled": false,
-    "cSpell.enableFiletypes": [
-        "!jsonc",
-        "!python"
-    ],
-    "cSpell.userWords": [
-        "OTIF",
-        "otifiq"
-    ],
     "window.zoomLevel": -1,
     "window.openFilesInNewWindow": "on",
     "window.commandCenter": false,
-    "makefile.configureOnOpen": true
+    // === Pylint ===
+    "pylint.args": [
+        // "--disable=W1203",
+        // "--disable=W1405",
+        "--max-line-length=120"
+    ]
 }

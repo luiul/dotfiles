@@ -5,7 +5,6 @@ export PATH="/Users/luisaceituno/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin
 export KUBECONFIG="/Users/luisaceituno/.kube/config:/Users/luisaceituno/.kube/eksconfig"
 
 # Python and Editor Settings
-# export UV_PYTHON="python3.9"
 export EDITOR="code"
 
 # Development Environment Variables

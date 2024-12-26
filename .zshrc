@@ -1,8 +1,8 @@
 # System PATH Configuration
-export PATH="/Users/luisaceituno/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
 
 # Kubernetes Configuration
-export KUBECONFIG="/Users/luisaceituno/.kube/config:/Users/luisaceituno/.kube/eksconfig"
+export KUBECONFIG="$HOME/.kube/config:$HOME/.kube/eksconfig"
 
 # Python and Editor Settings
 export EDITOR="code"
@@ -12,7 +12,7 @@ export ENVIRONMENT="dev"
 
 # DBT Configuration
 export ENV="staging"
-export DBT_PROFILES_DIR="/Users/luisaceituno/.dbt"
+export DBT_PROFILES_DIR="$HOME/.dbt"
 
 # # GitHub Token Configuration
 # if [[ -s ~/.github-tokens ]]; then
@@ -23,9 +23,6 @@ export DBT_PROFILES_DIR="/Users/luisaceituno/.dbt"
 # else
 #   echo ".github-tokens file does not exist or is empty."
 # fi
-
-# S3 Configuration
-export S3_HOME="s3://hf-bi-dwh-uploader/luisaceituno/"
 
 # Vault Configuration
 export VAULT_ADDR="https://vault.secrets.hellofresh.io"
@@ -57,9 +54,6 @@ if [[ -s ~/.databrickscfg-opsdap ]]; then
 else
   echo ".databrickscfg-opsdap file does not exist or is empty."
 fi
-
-# Pipx Configuration
-export PATH="$PATH:/Users/luisaceituno/.local/bin"
 
 # sqlfmt
 export SQLFMT_LINE_LENGTH=120
@@ -378,6 +372,34 @@ delete_git_artifacts() {
     echo "Git artifacts cleanup completed."
   else
     echo "Operation canceled."
+  fi
+}
+
+replace_in_file() {
+  local file=$1
+  local search_string=$2
+  local replace_string=$3
+
+  if [[ -z $file || -z $search_string || -z $replace_string ]]; then
+    echo "Usage: replace_in_file <file> <search_string> <replace_string>"
+    echo "Example: replace_in_file ~/.zshrc \"/Users/luisaceituno\" \"\$HOME\""
+    return 1
+  fi
+
+  if [[ -f $file ]]; then
+    echo "You are about to replace all occurrences of '${search_string}' with '${replace_string}' in ${file}."
+    echo "Do you want to proceed? (y/n)"
+    read -r confirm
+
+    if [[ $confirm == "y" || $confirm == "Y" ]]; then
+      sed -i '' "s|${search_string}|${replace_string}|g" "$file" &&
+        echo "Replaced all occurrences of '${search_string}' with '${replace_string}' in ${file}."
+    else
+      echo "Operation canceled."
+    fi
+  else
+    echo "Error: File '${file}' not found."
+    return 1
   fi
 }
 

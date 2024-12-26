@@ -225,5 +225,11 @@
         // "--disable=W1203",
         // "--disable=W1405",
         "--max-line-length=120"
-    ]
+    ],
+    "files.exclude": {
+        "**/__pycache__": true
+    },
+    "files.autoSave": "onFocusChange",
+    "debug.toolBarLocation": "docked",
+    "terminal.integrated.tabs.hideCondition": "never"
 }

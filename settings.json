@@ -177,6 +177,7 @@
         },
         "editor.defaultFormatter": "charliermarsh.ruff"
     },
+    // "ruff.importStrategy": "useBundled",  // does not require separate installation
     "[yaml]": {
         "editor.defaultFormatter": "redhat.vscode-yaml",
         "editor.formatOnSave": true

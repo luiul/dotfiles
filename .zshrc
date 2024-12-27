@@ -61,6 +61,9 @@ export SQLFMT_LINE_LENGTH=120
 # pylint
 export PYLINTRC=~/.pylintrc
 
+# pip
+export PIP_CONFIG_FILE=~/.config/pip/pip.conf
+
 # Environment Variables
 alias dev='ENV=dev'
 alias staging='ENV=staging'

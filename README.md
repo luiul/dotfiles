@@ -12,3 +12,4 @@ This repository contains my dotfiles. I use a combination of [GNU Stow](https://
 - **keybindings.json**: Specifies custom keyboard shortcuts for Visual Studio Code.
 - **ruff.toml**: Configuration file for `ruff`, a fast Python linter and formatter.
 - **settings.json**: Contains custom user and workspace settings for Visual Studio Code.
+- **pip.conf**: Configuration file for `pip`, to avoid global package installation.

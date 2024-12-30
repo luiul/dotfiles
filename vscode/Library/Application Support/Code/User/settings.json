@@ -84,11 +84,15 @@
     "editor.unicodeHighlight.ambiguousCharacters": false,
     "editor.formatOnSave": true,
     // === Terminal Settings ===
-    "terminal.integrated.fontFamily": "Menlo,DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, 'Courier New', monospace",
+    "terminal.integrated.fontFamily": "Menlo,DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
     "terminal.integrated.fontSize": 12,
     "terminal.integrated.defaultProfile.osx": "zsh",
-    "terminal.integrated.persistentSessionScrollback": 100000000,
+    "terminal.integrated.persistentSessionScrollback": 10000,
     "terminal.integrated.lineHeight": 1.5,
+    "terminal.integrated.tabs.hideCondition": "never",
+    "terminal.integrated.cursorStyle": "line",
+    "terminal.integrated.cursorStyleInactive": "none",
+    "terminal.integrated.cursorWidth": 2,
     // === Diff Editor Settings ===
     "diffEditor.wordWrap": "inherit",
     "diffEditor.experimental.showMoves": true,
@@ -234,5 +238,4 @@
     },
     "files.autoSave": "onFocusChange",
     "debug.toolBarLocation": "docked",
-    "terminal.integrated.tabs.hideCondition": "never"
 }

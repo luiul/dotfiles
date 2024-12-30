@@ -5,7 +5,13 @@ font-feature = -dlig
 
 # Theme settings
 theme = Wez
+
+# Cursor settings
 cursor-style-blink = false
+shell-integration-features = no-cursor
+cursor-color = #B3B3B3
+cursor-style = bar
+adjust-cursor-thickness = 2
 
 # Keybindings
 keybind = global:control+command+shift+option+r=toggle_quick_terminal

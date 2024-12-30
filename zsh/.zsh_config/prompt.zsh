@@ -1,19 +1,18 @@
-# Prompt Configuration
-autoload -Uz vcs_info # Load version control information
-precmd() {vcs_info}   # Run vcs_info before each prompt
+# Load version control information
+autoload -Uz vcs_info
 
-zstyle ':vcs_info:git:*' formats 'on %b' # Format the git branch info
+# Load colors module for prompt styling
+autoload -U colors && colors
 
-setopt PROMPT_SUBST # Enable prompt string substitution
+# Enable prompt substitution
+setopt PROMPT_SUBST
 
-# Define a function to check for changes in a Git repository
+# Function to check Git repository changes
 check_git_changes() {
-    # Ensure we are inside a Git repository
     if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         # Check for unstaged changes or untracked files
         if ! git diff --quiet || git ls-files --others --exclude-standard | grep -q .; then
             echo "unstaged"
-        # Check for staged changes that are uncommitted
         elif ! git diff --cached --quiet; then
             echo "staged"
         else
@@ -24,19 +23,18 @@ check_git_changes() {
     fi
 }
 
-# Define a prompt function
+# Prompt function to dynamically set the prompt
 my_prompt() {
-    # Only set Git prompt if inside a Git repository
+    local prompt=""
     if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        # Get current branch name, falling back if not defined
+        # Get the current Git branch name
         local branch_name=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
 
-        # Set basic prompt format for directory path
-        local prompt="%B%{$fg[magenta]%}%~%{$reset_color%}"
+        # Set the directory path in magenta
+        prompt="%B%{$fg[magenta]%}%~%{$reset_color%}"
 
-        # Check for changes if branch name is available
         if [[ -n $branch_name ]]; then
-            # Determine change status
+            # Get the change status
             local changes=$(check_git_changes)
             if [[ $changes == "unstaged" ]]; then
                 prompt="$prompt %{$fg[red]%}($branch_name)%{$reset_color%}" # red for unstaged changes
@@ -47,19 +45,19 @@ my_prompt() {
             fi
         fi
     else
-        # Basic prompt for non-Git directories
-        local prompt="%B%{$fg[magenta]%}%~%{$reset_color%}"
+        # Non-Git directories
+        prompt="%B%{$fg[magenta]%}%~%{$reset_color%}"
     fi
 
     # Add final prompt symbol
     prompt="$prompt %B%{$reset_color%}$%b "
 
-    # Print prompt
-    echo -n "$prompt"
+    # Return the constructed prompt
+    echo "$prompt"
 }
 
-# Set the prompt
+# Set the dynamic prompt
 PROMPT='$(my_prompt)'
 
-# Load the colors module
-autoload -U colors && colors
+# Run vcs_info before each prompt
+precmd() {vcs_info}

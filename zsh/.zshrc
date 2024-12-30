@@ -1,13 +1,20 @@
 # Source all Zsh configuration files from .zsh_config
+echo "Loading Zsh configuration files..."
 for file in ~/.zsh_config/*.zsh; do
+  # Echo the file name
   # printf "Loading: %s\n" "$file"
+
+  # Source the file
   source "$file"
-  if [[ $? -eq 0 ]]; then
-    printf "Loaded: %s\n" "$file"
-  else
-    printf "Error loading: %s\n" "$file"
-  fi
+
+  # Check if the file was loaded successfully
+  # if [[ $? -eq 0 ]]; then
+  #   printf "Loaded: %s\n" "$file"
+  # else
+  #   printf "Error loading: %s\n" "$file"
+  # fi
 done
+echo "Zsh configuration files loaded."
 
 # Download Znap, if it's not there yet.
 [[ -r ~/Repos/znap/znap.zsh ]] ||

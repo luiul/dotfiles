@@ -32,7 +32,7 @@
     "editor.renderWhitespace": "all",
     "editor.guides.bracketPairs": true,
     "editor.bracketPairColorization.enabled": true,
-    "editor.inlayHints.enabled": false,
+    // "editor.inlayHints.enabled": off,
     "editor.inlineSuggest.enabled": true,
     "editor.copyWithSyntaxHighlighting": false,
     "editor.accessibilitySupport": "off",
@@ -144,11 +144,13 @@
             "query": "state:open repo:${owner}/${repository} sort:updated-desc"
         }
     ],
-    "github.copilot.enable": {
-        "markdown": true
-    },
     "github.copilot.editor.enableAutoCompletions": true,
-    "github.copilot.chat.edits.enabled": false,
+    "github.copilot.enable": {
+        "*": true,
+        "plaintext": true,
+        "markdown": true,
+        "scminput": true
+    },
     // === Language-Specific Settings ===
     "[markdown]": {
         "editor.tabSize": 4,

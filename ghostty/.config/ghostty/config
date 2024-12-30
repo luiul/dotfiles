@@ -1,0 +1,11 @@
+# Font settings
+font-feature = -calt
+font-feature = -liga
+font-feature = -dlig
+
+# Theme settings
+theme = Wez
+cursor-style-blink = false
+
+# Keybindings
+keybind = global:control+command+shift+option+r=toggle_quick_terminal

@@ -24,7 +24,7 @@
     "workbench.colorTheme": "Monokai",
     "workbench.editor.alwaysShowEditorActions": true,
     // === Editor Settings ===
-    "editor.fontFamily": "Menlo,DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, 'Courier New', monospace",
+    "editor.fontFamily": "Menlo, DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
     "editor.fontSize": 12,
     "editor.wordWrap": "on",
     "editor.smoothScrolling": true,

@@ -21,7 +21,6 @@
     "workbench.tree.enableStickyScroll": true,
     "workbench.sideBar.location": "right",
     "workbench.activityBar.location": "top",
-    "workbench.colorTheme": "Monokai",
     "workbench.editor.alwaysShowEditorActions": true,
     // === Editor Settings ===
     "editor.fontFamily": "Menlo, DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
@@ -32,10 +31,9 @@
     "editor.renderWhitespace": "all",
     "editor.guides.bracketPairs": true,
     "editor.bracketPairColorization.enabled": true,
-    // "editor.inlayHints.enabled": off,
+    "editor.inlayHints.enabled": "on",
     "editor.inlineSuggest.enabled": true,
     "editor.copyWithSyntaxHighlighting": false,
-    "editor.accessibilitySupport": "off",
     "editor.minimap.autohide": true,
     "editor.minimap.renderCharacters": false,
     "editor.folding": true,
@@ -79,7 +77,7 @@
             }
         ]
     },
-    "editor.lineNumbers": "relative",
+    // "editor.lineNumbers": "relative",
     "editor.minimap.enabled": false,
     "editor.unicodeHighlight.ambiguousCharacters": false,
     "editor.formatOnSave": true,
@@ -199,7 +197,7 @@
     //     "${workspaceFolder}/src"
     // ],
     "python.analysis.autoFormatStrings": true,
-    "python.analysis.typeCheckingMode": "standard",
+    "python.analysis.typeCheckingMode": "off",
     "python.analysis.exclude": [
         "**/venv/**",
         "**/.venv/**",
@@ -214,7 +212,7 @@
         "**/site-packages"
     ],
     // === Python Virtual Environment ===
-    "python.envFile": "${workspaceFolder}/.venv",
+    "python.envFile": "${workspaceFolder}/.env",
     "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
     // === Python Testing ===
     "python.testing.pytestEnabled": true,
@@ -236,6 +234,12 @@
     "files.exclude": {
         "**/__pycache__": true
     },
-    "files.autoSave": "onFocusChange",
+    "files.autoSave": "onWindowChange",
     "debug.toolBarLocation": "docked",
+    "yaml.schemas": {
+        "file:///Users/luisaceituno/.vscode/extensions/docsmsft.docs-yaml-1.0.5/dist/toc.schema.json": "/toc\\.yml/i"
+    },
+    "workbench.colorTheme": "Monokai",
+    "python.languageServer": "Pylance",
+    "editor.inlayHints.enabled": "offUnlessPressed",
 }

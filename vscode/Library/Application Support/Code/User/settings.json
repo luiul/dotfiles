@@ -85,7 +85,7 @@
     "terminal.integrated.fontFamily": "Menlo,DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
     "terminal.integrated.fontSize": 12,
     "terminal.integrated.defaultProfile.osx": "zsh",
-    "terminal.integrated.persistentSessionScrollback": 10000,
+    "terminal.integrated.persistentSessionScrollback": 1000,
     "terminal.integrated.lineHeight": 1.5,
     "terminal.integrated.tabs.hideCondition": "never",
     "terminal.integrated.cursorStyle": "line",
@@ -197,7 +197,7 @@
     //     "${workspaceFolder}/src"
     // ],
     "python.analysis.autoFormatStrings": true,
-    "python.analysis.typeCheckingMode": "off",
+    "python.analysis.typeCheckingMode": "standard",
     "python.analysis.exclude": [
         "**/venv/**",
         "**/.venv/**",
@@ -242,4 +242,33 @@
     "workbench.colorTheme": "Monokai",
     "python.languageServer": "Pylance",
     "editor.inlayHints.enabled": "offUnlessPressed",
+    "jupyter.askForKernelRestart": false,
+    // "markdown-preview-github-styles.darkTheme": "dark_high_contrast",
+    // "markdown-pdf.styles": [
+    //     "/Users/luisaceituno/.config/markdown-pdf/markdown-pdf.css"
+    // ],
+    // "scm.workingSets.enabled": false,
+    // "scm.workingSets.default": "empty",
+    "files.associations": {
+        "*.sql": "jinja-sql",
+        "*.yaml": "jinja-yaml",
+        "*.yml": "jinja-yaml",
+        // "*.html": "jinja-html"
+    },
+    "[jinja-sql]": {
+        "editor.defaultFormatter": "innoverio.vscode-dbt-power-user"
+    },
+    "emeraldwalk.runonsave": {
+        "commands": [
+            {
+                "match": ".*\\.sql(\\.jinja)?",
+                "isAsync": true,
+                "cmd": "sqlfmt ${file}"
+            }
+        ]
+    },
+    "indentRainbow.excludedLanguages": [
+        "sql",
+        "jinja-sql"
+    ]
 }

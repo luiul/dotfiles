@@ -31,7 +31,6 @@
     "editor.renderWhitespace": "all",
     "editor.guides.bracketPairs": true,
     "editor.bracketPairColorization.enabled": true,
-    "editor.inlayHints.enabled": "on",
     "editor.inlineSuggest.enabled": true,
     "editor.copyWithSyntaxHighlighting": false,
     "editor.minimap.autohide": true,

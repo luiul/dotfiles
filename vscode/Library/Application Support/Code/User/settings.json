@@ -270,5 +270,6 @@
     "indentRainbow.excludedLanguages": [
         "sql",
         "jinja-sql"
-    ]
+    ],
+    "workbench.productIconTheme": "fluent-icons"
 }

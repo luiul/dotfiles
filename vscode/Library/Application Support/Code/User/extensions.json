@@ -1,3 +1,5 @@
+// Run this in the terminal to get the list of extensions:
+// code --list-extensions | xargs -L 1 -I {} echo '"{}",' | sed '$ s/,$//' | pbcopy
 {
     "recommendations": [
         "adpyke.codesnap",
@@ -19,6 +21,7 @@
         "docsmsft.docs-yaml",
         "donjayamanne.githistory",
         "dvirtz.parquet-viewer",
+        "eamodio.gitlens",
         "ecmel.vscode-html-css",
         "emeraldwalk.runonsave",
         "esbenp.prettier-vscode",

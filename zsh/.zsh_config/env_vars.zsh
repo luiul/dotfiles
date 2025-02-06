@@ -1,7 +1,6 @@
 # Editor and Environment Settings
 export EDITOR="code"
-export ENVIRONMENT="dev"
-export ENV="staging"
+export ENV="staging" # Default environment for dbt
 
 # Kubernetes Configuration
 export KUBECONFIG="$HOME/.kube/config:$HOME/.kube/eksconfig"
@@ -40,7 +39,7 @@ else
 fi
 
 # SQL Formatter Configuration
-export SQLFMT_LINE_LENGTH=120
+# export SQLFMT_LINE_LENGTH=120
 
 # Pylint Configuration
 export PYLINTRC=~/.pylintrc
@@ -57,3 +56,8 @@ export PIP_CONFIG_FILE=~/.config/pip/pip.conf
 # else
 #   echo ".github-tokens file does not exist or is empty."
 # fi
+
+# Unset ENV and ENVIRONMENT variables
+# unset ENV
+# unset ENVIRONMENT
+# unset SQLFMT_LINE_LENGTH

@@ -79,6 +79,6 @@
     },
     {
         "key": "alt+cmd+t",
-        "command": "workbench.action.terminal.newInActiveWorkspace"
+        "command": "workbench.action.terminal.toggleTerminal"
     }
 ]

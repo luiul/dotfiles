@@ -118,7 +118,7 @@
     "git.autoStash": true,
     "git.autoRepositoryDetection": "openEditors",
     "git.openRepositoryInParentFolders": "always",
-    "git.blame.statusBarItem.enabled": true,
+    // "git.blame.statusBarItem.enabled": true,
     "git.autofetch": true,
     // === GitHub Settings ===
     "githubPullRequests.remotes": [
@@ -155,7 +155,8 @@
     // === Language-Specific Settings ===
     "[markdown]": {
         "editor.tabSize": 4,
-        "editor.defaultFormatter": "yzhang.markdown-all-in-one"
+        "editor.defaultFormatter": "yzhang.markdown-all-in-one",
+        "diffEditor.ignoreTrimWhitespace": false
     },
     "[javascript]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode"
@@ -257,20 +258,23 @@
     "[jinja-sql]": {
         "editor.defaultFormatter": "innoverio.vscode-dbt-power-user"
     },
-    "emeraldwalk.runonsave": {
-        "commands": [
-            {
-                "match": ".*\\.sql(\\.jinja)?",
-                "isAsync": true,
-                "cmd": "sqlfmt ${file}"
-            }
-        ]
-    },
+    // TODO -- Fix: using sqlfmt as formatter breaks Swnowflake example queries
+    // "emeraldwalk.runonsave": {
+    //     "commands": [
+    //         {
+    //             "match": ".*\\.sql(\\.jinja)?",
+    //             "isAsync": true,
+    //             "cmd": "sqlfmt ${file}"
+    //         }
+    //     ]
+    // },
     "indentRainbow.excludedLanguages": [
         "sql",
         "jinja-sql"
     ],
     "workbench.productIconTheme": "fluent-icons",
     // "gitblame.inlineMessageEnabled": true,
-    "makefile.configureOnOpen": true
+    "makefile.configureOnOpen": true,
+    "snowflake.connectionsConfigFile": "/Users/luisaceituno/.snowflake/connections.toml",
+    "dbt.sqlFmtPath": "/Users/luisaceituno/.local/bin/sqlfmt"
 }

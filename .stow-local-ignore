@@ -4,7 +4,7 @@ RCS
 .+,v
 
 CVS
-\.\#.+       # CVS conflict files / emacs lock files
+\.\#.+ # CVS conflict files / emacs lock files
 \.cvsignore
 
 \.svn
@@ -15,8 +15,8 @@ _darcs
 \.gitignore
 \.gitmodules
 
-.+~          # emacs backup files
-\#.*\#       # emacs autosave files
+.+~    # emacs backup files
+\#.*\# # emacs autosave files
 
 ^/README.*
 ^/LICENSE.*
@@ -27,3 +27,5 @@ _darcs
 settings.json
 keybindings.json
 ruff.toml
+
+.DS_Store

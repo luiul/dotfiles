@@ -258,16 +258,17 @@
     "[jinja-sql]": {
         "editor.defaultFormatter": "innoverio.vscode-dbt-power-user"
     },
-    // TODO -- Fix: using sqlfmt as formatter breaks Swnowflake example queries
-    // "emeraldwalk.runonsave": {
-    //     "commands": [
-    //         {
-    //             "match": ".*\\.sql(\\.jinja)?",
-    //             "isAsync": true,
-    //             "cmd": "sqlfmt ${file}"
-    //         }
-    //     ]
-    // },
+    // Avoid sqlfmt on dbt projects
+    "emeraldwalk.runonsave": {
+        "commands": [
+            {
+                "match": ".*\\.sql(\\.jinja)?",
+                "notMatch": ".*/dbt/.*",
+                "isAsync": true,
+                "cmd": "sqlfmt ${file}"
+            }
+        ]
+    },
     "indentRainbow.excludedLanguages": [
         "sql",
         "jinja-sql"

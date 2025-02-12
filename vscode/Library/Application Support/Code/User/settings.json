@@ -277,5 +277,9 @@
     // "gitblame.inlineMessageEnabled": true,
     "makefile.configureOnOpen": true,
     "snowflake.connectionsConfigFile": "/Users/luisaceituno/.snowflake/connections.toml",
-    "dbt.sqlFmtPath": "/Users/luisaceituno/.local/bin/sqlfmt"
+    "dbt.sqlFmtPath": "/Users/luisaceituno/.local/bin/sqlfmt",
+    // Experimental 
+    // "github.copilot.nextEditSuggestions.enabled": true
+    "git.blame.editorDecoration.enabled": true,
+    "notebook.inlineValues": true,
 }

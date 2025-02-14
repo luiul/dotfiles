@@ -13,10 +13,12 @@
         "notebook.focusedCellBackground": "#0099ff30",
         "editor.lineHighlightBackground": "#008cff21",
         "editor.lineHighlightBorder": "#9fced11f",
-        "tree.indentGuidesStroke": "#EBEBEB",
+        // "tree.indentGuidesStroke": "#EBEBEB",
         "editor.findMatchBackground": "#8ffa876b",
         "editor.findMatchHighlightBackground": "#ff7dbe75",
-        "sqltools.currentQueryBg": "#7b798a03"
+        "sqltools.currentQueryBg": "#7b798a03",
+        "tree.indentGuidesStroke": "#51bdd8",
+        "tree.inactiveIndentGuidesStroke": "#232a35",
     },
     "workbench.tree.enableStickyScroll": true,
     "workbench.sideBar.location": "right",
@@ -103,11 +105,6 @@
     "notebook.output.lineHeight": 18,
     "notebook.stickyScroll.enabled": true,
     "notebook.diff.ignoreMetadata": true,
-    "notebook.formatOnSave.enabled": true,
-    "notebook.codeActionsOnSave": {
-        "notebook.source.fixAll": "explicit",
-        "notebook.source.organizeImports": "explicit"
-    },
     "notebook.cellExecutionTimeVerbosity": "verbose",
     // === Git Settings ===
     "git-graph.repository.fetchAndPrune": true,
@@ -173,6 +170,7 @@
     "[html]": {
         "editor.defaultFormatter": "vscode.html-language-features"
     },
+    // Python formatter
     "[python]": {
         "editor.formatOnSave": true,
         "editor.codeActionsOnSave": {
@@ -180,6 +178,12 @@
             "source.organizeImports": "explicit"
         },
         "editor.defaultFormatter": "charliermarsh.ruff"
+    },
+    // Jupyter Notebooks formatter
+    "notebook.formatOnSave.enabled": true,
+    "notebook.codeActionsOnSave": {
+        "notebook.source.fixAll": "explicit",
+        "notebook.source.organizeImports": "explicit"
     },
     // "ruff.importStrategy": "useBundled",  // does not require separate installation
     "[yaml]": {
@@ -281,5 +285,5 @@
     // Experimental 
     // "github.copilot.nextEditSuggestions.enabled": true
     "git.blame.editorDecoration.enabled": true,
-    "notebook.inlineValues": true,
+    // "notebook.inlineValues": true,
 }

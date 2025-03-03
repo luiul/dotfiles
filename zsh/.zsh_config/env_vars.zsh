@@ -47,6 +47,10 @@ export PYLINTRC=~/.pylintrc
 # Pip Configuration
 export PIP_CONFIG_FILE=~/.config/pip/pip.conf
 
+# Tardis
+export SF_ACCOUNT="oo69432.eu-west-1"
+export SF_USER='luis.aceituno@hellofresh.com'
+
 # GitHub Token Configuration (commented out as per original)
 # if [[ -s ~/.github-tokens ]]; then
 #   export GITHUB_TOKEN_TARDIS=$(grep '^tardis' ~/.github-tokens | cut -d '=' -f 2 | tr -d ' ')

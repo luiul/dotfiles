@@ -65,3 +65,4 @@ export SF_USER='luis.aceituno@hellofresh.com'
 # unset ENV
 # unset ENVIRONMENT
 # unset SQLFMT_LINE_LENGTH
+# unset VIRTUAL_ENV

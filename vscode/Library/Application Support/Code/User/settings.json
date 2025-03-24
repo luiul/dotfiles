@@ -288,4 +288,7 @@
     // "github.copilot.nextEditSuggestions.enabled": true
     "git.blame.editorDecoration.enabled": true,
     // "notebook.inlineValues": true,
+    "terminal.integrated.env.osx": {
+        "ENV": "staging"
+    }
 }

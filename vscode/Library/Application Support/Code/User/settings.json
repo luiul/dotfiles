@@ -255,29 +255,29 @@
     // "scm.workingSets.enabled": false,
     // "scm.workingSets.default": "empty",
     "files.associations": {
-        "*.sql": "jinja-sql",
+        // "*.sql": "jinja-sql",
         "*.yaml": "jinja-yaml",
         "*.yml": "jinja-yaml",
         // "*.html": "jinja-html"
     },
-    "[jinja-sql]": {
-        "editor.defaultFormatter": "innoverio.vscode-dbt-power-user"
-    },
+    // "[jinja-sql]": {
+    //     "editor.defaultFormatter": "innoverio.vscode-dbt-power-user"
+    // },
     // Avoid sqlfmt on dbt projects
     "emeraldwalk.runonsave": {
         "commands": [
             {
                 "match": ".*\\.sql(\\.jinja)?",
-                "notMatch": ".*/dbt/.*",
+                // "notMatch": ".*/dbt/.*",
                 "isAsync": true,
                 "cmd": "sqlfmt ${file}"
             }
         ]
     },
-    "indentRainbow.excludedLanguages": [
-        "sql",
-        "jinja-sql"
-    ],
+    // "indentRainbow.excludedLanguages": [
+    //     "sql",
+    //     "jinja-sql"
+    // ],
     "workbench.productIconTheme": "fluent-icons",
     // "gitblame.inlineMessageEnabled": true,
     "makefile.configureOnOpen": true,

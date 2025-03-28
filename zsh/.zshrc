@@ -37,5 +37,8 @@ autoload -Uz compinit && compinit
 zstyle ':completion:*' list-prompt ''
 zstyle ':completion:*' select-prompt ''
 
+# Automatically activate virtualenvs
+activate
+
 # Run the following command at the end of the shell config file
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh

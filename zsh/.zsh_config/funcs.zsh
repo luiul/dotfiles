@@ -117,7 +117,7 @@ activate() {
         current_dir=$(dirname "$current_dir")
     done
 
-    echo "No virtual environment found up to $home_dir."
+    echo "No Python virtual environment found up to $home_dir."
 }
 
 remove_pycache() {

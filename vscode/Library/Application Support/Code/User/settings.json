@@ -230,7 +230,6 @@
     "redhat.telemetry.enabled": false,
     "window.zoomLevel": -1,
     "window.openFilesInNewWindow": "on",
-    "window.commandCenter": false,
     // === Pylint ===
     "pylint.args": [
         // "--disable=W1203",
@@ -290,5 +289,6 @@
     // "notebook.inlineValues": true,
     "terminal.integrated.env.osx": {
         "ENV": "staging"
-    }
+    },
+    "window.commandCenter": false
 }

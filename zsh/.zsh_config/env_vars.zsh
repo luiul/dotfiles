@@ -39,7 +39,7 @@ else
 fi
 
 # SQL Formatter Configuration
-export SQLFMT_LINE_LENGTH=120
+# export SQLFMT_LINE_LENGTH=120
 
 # Pylint Configuration
 export PYLINTRC=~/.pylintrc

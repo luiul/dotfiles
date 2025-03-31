@@ -19,6 +19,8 @@
         "sqltools.currentQueryBg": "#7b798a03",
         "tree.indentGuidesStroke": "#51bdd8",
         "tree.inactiveIndentGuidesStroke": "#232a35",
+        "editorLineNumber.foreground": "#3a3f4b",
+        "editorLineNumber.activeForeground": "#6b717d"
     },
     "workbench.tree.enableStickyScroll": true,
     "workbench.sideBar.location": "right",
@@ -78,8 +80,8 @@
             }
         ]
     },
-    // "editor.lineNumbers": "relative",
-    "editor.minimap.enabled": false,
+    "editor.lineNumbers": "relative",
+    // "editor.minimap.enabled": false,
     "editor.unicodeHighlight.ambiguousCharacters": false,
     "editor.formatOnSave": true,
     // === Terminal Settings ===

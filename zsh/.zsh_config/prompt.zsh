@@ -26,33 +26,44 @@ check_git_changes() {
 # Prompt function to dynamically set the prompt
 my_prompt() {
     local prompt=""
-    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        # Get the current Git branch name
-        local branch_name=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+    local venv_symbol=""
+    local venv_warning=""
 
-        # Set the directory path in magenta
+    if [[ -n "$VIRTUAL_ENV_PROMPT" ]]; then
+        # Debug line: shows ASCII codes if you suspect hidden chars
+        # echo "$VIRTUAL_ENV_PROMPT" | od -c
+
+        # Use sed to remove the leading "(" and trailing ")" plus any trailing spaces
+        local venv_display_name
+        venv_display_name="$(
+            echo "$VIRTUAL_ENV_PROMPT" | sed -E 's/^\((.*)\)[[:space:]]*$/\1/'
+        )"
+        local current_dir_name="$(basename "$PWD")"
+
+        venv_symbol=" 🐍"
+
+        if [[ "$venv_display_name" != "$current_dir_name" ]]; then
+            venv_warning="❌"
+        fi
+    fi
+
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        local branch_name="$(git symbolic-ref --short HEAD 2>/dev/null || echo "")"
         prompt="%B%{$fg[magenta]%}%~%{$reset_color%}"
 
-        if [[ -n $branch_name ]]; then
-            # Get the change status
-            local changes=$(check_git_changes)
-            if [[ $changes == "unstaged" ]]; then
-                prompt="$prompt %{$fg[red]%}($branch_name)%{$reset_color%}" # red for unstaged changes
-            elif [[ $changes == "staged" ]]; then
-                prompt="$prompt %{$fg[blue]%}($branch_name)%{$reset_color%}" # blue for staged changes
-            elif [[ $changes == "clean" ]]; then
-                prompt="$prompt %{$fg[green]%}($branch_name)%{$reset_color%}" # green if clean
-            fi
+        if [[ -n "$branch_name" ]]; then
+            local changes="$(check_git_changes)"
+            case "$changes" in
+            unstaged) prompt="$prompt %{$fg[red]%}($branch_name)%{$reset_color%}" ;;
+            staged) prompt="$prompt %{$fg[blue]%}($branch_name)%{$reset_color%}" ;;
+            clean) prompt="$prompt %{$fg[green]%}($branch_name)%{$reset_color%}" ;;
+            esac
         fi
     else
-        # Non-Git directories
         prompt="%B%{$fg[magenta]%}%~%{$reset_color%}"
     fi
 
-    # Add final prompt symbol
-    prompt="$prompt %B%{$reset_color%}$%b "
-
-    # Return the constructed prompt
+    prompt="$prompt$venv_symbol$venv_warning %B%{$reset_color%}$%b "
     echo "$prompt"
 }
 

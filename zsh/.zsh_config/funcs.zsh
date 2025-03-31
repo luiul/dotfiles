@@ -308,3 +308,24 @@ function clean_branches() {
         echo "Operation cancelled. No branches deleted."
     fi
 }
+
+gupdatebranch() {
+    if [ -z "$1" ]; then
+        echo "Usage: gupdatebranch <branch-name>"
+        return 1
+    fi
+
+    current_branch=$(git symbolic-ref --short HEAD)
+
+    if [ "$current_branch" = "$1" ]; then
+        echo "You are currently on '$1'. Cannot update a checked-out branch."
+        return 1
+    fi
+
+    git fetch origin "$1:$1" && echo "Local '$1' updated from origin"
+}
+
+gwhichremote() {
+    branch=${1:-$(git symbolic-ref --short HEAD)}
+    git for-each-ref --format='%(upstream:short)' refs/heads/"$branch"
+}

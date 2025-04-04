@@ -329,3 +329,44 @@ gwhichremote() {
     branch=${1:-$(git symbolic-ref --short HEAD)}
     git for-each-ref --format='%(upstream:short)' refs/heads/"$branch"
 }
+
+run-pre-commit() {
+    timestamp() {
+        date '+%H:%M:%S'
+    }
+
+    # Defaults
+    local from_ref="origin/master"
+    local to_ref="HEAD"
+
+    # Parse optional args
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+        --from)
+            from_ref="$2"
+            shift 2
+            ;;
+        --to)
+            to_ref="$2"
+            shift 2
+            ;;
+        *)
+            echo "$(timestamp)  Unknown option: $1"
+            return 1
+            ;;
+        esac
+    done
+
+    echo "$(timestamp)  Checking files changed between $from_ref and $to_ref"
+    git diff --name-only "$from_ref"..."$to_ref"
+
+    echo ""
+    read "?$(timestamp)  Run pre-commit on these files? (y/n) " confirm
+
+    if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+        echo "$(timestamp)  Running pre-commit hooks"
+        pre-commit run --from-ref "$from_ref" --to-ref "$to_ref" --verbose
+    else
+        echo "$(timestamp)  Skipping pre-commit run"
+    fi
+}

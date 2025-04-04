@@ -83,7 +83,7 @@
     "editor.lineNumbers": "relative",
     // "editor.minimap.enabled": false,
     "editor.unicodeHighlight.ambiguousCharacters": false,
-    "editor.formatOnSave": true,
+    // "editor.formatOnSave": true,
     // === Terminal Settings ===
     "terminal.integrated.fontFamily": "Menlo,DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
     "terminal.integrated.fontSize": 12,

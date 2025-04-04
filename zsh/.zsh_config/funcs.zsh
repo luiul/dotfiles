@@ -330,7 +330,7 @@ gwhichremote() {
     git for-each-ref --format='%(upstream:short)' refs/heads/"$branch"
 }
 
-run-pre-commit() {
+runprecommit() {
     timestamp() {
         date '+%H:%M:%S'
     }
@@ -351,22 +351,34 @@ run-pre-commit() {
             shift 2
             ;;
         *)
-            echo "$(timestamp)  Unknown option: $1"
+            echo "$(timestamp) ❌ Unknown option: $1"
             return 1
             ;;
         esac
     done
 
-    echo "$(timestamp)  Checking files changed between $from_ref and $to_ref"
+    echo "$(timestamp) 🔍 Checking files changed between 🔁 $from_ref and 📍 $to_ref"
     git diff --name-only "$from_ref"..."$to_ref"
 
     echo ""
-    read "?$(timestamp)  Run pre-commit on these files? (y/n) " confirm
+    read "?$(timestamp) ❓ Run pre-commit on these files? (y/n) " confirm
 
     if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
-        echo "$(timestamp)  Running pre-commit hooks"
+        echo "$(timestamp) 🚀 Running pre-commit hooks..."
         pre-commit run --from-ref "$from_ref" --to-ref "$to_ref" --verbose
     else
-        echo "$(timestamp)  Skipping pre-commit run"
+        echo "$(timestamp) ⏭️ Skipping pre-commit run"
     fi
+}
+
+gpullall() {
+  for dir in */; do
+    if [ -d "$dir/.git" ]; then
+      echo "🔄 Updating repo: $dir"
+      (
+        cd "$dir" || continue
+        git fetch && git pull --recurse-submodules
+      )
+    fi
+  done
 }

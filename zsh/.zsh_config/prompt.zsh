@@ -29,6 +29,9 @@ my_prompt() {
     local venv_symbol=""
     local venv_warning=""
 
+    # Get the current time
+    local current_time="$(date +%H:%M:%S)"
+
     if [[ -n "$VIRTUAL_ENV_PROMPT" ]]; then
         # Debug line: shows ASCII codes if you suspect hidden chars
         # echo "$VIRTUAL_ENV_PROMPT" | od -c
@@ -47,9 +50,12 @@ my_prompt() {
         fi
     fi
 
+    # Grey time using ANSI color code 240
+    local time_str="%{$fg[240]%}[$current_time]%{$reset_color%}"
+
     if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         local branch_name="$(git symbolic-ref --short HEAD 2>/dev/null || echo "")"
-        prompt="%B%{$fg[magenta]%}%~%{$reset_color%}"
+        prompt="%B$time_str %{$fg[magenta]%}%~%{$reset_color%}"
 
         if [[ -n "$branch_name" ]]; then
             local changes="$(check_git_changes)"
@@ -60,7 +66,7 @@ my_prompt() {
             esac
         fi
     else
-        prompt="%B%{$fg[magenta]%}%~%{$reset_color%}"
+        prompt="%B$time_str %{$fg[magenta]%}%~%{$reset_color%}"
     fi
 
     prompt="$prompt$venv_symbol$venv_warning %B%{$reset_color%}$%b "

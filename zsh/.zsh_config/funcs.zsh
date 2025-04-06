@@ -21,20 +21,20 @@ find-duplicate-filenames() {
     # Parse arguments
     for arg in "$@"; do
         case $arg in
-            --help|-h)
-                show_help=1
-                ;;
-            --root=*)
-                root_dir="${arg#*=}"
-                ;;
-            --dir-name-regex=*)
-                filter_dir_name_regex="${arg#*=}"
-                ;;
-            *)
-                echo "Unknown argument: $arg"
-                echo "Use --help for usage information."
-                return 1
-                ;;
+        --help | -h)
+            show_help=1
+            ;;
+        --root=*)
+            root_dir="${arg#*=}"
+            ;;
+        --dir-name-regex=*)
+            filter_dir_name_regex="${arg#*=}"
+            ;;
+        *)
+            echo "Unknown argument: $arg"
+            echo "Use --help for usage information."
+            return 1
+            ;;
         esac
     done
 
@@ -72,7 +72,7 @@ find-duplicate-filenames() {
     else
         find "$root_dir" -type f
     fi |
-    awk -F/ '
+        awk -F/ '
         {
             filename = $NF
             files[filename] = files[filename] ? files[filename] ORS $0 : $0
@@ -451,35 +451,35 @@ EOF
 }
 
 gpullall() {
-  for dir in */; do
-    if [ -d "$dir/.git" ]; then
-      echo "🔄 Updating repo: $dir"
-      (
-        cd "$dir" || continue
-        git fetch && git pull --recurse-submodules
-      )
-    fi
-  done
+    for dir in */; do
+        if [ -d "$dir/.git" ]; then
+            echo "🔄 Updating repo: $dir"
+            (
+                cd "$dir" || continue
+                git fetch && git pull --recurse-submodules
+            )
+        fi
+    done
 }
 
 gac() {
-  # Check if we're in a Git repo
-  if ! git rev-parse --is-inside-work-tree &>/dev/null; then
-    echo "Not inside a Git repository."
-    return 1
-  fi
+    # Check if we're in a Git repo
+    if ! git rev-parse --is-inside-work-tree &>/dev/null; then
+        echo "Not inside a Git repository."
+        return 1
+    fi
 
-  # Run git add
-  git add .
+    # Run git add
+    git add .
 
-  # Check if the repo uses the pre-commit framework
-  if [ -f ".pre-commit-config.yaml" ]; then
-    echo "pre-commit detected. Running 'git commit'..."
-    git commit
-  else
-    echo "No pre-commit config found. Running 'git commit -m'..."
-    echo -n "Enter commit message: "
-    read msg
-    git commit -m "$msg"
-  fi
+    # Check if the repo uses the pre-commit framework
+    if [ -f ".pre-commit-config.yaml" ]; then
+        echo "pre-commit detected. Running 'git commit'..."
+        git commit
+    else
+        echo "No pre-commit config found. Running 'git commit -m'..."
+        echo -n "Enter commit message: "
+        read msg
+        git commit -m "$msg"
+    fi
 }

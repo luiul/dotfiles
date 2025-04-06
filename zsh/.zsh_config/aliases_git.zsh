@@ -11,7 +11,6 @@ alias gmerge="git merge --squash" # Merge a branch into the current branch with 
 # Staging and Committing Changes
 alias gadd="git add --all"    # Stage all changes for commit
 alias gcommit="git commit -m" # Commit with a message
-alias gac="gadd && gcommit"   # Add all changes and commit, usage: gac 'Your commit message'
 
 # Remote Interaction
 alias gpush='git push origin "$(git symbolic-ref --short HEAD)"' # Push the current branch

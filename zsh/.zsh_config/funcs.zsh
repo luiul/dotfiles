@@ -428,3 +428,25 @@ gpullall() {
     fi
   done
 }
+
+gac() {
+  # Check if we're in a Git repo
+  if ! git rev-parse --is-inside-work-tree &>/dev/null; then
+    echo "Not inside a Git repository."
+    return 1
+  fi
+
+  # Run git add
+  git add .
+
+  # Check if the repo uses the pre-commit framework
+  if [ -f ".pre-commit-config.yaml" ]; then
+    echo "pre-commit detected. Running 'git commit'..."
+    git commit
+  else
+    echo "No pre-commit config found. Running 'git commit -m'..."
+    echo -n "Enter commit message: "
+    read msg
+    git commit -m "$msg"
+  fi
+}

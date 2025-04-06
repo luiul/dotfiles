@@ -12,34 +12,82 @@
 #   export AWS_PROFILE="$MY_AWS_PROFILE"
 # }
 
-find_duplicate_filenames() {
-    # Help message
-    if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-        echo "Usage: find_duplicate_filenames [root_directory] [prefix]"
+find-duplicate-filenames() {
+    # Default values
+    local root_dir="."
+    local filter_dir_name_regex=""
+    local show_help=0
+
+    # Parse arguments
+    for arg in "$@"; do
+        case $arg in
+            --help|-h)
+                show_help=1
+                ;;
+            --root=*)
+                root_dir="${arg#*=}"
+                ;;
+            --dir-name-regex=*)
+                filter_dir_name_regex="${arg#*=}"
+                ;;
+            *)
+                echo "Unknown argument: $arg"
+                echo "Use --help for usage information."
+                return 1
+                ;;
+        esac
+    done
+
+    # Show help if requested
+    if [[ "$show_help" -eq 1 ]]; then
+        echo "Usage: find-duplicate-filenames --root=DIR [--dir-name-regex=REGEX]"
         echo ""
-        echo "Find files with the same name recursively in all directories."
+        echo "Recursively find files with duplicate names (same basename) and list all their full paths."
         echo ""
         echo "Arguments:"
-        echo "  root_directory   The root directory to start searching from. Defaults to the current directory."
-        echo "  prefix           (Optional) Search only in directories starting with this prefix. If not provided, searches all directories."
+        echo "  --root=DIR               Root directory to start searching from. Defaults to current directory."
+        echo "  --dir-name-regex=REGEX   (Optional) Only search inside subdirectories whose NAMES match this regex."
+        echo "                           The regex is applied to the last part of the directory path (not full path)."
+        echo "  --help                   Show this help message."
         echo ""
         echo "Examples:"
-        echo "  find_duplicate_filenames           # Search all directories from the current directory"
-        echo "  find_duplicate_filenames /path/to  # Search all directories from /path/to"
-        echo "  find_duplicate_filenames /path/to ops-dap # Search in directories starting with 'ops-dap'"
+        echo "  find-duplicate-filenames --root=."
+        echo "  find-duplicate-filenames --root=/projects --dir-name-regex='^ops'"
+        echo "  find-duplicate-filenames --root=/data --dir-name-regex='log'"
+        echo "  find-duplicate-filenames --root=/src --dir-name-regex='-data$'"
         return
     fi
 
-    local root_dir=${1:-.} # Default to current directory if no root directory is provided
-    local prefix=${2:-}    # No default prefix, will search all directories if not provided
+    # Validate root directory
+    if [[ ! -d "$root_dir" ]]; then
+        echo "Error: Directory '$root_dir' not found."
+        return 1
+    fi
 
-    if [[ -n "$prefix" ]]; then
-        # If a prefix is provided, search only in directories starting with the prefix
-        find "$root_dir" -type d -name "${prefix}*" -exec find {} -type f \;
+    # Find all file paths under matching directories
+    if [[ -n "$filter_dir_name_regex" ]]; then
+        find "$root_dir" -type d | grep -E "/[^/]*${filter_dir_name_regex}[^/]*$" | while read -r dir; do
+            find "$dir" -type f
+        done
     else
-        # If no prefix, search all directories
         find "$root_dir" -type f
-    fi | awk -F/ '{print $NF}' | sort | uniq -d
+    fi |
+    awk -F/ '
+        {
+            filename = $NF
+            files[filename] = files[filename] ? files[filename] ORS $0 : $0
+            counts[filename]++
+        }
+        END {
+            for (name in counts) {
+                if (counts[name] > 1) {
+                    print "Duplicate filename: " name
+                    print files[name]
+                    print ""
+                }
+            }
+        }
+    '
 }
 
 gignorelocal() {
@@ -85,9 +133,9 @@ gdeletemerged() {
     done
 }
 
-gstore() {
+git-restore-file() {
     if [[ $# -lt 2 ]]; then
-        echo "Usage: git_restore_file <commit> <file-path>"
+        echo "Usage: git-restore-file <commit> <file-path>"
         return 1
     fi
 
@@ -97,12 +145,11 @@ gstore() {
     git restore --source="$commit" --staged --worktree "$file_path"
 }
 
-# Recursively activate a virtual environment
+# Recursively activate a Python virtual environment up the directory tree
 activate() {
     current_dir=$(pwd)
-    home_dir="$HOME"
 
-    while [ "$current_dir" != "$home_dir" ]; do
+    while [ "$current_dir" != "/" ]; do
         echo "Checking in: $current_dir"
         if [ -d "$current_dir/.venv" ]; then
             source "$current_dir/.venv/bin/activate"
@@ -113,14 +160,13 @@ activate() {
             echo "Activated venv in $current_dir"
             return
         fi
-        # Move to the parent directory
         current_dir=$(dirname "$current_dir")
     done
 
-    echo "No Python virtual environment found up to $home_dir."
+    echo "No Python virtual environment found up to root directory."
 }
 
-remove_pycache() {
+remove-pycache() {
     # Create a temporary file to hold the list of items to be deleted
     local tempfile=$(mktemp)
 
@@ -171,7 +217,7 @@ cht() {
     curl cht.sh/$query
 }
 
-delete_git_artifacts() {
+delete-git-artifacts() {
     echo "WARNING: This will permanently delete the .git directory and all .git* files from the current directory and its subdirectories."
     echo -n "Are you sure you want to proceed? (y/N): "
     read -r confirm
@@ -189,14 +235,14 @@ delete_git_artifacts() {
     fi
 }
 
-replace_in_file() {
+replace-in-file() {
     local file=$1
     local search_string=$2
     local replace_string=$3
 
     if [[ -z $file || -z $search_string || -z $replace_string ]]; then
-        echo "Usage: replace_in_file <file> <search_string> <replace_string>"
-        echo "Example: replace_in_file ~/.zshrc \"/Users/luisaceituno\" \"\$HOME\""
+        echo "Usage: replace-in-file <file> <search_string> <replace_string>"
+        echo "Example: replace-in-file ~/.zshrc \"/Users/luisaceituno\" \"\$HOME\""
         return 1
     fi
 
@@ -217,7 +263,7 @@ replace_in_file() {
     fi
 }
 
-md_to_rtf() {
+md-to-rtf() {
     # Check if the input file is provided
     if [ -z "$1" ]; then
         echo "Please provide the path to the markdown file."
@@ -255,7 +301,7 @@ md_to_rtf() {
     echo "RTF file created at ${rtf_file} and copied to clipboard."
 }
 
-function clean_branches() {
+gcleanbranches() {
     # Get all local branches, excluding the current branch (marked with `*`) and trim whitespace
     local all_branches=$(git branch | sed 's/^\* //;s/^ *//;s/ *$//')
 

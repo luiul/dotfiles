@@ -381,9 +381,29 @@ runprecommit() {
         date '+%H:%M:%S'
     }
 
+    show_help() {
+        cat <<EOF
+Usage: runprecommit [options]
+
+Run pre-commit hooks on the diff between two Git refs.
+
+Options:
+  --from <ref>      Git ref to diff from (default: origin/master)
+  --to <ref>        Git ref to diff to (default: HEAD)
+  --verbose         Show verbose output during pre-commit execution
+  --help            Show this help message and exit
+
+Examples:
+  runprecommit --from main --to HEAD
+  runprecommit --verbose
+  runprecommit --help
+EOF
+    }
+
     # Defaults
     local from_ref="origin/master"
     local to_ref="HEAD"
+    local verbose=false
 
     # Parse optional args
     while [[ $# -gt 0 ]]; do
@@ -396,8 +416,17 @@ runprecommit() {
             to_ref="$2"
             shift 2
             ;;
+        --verbose)
+            verbose=true
+            shift
+            ;;
+        --help)
+            show_help
+            return 0
+            ;;
         *)
             echo "$(timestamp) ❌ Unknown option: $1"
+            echo "Run 'runprecommit --help' for usage."
             return 1
             ;;
         esac
@@ -411,7 +440,11 @@ runprecommit() {
 
     if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
         echo "$(timestamp) 🚀 Running pre-commit hooks..."
-        pre-commit run --from-ref "$from_ref" --to-ref "$to_ref" --verbose
+        if $verbose; then
+            pre-commit run --from-ref "$from_ref" --to-ref "$to_ref" --verbose
+        else
+            pre-commit run --from-ref "$from_ref" --to-ref "$to_ref"
+        fi
     else
         echo "$(timestamp) ⏭️ Skipping pre-commit run"
     fi

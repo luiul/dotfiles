@@ -6,6 +6,7 @@ alias gclone="git clone --recurse-submodules" # Clone a repository with submodul
 # Branch Management
 alias gco="git checkout"       # Checkout a branch
 alias gbranch="git branch -av" # List all branches, local and remote
+alias gmerge="git merge --squash" # Merge a branch into the current branch with squashing
 
 # Staging and Committing Changes
 alias gadd="git add --all"    # Stage all changes for commit

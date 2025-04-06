@@ -468,23 +468,38 @@ gpullall() {
 }
 
 gac() {
-    # Check if we're in a Git repo
+    # Ensure we're inside a git repo
     if ! git rev-parse --is-inside-work-tree &>/dev/null; then
-        echo "Not inside a Git repository."
+        echo "❌ Not inside a Git repository."
         return 1
     fi
 
-    # Run git add
+    # Stage all changes
     git add .
 
-    # Check if the repo uses the pre-commit framework
+    # Check if pre-commit is configured
     if [ -f ".pre-commit-config.yaml" ]; then
-        echo "pre-commit detected. Running 'git commit'..."
+        echo "🛡️  pre-commit detected. Running interactive commit..."
         git commit
-    else
-        echo "No pre-commit config found. Running 'git commit -m'..."
-        echo -n "Enter commit message: "
-        read msg
-        git commit -m "$msg"
+        return $?
     fi
+
+    # No pre-commit: prompt for a commit message with editing
+    echo "👉 No pre-commit config found."
+    echo "📝 Enter commit message (edit inline):"
+
+    local msg=""
+    vared msg # allows editing with cursor movement, Zsh-native
+
+    # Trim leading/trailing whitespace
+    local trimmed_msg=$(echo "$msg" | awk '{$1=$1; print}')
+
+    # Prevent empty commits
+    if [[ -z "$trimmed_msg" ]]; then
+        echo "❌ Commit message cannot be empty after trimming."
+        return 1
+    fi
+
+    # Perform the commit
+    git commit -m "$trimmed_msg"
 }

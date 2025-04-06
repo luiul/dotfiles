@@ -1,15 +1,35 @@
-# Source all Zsh configuration files from .zsh_config
-echo "Loading Zsh configuration files..."
-for file in ~/.zsh_config/*.zsh; do
-  # Source the file
-  source "$file"
+# ⚙️ Loading Zsh configuration files from ~/.zsh_config
+echo "📦 Loading Zsh configuration files..."
 
-  # Check if the file was loaded successfully
-  if [[ $? -ne 0 ]]; then
-    printf "Error loading: %s\n" "$file"
-  fi
-done
-echo "Zsh configuration files loaded."
+config_dir="$HOME/.zsh_config"
+
+# Check if the directory exists
+if [[ ! -d "$config_dir" ]]; then
+  echo "❌ Config directory not found: $config_dir"
+  return 1
+fi
+
+# Enable nullglob so the for-loop doesn't run if no .zsh files exist
+setopt nullglob
+
+zsh_files=("$config_dir"/*.zsh)
+
+# Check if any files were found
+if [[ ${#zsh_files[@]} -eq 0 ]]; then
+  echo "❗ No .zsh files found in $config_dir"
+else
+  for file in "${zsh_files[@]}"; do
+    # Source the file
+    source "$file"
+
+    # Check if the file was loaded successfully
+    if [[ $? -ne 0 ]]; then
+      printf "❌ Error loading: %s\n" "$file"
+    fi
+  done
+fi
+
+echo "✅ Zsh configuration files loaded."
 
 # Download Znap, if it's not there yet.
 [[ -r ~/Repos/znap/znap.zsh ]] ||

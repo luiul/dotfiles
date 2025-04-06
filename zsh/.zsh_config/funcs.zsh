@@ -147,23 +147,28 @@ git-restore-file() {
 
 # Recursively activate a Python virtual environment up the directory tree
 activate() {
-    current_dir=$(pwd)
+    echo "🐍 Activating Python virtual environment..."
+
+    # Resolve the current directory to its real (non-symlinked) path
+    current_dir=$(realpath "$(pwd)")
 
     while [ "$current_dir" != "/" ]; do
-        echo "Checking in: $current_dir"
-        if [ -d "$current_dir/.venv" ]; then
-            source "$current_dir/.venv/bin/activate"
-            echo "Activated .venv in $current_dir"
-            return
-        elif [ -d "$current_dir/venv" ]; then
-            source "$current_dir/venv/bin/activate"
-            echo "Activated venv in $current_dir"
-            return
-        fi
+        echo "📂 Checking in: $current_dir"
+
+        for venv_dir in ".venv" "venv"; do
+            activate_path="$current_dir/$venv_dir/bin/activate"
+            if [ -f "$activate_path" ]; then
+                source "$activate_path"
+                echo "✅ Activated $venv_dir in $current_dir"
+                return 0
+            fi
+        done
+
         current_dir=$(dirname "$current_dir")
     done
 
-    echo "No Python virtual environment found up to root directory."
+    echo "No Python virtual environment found."
+    return 1
 }
 
 remove-pycache() {

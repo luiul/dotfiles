@@ -506,8 +506,44 @@ gac() {
     git commit -m "$trimmed_msg"
 }
 
-function squash-merge-into() {
-    local target_branch="${1:-master}"
+squash-merge-into() {
+    # Show help if requested
+    if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+        echo ""
+        echo "📌 squash_merge_into [<target_branch>]"
+        echo ""
+        echo "Squash merges the current branch into a target branch ('master' or 'main' by default),"
+        echo "creates a new compliant branch, and commits the squash with a standard message."
+        echo ""
+        echo "🔧 Usage:"
+        echo "  squash_merge_into                # auto-detect 'master' or 'main'"
+        echo "  squash_merge_into dev            # explicitly squash into 'dev'"
+        echo ""
+        echo "🧠 Workflow:"
+        echo "  1. Confirms intent"
+        echo "  2. Updates target branch"
+        echo "  3. Creates a new branch: <current>-to-<target>"
+        echo "  4. Squash merges current branch"
+        echo "  5. Commits with: chore: squash merge '<src>' into '<target>'"
+        echo ""
+        echo "✅ Pre-commit friendly and naming convention compliant"
+        echo ""
+        return 0
+    fi
+
+    # Determine default target branch
+    local target_branch="$1"
+    if [[ -z "$target_branch" ]]; then
+        if git rev-parse --verify master >/dev/null 2>&1; then
+            target_branch="master"
+        elif git rev-parse --verify main >/dev/null 2>&1; then
+            target_branch="main"
+        else
+            echo "❌ Neither 'master' nor 'main' branch found. Please specify a target branch."
+            return 1
+        fi
+    fi
+
     local current_branch=$(git symbolic-ref --short HEAD)
 
     if [[ "$current_branch" == "$target_branch" ]]; then
@@ -538,6 +574,7 @@ function squash-merge-into() {
 
     # Perform squash merge and commit
     git merge --squash "$current_branch" || return 1
+
     local commit_msg="chore: squash merge '$current_branch' into '$target_branch'"
     git commit -m "$commit_msg" || return 1
 

@@ -60,9 +60,3 @@ export SF_USER='luis.aceituno@hellofresh.com'
 # else
 #   echo ".github-tokens file does not exist or is empty."
 # fi
-
-# Unset ENV and ENVIRONMENT variables
-# unset ENV
-# unset ENVIRONMENT
-# unset SQLFMT_LINE_LENGTH
-# unset VIRTUAL_ENV

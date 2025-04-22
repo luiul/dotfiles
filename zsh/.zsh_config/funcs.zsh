@@ -468,7 +468,7 @@ gpullall() {
 }
 
 gac() {
-    # Ensure we're inside a git repo
+    # Ensure we're inside a Git repo
     if ! git rev-parse --is-inside-work-tree &>/dev/null; then
         echo "❌ Not inside a Git repository."
         return 1
@@ -484,12 +484,14 @@ gac() {
         return $?
     fi
 
-    # No pre-commit: prompt for a commit message with editing
-    echo "👉 No pre-commit config found."
-    echo "📝 Enter commit message (edit inline):"
+    # Use first argument as commit message if provided
+    local msg="$1"
 
-    local msg=""
-    vared msg # allows editing with cursor movement, Zsh-native
+    if [[ -z "$msg" ]]; then
+        echo "👉 No commit message provided."
+        echo "📝 Enter commit message (edit inline):"
+        vared msg
+    fi
 
     # Trim leading/trailing whitespace
     local trimmed_msg=$(echo "$msg" | awk '{$1=$1; print}')
@@ -500,6 +502,44 @@ gac() {
         return 1
     fi
 
-    # Perform the commit
+    # Perform the commit with the message
     git commit -m "$trimmed_msg"
+}
+
+function squash-merge-into() {
+    local target_branch="${1:-master}"
+    local current_branch=$(git symbolic-ref --short HEAD)
+
+    if [[ "$current_branch" == "$target_branch" ]]; then
+        echo "🚫 You are already on '$target_branch'. Switch to a feature branch first."
+        return 1
+    fi
+
+    echo "⚠️  About to squash merge '$current_branch' into '$target_branch'. Continue? (y/n)"
+    read "confirm?👉 "
+    if [[ "$confirm" != "y" ]]; then
+        echo "❌ Aborted."
+        return 1
+    fi
+
+    # Checkout and update target branch
+    git checkout "$target_branch" || return 1
+    git pull origin "$target_branch" || return 1
+
+    # Extract ticket prefix from current branch
+    # e.g. "feature/ISA-16755_maintenance" stays as-is
+    local base_name="${current_branch}-to-${target_branch}"
+
+    # Use that as the default new branch name
+    read "new_branch?🔧 Enter new branch name (default: $base_name): "
+    local new_branch=${new_branch:-$base_name}
+
+    git checkout -b "$new_branch" || return 1
+
+    # Perform squash merge and commit
+    git merge --squash "$current_branch" || return 1
+    local commit_msg="chore: squash merge '$current_branch' into '$target_branch'"
+    git commit -m "$commit_msg" || return 1
+
+    echo "✅ Squash merge complete on branch: $new_branch"
 }

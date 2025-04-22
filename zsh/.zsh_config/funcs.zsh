@@ -580,3 +580,120 @@ squash-merge-into() {
 
     echo "✅ Squash merge complete on branch: $new_branch"
 }
+
+function branch() {
+    # Show help if requested
+    if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+        echo "📘 Usage: branch [OPTIONS]"
+        echo
+        echo "Options:"
+        echo "  -p, --push        Push the created branch to origin"
+        echo "  -v, --verbose     Use verbose format: <type>/<parent>_<JIRA-TICKET>_<desc>"
+        echo "  -h, --help        Show this help message"
+        return 0
+    fi
+
+    local push_flag=false
+    local verbose_flag=false
+
+    # Parse flags
+    while [[ "$1" != "" ]]; do
+        case "$1" in
+        -p | --push)
+            push_flag=true
+            ;;
+        -v | --verbose)
+            verbose_flag=true
+            ;;
+        *)
+            echo "❌ Error: Invalid option $1"
+            return 1
+            ;;
+        esac
+        shift
+    done
+
+    # Helpers
+    function prompt_for_input() {
+        local prompt_message="$1"
+        local input_value=""
+        while true; do
+            read "input_value?$prompt_message"
+            if [[ -z "$input_value" ]]; then
+                echo "⚠️  Input is required."
+            else
+                echo "$input_value"
+                return 0
+            fi
+        done
+    }
+
+    function clean_string() {
+        echo "$1" | tr '[:upper:]' '[:lower:]' | tr -s ' ' '-' | tr -cd '[:alnum:]-'
+    }
+
+    # Branch type
+    local valid_branch_types=("major" "minor" "patch" "issue" "hotfix" "feature" "release")
+    local branch_type
+    while true; do
+        branch_type=$(prompt_for_input "🔧 Enter branch type (${valid_branch_types[*]}): ")
+        if [[ " ${valid_branch_types[@]} " =~ " $branch_type " ]]; then
+            break
+        else
+            echo "❌ Invalid type. Use one of: ${valid_branch_types[*]}"
+        fi
+    done
+
+    # Jira ticket
+    local jira_ticket
+    while true; do
+        jira_ticket=$(prompt_for_input "🎫 Enter Jira ticket (e.g., ISA-1234): ")
+        if [[ "$jira_ticket" =~ ^[A-Z]+-[0-9]+$ ]]; then
+            break
+        else
+            echo "❌ Invalid format. Use format: ABC-123"
+        fi
+    done
+
+    # Description
+    local description
+    description=$(prompt_for_input "📝 Enter task description: ")
+    local clean_description=$(clean_string "$description")
+
+    # Optional: Parent task for verbose
+    local clean_parent=""
+    if $verbose_flag; then
+        local parent_task
+        parent_task=$(prompt_for_input "� Enter parent task/project: ")
+        clean_parent=$(clean_string "$parent_task")
+    fi
+
+    # Construct branch name
+    local branch_name=""
+    if $verbose_flag; then
+        branch_name="${branch_type}/${clean_parent}_${jira_ticket}_${clean_description}"
+    else
+        branch_name="${branch_type}/${jira_ticket}_${clean_description}"
+    fi
+
+    # Create branch
+    echo "🚀 Creating branch: $branch_name"
+    git checkout -b "$branch_name"
+    if [[ $? -ne 0 ]]; then
+        echo "❌ Git error: Failed to create branch."
+        return 1
+    fi
+
+    # Optional push
+    if $push_flag; then
+        echo "📡 Pushing branch to origin..."
+        git push origin "$branch_name"
+        if [[ $? -ne 0 ]]; then
+            echo "❌ Git error: Failed to push branch."
+            return 1
+        fi
+        echo "✅ Branch created and pushed: $branch_name"
+    else
+        echo "✅ Branch created: $branch_name"
+    fi
+}

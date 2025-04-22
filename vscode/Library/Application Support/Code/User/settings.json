@@ -257,14 +257,14 @@
     // "scm.workingSets.enabled": false,
     // "scm.workingSets.default": "empty",
     "files.associations": {
-        // "*.sql": "jinja-sql",
+        "*.sql": "jinja-sql",
         "*.yaml": "jinja-yaml",
         "*.yml": "jinja-yaml",
         // "*.html": "jinja-html"
     },
-    // "[jinja-sql]": {
-    //     "editor.defaultFormatter": "innoverio.vscode-dbt-power-user"
-    // },
+    "[jinja-sql]": {
+        "editor.defaultFormatter": "innoverio.vscode-dbt-power-user"
+    },
     // Avoid sqlfmt on dbt projects
     "emeraldwalk.runonsave": {
         "commands": [

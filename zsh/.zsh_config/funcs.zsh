@@ -506,82 +506,88 @@ gac() {
     git commit -m "$trimmed_msg"
 }
 
-squash-merge-into() {
-    # Show help if requested
+squash-merge-here() {
     if [[ "$1" == "--help" || "$1" == "-h" ]]; then
         echo ""
-        echo "📌 squash_merge_into [<target_branch>]"
+        echo "📌 squash-merge-here"
         echo ""
-        echo "Squash merges the current branch into a target branch ('master' or 'main' by default),"
-        echo "creates a new compliant branch, and commits the squash with a standard message."
+        echo "Prompts for a source branch and squash merges it into the current branch."
+        echo "Creates a new branch and commits the squash with a conventional message."
         echo ""
         echo "🔧 Usage:"
-        echo "  squash_merge_into                # auto-detect 'master' or 'main'"
-        echo "  squash_merge_into dev            # explicitly squash into 'dev'"
+        echo "  squash-merge-here"
         echo ""
         echo "🧠 Workflow:"
-        echo "  1. Confirms intent"
-        echo "  2. Updates target branch"
-        echo "  3. Creates a new branch: <current>-to-<target>"
-        echo "  4. Squash merges current branch"
-        echo "  5. Commits with: chore: squash merge '<src>' into '<target>'"
-        echo ""
-        echo "✅ Pre-commit friendly and naming convention compliant"
+        echo "  1. Prompts for source branch"
+        echo "  2. Updates source branch"
+        echo "  3. Checks out current branch as target"
+        echo "  4. Creates a new branch: <target_branch>__into_<target_prefix>_from_<source_branch>"
+        echo "  5. Squash merges source branch"
+        echo "  6. Commits with: chore: squash merge '<source>' into '<target>'"
         echo ""
         return 0
     fi
 
-    # Determine default target branch
-    local target_branch="$1"
-    if [[ -z "$target_branch" ]]; then
-        if git rev-parse --verify master >/dev/null 2>&1; then
-            target_branch="master"
-        elif git rev-parse --verify main >/dev/null 2>&1; then
-            target_branch="main"
-        else
-            echo "❌ Neither 'master' nor 'main' branch found. Please specify a target branch."
-            return 1
-        fi
-    fi
+    local target_branch
+    target_branch=$(git symbolic-ref --short HEAD)
 
-    local current_branch=$(git symbolic-ref --short HEAD)
+    echo "🧩 You are currently on: '$target_branch'"
 
-    if [[ "$current_branch" == "$target_branch" ]]; then
-        echo "🚫 You are already on '$target_branch'. Switch to a feature branch first."
+    echo ""
+    echo "📂 Available local branches:"
+    git branch --format="  - %(refname:short)" | grep -v "^\*"
+
+    echo ""
+    echo -n "🔍 Enter the source branch to squash merge from: "
+    read source_branch
+
+    if [[ -z "$source_branch" ]]; then
+        echo "❌ Source branch is required."
         return 1
     fi
 
-    echo "⚠️  About to squash merge '$current_branch' into '$target_branch'. Continue? (y/n)"
-    read "confirm?👉 "
+    if [[ "$source_branch" == "$target_branch" ]]; then
+        echo "🚫 Source and target branch cannot be the same."
+        return 1
+    fi
+
+    echo "🚧 You’re about to squash merge changes into '$target_branch' from '$source_branch'."
+    echo -n "❓ Proceed with this operation? (y/n): "
+    read confirm
     if [[ "$confirm" != "y" ]]; then
-        echo "❌ Aborted."
+        echo "❌ Operation cancelled by user."
         return 1
     fi
 
-    # Checkout and update target branch
+    # Fetch and update source branch
+    git fetch origin "$source_branch" || return 1
+    git checkout "$source_branch" && git pull origin "$source_branch" || return 1
     git checkout "$target_branch" || return 1
-    git pull origin "$target_branch" || return 1
 
-    # Extract ticket prefix from current branch
-    # e.g. "feature/ISA-16755_maintenance" stays as-is
-    local base_name="${current_branch}-to-${target_branch}"
+    # Extract prefix from target branch (e.g. 'feature' from 'feature/ISA-1234')
+    local target_prefix="${target_branch%%/*}"
 
-    # Use that as the default new branch name
-    read "new_branch?🔧 Enter new branch name (default: $base_name): "
-    local new_branch=${new_branch:-$base_name}
+    # Clean source branch for use in new branch name (replace slashes)
+    local safe_source_branch="${source_branch//\//-}"
+
+    # Build new branch name
+    local base_name="${target_branch}__into__${target_prefix}__from__${safe_source_branch}"
+    echo -n "🔧 Enter new branch name (default: $base_name): "
+    read new_branch
+    new_branch=${new_branch:-$base_name}
 
     git checkout -b "$new_branch" || return 1
 
-    # Perform squash merge and commit
-    git merge --squash "$current_branch" || return 1
+    # Perform squash merge
+    git merge --squash "$source_branch" || return 1
 
-    local commit_msg="chore: squash merge '$current_branch' into '$target_branch'"
+    local commit_msg="chore: squash merge '$source_branch' into '$target_branch'"
     git commit -m "$commit_msg" || return 1
 
     echo "✅ Squash merge complete on branch: $new_branch"
 }
 
-function branch() {
+branch() {
     # Show help if requested
     if [[ "$1" == "-h" || "$1" == "--help" ]]; then
         echo "📘 Usage: branch [OPTIONS]"

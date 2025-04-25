@@ -267,17 +267,17 @@
     },
     //
     //
-    // // Avoid sqlfmt on dbt projects
-    // "emeraldwalk.runonsave": {
-    //     "commands": [
-    //         {
-    //             "match": ".*\\.sql(\\.jinja)?",
-    //             // "notMatch": ".*/dbt/.*",
-    //             "isAsync": true,
-    //             "cmd": "sqlfmt ${file}"
-    //         }
-    //     ]
-    // },
+    // Avoid sqlfmt on dbt projects
+    "emeraldwalk.runonsave": {
+        "commands": [
+            {
+                "match": ".*\\.sql(\\.jinja)?",
+                "notMatch": ".*/dbt/.*",
+                "isAsync": true,
+                "cmd": "sqlfmt ${file}"
+            }
+        ]
+    },
     //
     //
     // "indentRainbow.excludedLanguages": [

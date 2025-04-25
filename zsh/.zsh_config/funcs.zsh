@@ -119,13 +119,41 @@ gignoreglobal() {
 }
 
 gdeletemerged() {
-    # Check if GitHub CLI is installed
+    local dry_run=false
+    local delete_remote=false
+
+    # Parse optional flags
+    for arg in "$@"; do
+        case $arg in
+        --dry-run)
+            dry_run=true
+            shift
+            ;;
+        --remote)
+            delete_remote=true
+            shift
+            ;;
+        *)
+            echo "Usage: gdeletemerged [--dry-run] [--remote]"
+            return 1
+            ;;
+        esac
+    done
+
+    # Color helpers
+    RED=$(tput setaf 1)
+    GREEN=$(tput setaf 2)
+    YELLOW=$(tput setaf 3)
+    CYAN=$(tput setaf 6)
+    RESET=$(tput sgr0)
+
+    # Check for GitHub CLI
     if ! command -v gh >/dev/null 2>&1; then
-        echo "❌ GitHub CLI (gh) not found. Install it from https://cli.github.com/"
+        echo "${RED}❌ GitHub CLI (gh) not found. Install it: https://cli.github.com/${RESET}"
         return 1
     fi
 
-    echo "🔄 Fetching merged PRs from GitHub..."
+    echo "${CYAN}🔄 Fetching merged PRs from GitHub...${RESET}"
 
     # Try fetching merged PRs into main
     merged_pr_branches=$(gh pr list --state merged --base main --json headRefName --jq '.[].headRefName')
@@ -136,11 +164,14 @@ gdeletemerged() {
     fi
 
     if [ -z "$merged_pr_branches" ]; then
-        echo "⚠️ No merged PRs found into main or master."
+        echo "${YELLOW}⚠️  No merged PRs found into main or master.${RESET}"
         return 0
     fi
 
-    echo "✅ Checking local branches against merged PRs..."
+    echo "${GREEN}✅ Found merged PRs. Checking local branches...${RESET}"
+
+    local deleted_branches=()
+    local skipped_branches=()
 
     for local_branch in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
         if [[ "$local_branch" == "main" || "$local_branch" == "master" ]]; then
@@ -148,19 +179,51 @@ gdeletemerged() {
         fi
 
         if echo "$merged_pr_branches" | grep -qx "$local_branch"; then
-            echo "🗑️  Deleting branch: $local_branch"
-            git branch -d "$local_branch"
+            echo "${YELLOW}🗑️  Found merged branch: $local_branch${RESET}"
+
+            if [ "$dry_run" = true ]; then
+                echo "   ${CYAN}Would delete: $local_branch${RESET}"
+                continue
+            fi
+
+            git branch -d "$local_branch" 2>/dev/null
             if [ $? -ne 0 ]; then
-                echo -n "⚠️  Deletion failed. Force delete with -D? (y/n): "
+                echo -n "   ${RED}Failed to delete. Force delete with -D? (y/n): ${RESET}"
                 read confirm_force
                 if [[ "$confirm_force" == "y" ]]; then
                     git branch -D "$local_branch"
+                    deleted_branches+=("$local_branch")
                 else
-                    echo "❌ Skipped force-deleting '$local_branch'"
+                    skipped_branches+=("$local_branch")
+                    echo "   ${YELLOW}Skipped: $local_branch${RESET}"
                 fi
+            else
+                deleted_branches+=("$local_branch")
+            fi
+
+            # Optionally delete remote branch
+            if [ "$delete_remote" = true ]; then
+                echo "   ${CYAN}Deleting remote branch: origin/$local_branch${RESET}"
+                git push origin --delete "$local_branch" 2>/dev/null
             fi
         fi
     done
+
+    echo
+    echo "${CYAN}🧹 Cleanup Summary:${RESET}"
+    echo "${GREEN}Deleted: ${#deleted_branches[@]}${RESET}"
+    for b in "${deleted_branches[@]}"; do
+        echo "  ✅ $b"
+    done
+
+    if [ ${#skipped_branches[@]} -gt 0 ]; then
+        echo "${YELLOW}Skipped: ${#skipped_branches[@]}${RESET}"
+        for b in "${skipped_branches[@]}"; do
+            echo "  ⚠️  $b"
+        done
+    fi
+
+    echo "${CYAN}Done.${RESET}"
 }
 
 git-restore-file() {

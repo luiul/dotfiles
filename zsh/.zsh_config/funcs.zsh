@@ -237,7 +237,7 @@ gdeletemerged() {
     echo "${CYAN}Done.${RESET}"
 }
 
-git-restore-file() {
+grestorefile() {
     if [[ $# -lt 2 ]]; then
         echo "Usage: git-restore-file <commit> <file-path>"
         return 1
@@ -610,7 +610,7 @@ gac() {
     git commit -m "$trimmed_msg"
 }
 
-squash-merge-here() {
+gsquashmergehere() {
     if [[ "$1" == "--help" || "$1" == "-h" ]]; then
         echo ""
         echo "📌 squash-merge-here"
@@ -691,7 +691,7 @@ squash-merge-here() {
     echo "✅ Squash merge complete on branch: $new_branch"
 }
 
-branch() {
+gbranch() {
     # Show help if requested
     if [[ "$1" == "-h" || "$1" == "--help" ]]; then
         echo "📘 Usage: branch [OPTIONS]"

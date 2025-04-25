@@ -119,16 +119,46 @@ gignoreglobal() {
 }
 
 gdeletemerged() {
-    # Read all eligible branches into an array
-    local branches=($(git branch --merged | egrep -v "(^\*|master|main)"))
+    # Check if GitHub CLI is installed
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "❌ GitHub CLI (gh) not found. Install it from https://cli.github.com/"
+        return 1
+    fi
 
-    # Iterate over the array
-    for branch in "${branches[@]}"; do
-        echo "Deleting branch: $branch"
-        echo "Do you want to delete this branch? (y/n)"
-        read -r confirm
-        if [[ "$confirm" == "y" ]]; then
-            git branch -d "$branch"
+    echo "🔄 Fetching merged PRs from GitHub..."
+
+    # Try fetching merged PRs into main
+    merged_pr_branches=$(gh pr list --state merged --base main --json headRefName --jq '.[].headRefName')
+
+    # If nothing found, try master
+    if [ -z "$merged_pr_branches" ]; then
+        merged_pr_branches=$(gh pr list --state merged --base master --json headRefName --jq '.[].headRefName')
+    fi
+
+    if [ -z "$merged_pr_branches" ]; then
+        echo "⚠️ No merged PRs found into main or master."
+        return 0
+    fi
+
+    echo "✅ Checking local branches against merged PRs..."
+
+    for local_branch in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
+        if [[ "$local_branch" == "main" || "$local_branch" == "master" ]]; then
+            continue
+        fi
+
+        if echo "$merged_pr_branches" | grep -qx "$local_branch"; then
+            echo "🗑️  Deleting branch: $local_branch"
+            git branch -d "$local_branch"
+            if [ $? -ne 0 ]; then
+                echo -n "⚠️  Deletion failed. Force delete with -D? (y/n): "
+                read confirm_force
+                if [[ "$confirm_force" == "y" ]]; then
+                    git branch -D "$local_branch"
+                else
+                    echo "❌ Skipped force-deleting '$local_branch'"
+                fi
+            fi
         fi
     done
 }

@@ -121,6 +121,7 @@ gignoreglobal() {
 gdeletemerged() {
     local dry_run=false
     local delete_remote=false
+    local force_delete=false
 
     # Parse optional flags
     for arg in "$@"; do
@@ -133,8 +134,12 @@ gdeletemerged() {
             delete_remote=true
             shift
             ;;
+        --force)
+            force_delete=true
+            shift
+            ;;
         *)
-            echo "Usage: gdeletemerged [--dry-run] [--remote]"
+            echo "Usage: gdeletemerged [--dry-run] [--remote] [--force]"
             return 1
             ;;
         esac
@@ -188,14 +193,20 @@ gdeletemerged() {
 
             git branch -d "$local_branch" 2>/dev/null
             if [ $? -ne 0 ]; then
-                echo -n "   ${RED}Failed to delete. Force delete with -D? (y/n): ${RESET}"
-                read confirm_force
-                if [[ "$confirm_force" == "y" ]]; then
+                if [ "$force_delete" = true ]; then
+                    echo "   ${RED}Normal delete failed. Forcing with -D...${RESET}"
                     git branch -D "$local_branch"
                     deleted_branches+=("$local_branch")
                 else
-                    skipped_branches+=("$local_branch")
-                    echo "   ${YELLOW}Skipped: $local_branch${RESET}"
+                    echo -n "   ${RED}Delete failed. Force delete with -D? (y/n): ${RESET}"
+                    read confirm_force
+                    if [[ "$confirm_force" == "y" ]]; then
+                        git branch -D "$local_branch"
+                        deleted_branches+=("$local_branch")
+                    else
+                        skipped_branches+=("$local_branch")
+                        echo "   ${YELLOW}Skipped: $local_branch${RESET}"
+                    fi
                 fi
             else
                 deleted_branches+=("$local_branch")

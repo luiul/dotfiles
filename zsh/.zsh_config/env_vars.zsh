@@ -1,6 +1,5 @@
 # Editor and Environment Settings
 export EDITOR="code"
-export ENV="staging" # Default environment for dbt
 
 # Kubernetes Configuration
 export KUBECONFIG="$HOME/.kube/config:$HOME/.kube/eksconfig"

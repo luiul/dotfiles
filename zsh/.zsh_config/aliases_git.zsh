@@ -4,8 +4,7 @@ alias gst="git status -sb"                    # Show short, branch-based status
 alias gclone="git clone --recurse-submodules" # Clone a repository with submodules
 
 # Branch Management
-alias gco="git checkout"       # Checkout a branch
-alias gbranch="git branch -av" # List all branches, local and remote
+alias gco="git checkout"          # Checkout a branch
 alias gmerge="git merge --squash" # Merge a branch into the current branch with squashing
 
 # Staging and Committing Changes

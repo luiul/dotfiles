@@ -5,6 +5,7 @@ export EDITOR="code"
 export KUBECONFIG="$HOME/.kube/config:$HOME/.kube/eksconfig"
 
 # DBT Configuration
+export ENV="staging"
 export DBT_PROFILES_DIR="$HOME/.dbt"
 
 # Vault Configuration

@@ -293,8 +293,11 @@
     // "github.copilot.nextEditSuggestions.enabled": true
     "git.blame.editorDecoration.enabled": true,
     // "notebook.inlineValues": true,
-    "terminal.integrated.env.osx": {
-        "ENV": "staging"
+    "macros": {
+        "refreshTerminal": [
+            "workbench.action.terminal.kill",
+            "workbench.action.terminal.new"
+        ]
     },
-    "window.commandCenter": false
+    "window.commandCenter": false,
 }

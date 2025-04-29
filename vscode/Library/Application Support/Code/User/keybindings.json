@@ -80,5 +80,9 @@
     {
         "key": "alt+cmd+t",
         "command": "workbench.action.terminal.toggleTerminal"
+    },
+    {
+        "key": "alt+cmd+r",
+        "command": "macros.refreshTerminal"
     }
 ]

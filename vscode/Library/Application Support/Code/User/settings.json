@@ -144,7 +144,6 @@
             "query": "state:open repo:${owner}/${repository} sort:updated-desc"
         }
     ],
-    "github.copilot.editor.enableAutoCompletions": true,
     "github.copilot.enable": {
         "*": true,
         "plaintext": true,
@@ -176,18 +175,23 @@
     "[python]": {
         "editor.formatOnSave": true,
         "editor.codeActionsOnSave": {
-            "source.fixAll": "explicit",
-            "source.organizeImports": "explicit"
+            "source.fixAll": "explicit"
         },
         "editor.defaultFormatter": "charliermarsh.ruff"
     },
+    "ruff.path": [
+        "/opt/homebrew/bin/ruff"
+    ],
+    // Use the latest Python version
+    "ruff.interpreter": [
+        "/opt/homebrew/bin/python3.13"
+    ],
+    // "ruff.configuration": "/Users/luisaceituno/.config/ruff/ruff.toml",
     // Jupyter Notebooks formatter
     "notebook.formatOnSave.enabled": true,
     "notebook.codeActionsOnSave": {
-        "notebook.source.fixAll": "explicit",
-        "notebook.source.organizeImports": "explicit"
+        "notebook.source.fixAll": "explicit"
     },
-    // "ruff.importStrategy": "useBundled",  // does not require separate installation
     "[yaml]": {
         "editor.defaultFormatter": "redhat.vscode-yaml",
         "editor.formatOnSave": true
@@ -299,5 +303,5 @@
             "workbench.action.terminal.new"
         ]
     },
-    "window.commandCenter": false,
+    "window.commandCenter": false
 }

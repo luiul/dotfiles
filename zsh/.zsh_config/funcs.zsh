@@ -583,28 +583,29 @@ gac() {
 
     # Check if pre-commit is configured
     if [ -f ".pre-commit-config.yaml" ]; then
-        echo "🛡️  pre-commit detected. Running interactive commit..."
+        echo "🛡️  pre-commit detected."
+    fi
+
+    local msg="$1"
+
+    if [[ -z "$msg" ]]; then
+        echo "📝 No commit message provided. Launching default commit editor..."
         git commit
         return $?
     fi
 
-    # Use first argument as commit message if provided
-    local msg="$1"
-
-    if [[ -z "$msg" ]]; then
-        echo "👉 No commit message provided."
-        echo "📝 Enter commit message (edit inline):"
-        vared msg
-    fi
-
     # Trim leading/trailing whitespace
-    local trimmed_msg=$(echo "$msg" | awk '{$1=$1; print}')
+    local trimmed_msg
+    trimmed_msg=$(echo "$msg" | awk '{$1=$1; print}')
 
-    # Prevent empty commits
     if [[ -z "$trimmed_msg" ]]; then
         echo "❌ Commit message cannot be empty after trimming."
         return 1
     fi
+
+    # Copy to clipboard
+    echo "$trimmed_msg" | pbcopy
+    echo "📋 Commit message copied to clipboard."
 
     # Perform the commit with the message
     git commit -m "$trimmed_msg"

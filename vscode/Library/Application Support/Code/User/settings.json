@@ -180,7 +180,7 @@
         "editor.defaultFormatter": "charliermarsh.ruff"
     },
     "ruff.path": [
-        "/opt/homebrew/bin/ruff"
+        "/Users/luisaceituno/.local/bin/ruff"
     ],
     // Use the latest Python version
     "ruff.interpreter": [

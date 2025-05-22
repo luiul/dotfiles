@@ -1,17 +1,3 @@
-# aws_sso() {
-#   MY_AWS_PROFILE="$1"
-
-#   yawsso --profile "$MY_AWS_PROFILE"
-#   if [ $? -eq 0 ]; then
-#     echo "still valid SSO credentials for $MY_AWS_PROFILE"
-#   else
-#     aws sso login --profile "$MY_AWS_PROFILE"
-#     yawsso --profile "$MY_AWS_PROFILE"
-#   fi
-#   awsume "$MY_AWS_PROFILE"
-#   export AWS_PROFILE="$MY_AWS_PROFILE"
-# }
-
 find-duplicate-filenames() {
     # Default values
     local root_dir="."
@@ -807,4 +793,10 @@ gbranch() {
     else
         echo "✅ Branch created: $branch_name"
     fi
+}
+
+upgrade-tools() {
+    brew update
+    brew upgrade
+    uv tool upgrade --all
 }

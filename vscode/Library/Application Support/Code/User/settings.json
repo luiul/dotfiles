@@ -303,5 +303,6 @@
             "workbench.action.terminal.new"
         ]
     },
-    "window.commandCenter": false
+    "window.commandCenter": false,
+    "diffEditor.ignoreTrimWhitespace": true
 }

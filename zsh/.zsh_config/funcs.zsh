@@ -551,7 +551,7 @@ gpullall() {
             echo "🔄 Updating repo: $dir"
             (
                 cd "$dir" || continue
-                git fetch && git pull --recurse-submodules
+                git fetch --prune && git pull --recurse-submodules
             )
         fi
     done

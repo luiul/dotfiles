@@ -4,10 +4,6 @@ export EDITOR="code"
 # Kubernetes Configuration
 export KUBECONFIG="$HOME/.kube/config:$HOME/.kube/eksconfig"
 
-# DBT Configuration
-export ENV="staging"
-export DBT_PROFILES_DIR="$HOME/.dbt"
-
 # Vault Configuration
 export VAULT_ADDR="https://vault.secrets.hellofresh.io"
 if [[ -s ~/.vault-token ]]; then
@@ -51,7 +47,7 @@ export PIP_CONFIG_FILE=~/.config/pip/pip.conf
 export SF_ACCOUNT="oo69432.eu-west-1"
 export SF_USER='luis.aceituno@hellofresh.com'
 
-# GitHub Token Configuration (commented out as per original)
+# GitHub Token Configuration ()
 # if [[ -s ~/.github-tokens ]]; then
 #   export GITHUB_TOKEN_TARDIS=$(grep '^tardis' ~/.github-tokens | cut -d '=' -f 2 | tr -d ' ')
 #   if [[ -z "$GITHUB_TOKEN" ]]; then

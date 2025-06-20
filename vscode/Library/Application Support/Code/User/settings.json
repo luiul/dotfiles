@@ -304,5 +304,6 @@
         ]
     },
     "window.commandCenter": false,
-    "diffEditor.ignoreTrimWhitespace": true
+    "diffEditor.ignoreTrimWhitespace": true,
+    "dbt.enableNewLineagePanel": true
 }

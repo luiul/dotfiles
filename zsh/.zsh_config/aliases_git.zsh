@@ -42,17 +42,6 @@ alias gundo="git reset --soft HEAD~1" # Undo last commit, keep changes staged
 
 # Log Filtering
 alias glog="git log --oneline --decorate" # Basic log
-# alias glogp="git log --patch"             # Show patches (detailed diffs) with log
-
-# # Cherry-picking
-# alias gcherry="git cherry-pick" # Usage: gcherry commitSHA1
-
-# # Rebasing
-# alias grebase="git rebase"     # Start a rebase
-# alias grebasei="git rebase -i" # Start an interactive rebase
-
-# Hard Resets
-# alias greset="git reset --hard" # Usage: greset HEAD to discard all working directory changes
 
 # Handling Large Repositories with Submodules
 
@@ -82,4 +71,30 @@ alias gsubcommit='git submodule foreach "git add . && git commit -m \"Updated su
 # This runs `git add`, `git commit`, and `git push` in each submodule, committing and pushing changes. Remember to check submodule status first.
 
 # Setup and Configuration
-alias add-git-ignore="cp ~/.gitignore ."
+alias gaddignore=="cp ~/.gitignore ."
+
+# Git Reset Aliases
+
+# Hard Resets
+alias gresethard="git reset --hard" # Usage: greset HEAD to discard all working directory changes
+
+# Soft reset – move HEAD, but keep index + working tree (useful for rewriting last commit)
+# alias gresetsoft='git reset --soft' # usage: gresetsoft <commit-ish>
+
+# Mixed reset – default mode; un-stage files but leave working tree untouched
+# alias gresetmixed='git reset --mixed' # usage: gresetmixed <commit-ish>
+
+# Keep reset – like --hard, **but** aborts if it would overwrite uncommitted work
+# alias gresetkeep='git reset --keep' # usage: gresetkeep <commit-ish>
+
+# Un-stage selected files quickly (leave them modified in the working tree)
+alias gunstage='git reset HEAD --' # usage: gunstage <file1> <file2> …
+
+# Undo last commit (leave its changes unstaged) – a friendlier name than gundo
+# alias gresetprev='git reset --mixed HEAD~1'
+
+# Force-sync current branch to its upstream tip
+alias gresetremote='git fetch --prune && git reset --hard "$(git rev-parse --abbrev-ref --symbolic-full-name @{u})"'
+
+# Function wrapper – reset to any commit you pass in
+gresetto() { git reset --hard "${1:-HEAD}"; } # usage: gresetto <commit-ish>

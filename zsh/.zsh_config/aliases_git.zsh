@@ -71,12 +71,12 @@ alias gsubcommit='git submodule foreach "git add . && git commit -m \"Updated su
 # This runs `git add`, `git commit`, and `git push` in each submodule, committing and pushing changes. Remember to check submodule status first.
 
 # Setup and Configuration
-alias gaddignore=="cp ~/.gitignore ."
+alias gaddgitignore="cp ~/.gitignore ."
 
 # Git Reset Aliases
 
 # Hard Resets
-alias gresethard="git reset --hard" # Usage: greset HEAD to discard all working directory changes
+alias grh="git reset --hard" # Usage: greset HEAD to discard all working directory changes
 
 # Soft reset – move HEAD, but keep index + working tree (useful for rewriting last commit)
 # alias gresetsoft='git reset --soft' # usage: gresetsoft <commit-ish>

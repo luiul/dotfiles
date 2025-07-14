@@ -170,14 +170,27 @@
         },
         "editor.defaultFormatter": "charliermarsh.ruff"
     },
+    //
+    // Ruff
+    // 
     "ruff.path": [
-        "${env:HOME}/.local/bin/ruff"
+        "/Users/luisaceituno/.local/bin/ruff"
     ],
-    // Use the latest Python version
+    "ruff.importStrategy": "fromEnvironment",
     "ruff.interpreter": [
-        "/opt/homebrew/bin/python3.13"
+        "${workspaceFolder}/.venv/bin/python"
     ],
-    // "ruff.configuration": "${env:HOME}/.config/ruff/ruff.toml",
+    "ruff.configuration": "/Users/luisaceituno/.config/ruff/ruff.toml",
+    //
+    // Ty
+    //
+    "ty.path": [
+        "/Users/luisaceituno/.local/bin/ty"
+    ],
+    "ty.importStrategy": "fromEnvironment",
+    "ty.interpreter": [
+        "${workspaceFolder}/.venv/bin/python"
+    ],
     // Jupyter Notebooks formatter
     "notebook.formatOnSave.enabled": true,
     "notebook.codeActionsOnSave": {
@@ -194,7 +207,7 @@
     "python.analysis.inlayHints.functionReturnTypes": true,
     "python.analysis.inlayHints.variableTypes": true,
     // "python.analysis.extraPaths": [
-    //     "${env:HOME}/projects/",
+    //     "/Users/luisaceituno/projects/",
     //     "${workspaceFolder}/src"
     // ],
     "python.analysis.autoFormatStrings": true,
@@ -234,7 +247,7 @@
     "files.autoSave": "onWindowChange",
     "debug.toolBarLocation": "docked",
     "yaml.schemas": {
-        "file://${env:HOME}/.vscode/extensions/docsmsft.docs-yaml-1.0.5/dist/toc.schema.json": "/toc\\.yml/i"
+        "file:///Users/luisaceituno/.vscode/extensions/docsmsft.docs-yaml-1.0.5/dist/toc.schema.json": "/toc\\.yml/i"
     },
     "workbench.colorTheme": "Monokai",
     "python.languageServer": "Pylance",
@@ -242,7 +255,7 @@
     "jupyter.askForKernelRestart": false,
     // "markdown-preview-github-styles.darkTheme": "dark_high_contrast",
     // "markdown-pdf.styles": [
-    //     "${env:HOME}/.config/markdown-pdf/markdown-pdf.css"
+    //     "/Users/luisaceituno/.config/markdown-pdf/markdown-pdf.css"
     // ],
     // "scm.workingSets.enabled": false,
     // "scm.workingSets.default": "empty",
@@ -259,9 +272,6 @@
         "--line-length",
         "120"
     ],
-    //
-    //
-    // Avoid sqlfmt on dbt projects
     "emeraldwalk.runonsave": {
         "commands": [
             {
@@ -281,7 +291,7 @@
     "workbench.productIconTheme": "fluent-icons",
     // "gitblame.inlineMessageEnabled": true,
     "makefile.configureOnOpen": true,
-    "dbt.sqlFmtPath": "${env:HOME}/.local/bin/sqlfmt",
+    "dbt.sqlFmtPath": "/Users/luisaceituno/.local/bin/sqlfmt",
     "git.blame.editorDecoration.enabled": true,
     // "notebook.inlineValues": true,
     "macros": {
@@ -293,12 +303,30 @@
     "window.commandCenter": false,
     "diffEditor.ignoreTrimWhitespace": true,
     "dbt.enableNewLineagePanel": true,
+    //
     // Copilot and Chat 
+    //
     "github.copilot.enable": {
         "*": true,
+        "plaintext": true,
+        "markdown": true,
+        "scminput": true
     },
     "github.copilot.nextEditSuggestions.enabled": true,
+    //
     // Copilot and Chat - Experimental
+    //
     "github.copilot.chat.editor.temporalContext.enabled": true,
     "github.copilot.chat.edits.temporalContext.enabled": true,
+    //
+    // SQLFluff Settings
+    //
+    "sqlfluff.linter.run": "onSave",
+    "sqlfluff.experimental.format.executeInTerminal": true,
+    "sqlfluff.config": "/Users/luisaceituno/dotfiles/sqlfluff/.sqlfluff",
+    // "sqlfluff.excludeRules": [
+    //     "LT02",
+    //     "LT09",
+    //     "LT14"
+    // ]
 }

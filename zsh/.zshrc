@@ -1,22 +1,22 @@
 # ⚙️ Loading Zsh configuration files from ~/.zsh_config
 echo "📦 Loading Zsh configuration files..."
 
-config_dir="$HOME/.zsh_config"
+zsh_config_dir="$HOME/.zsh_config"
 
 # Check if the directory exists
-if [[ ! -d "$config_dir" ]]; then
-  echo "❌ Config directory not found: $config_dir"
+if [[ ! -d "$zsh_config_dir" ]]; then
+  echo "❌ Config directory not found: $zsh_config_dir"
   return 1
 fi
 
 # Enable nullglob so the for-loop doesn't run if no .zsh files exist
 setopt nullglob
 
-zsh_files=("$config_dir"/*.zsh)
+zsh_files=("$zsh_config_dir"/*.zsh)
 
 # Check if any files were found
 if [[ ${#zsh_files[@]} -eq 0 ]]; then
-  echo "❗ No .zsh files found in $config_dir"
+  echo "❗ No .zsh files found in $zsh_config_dir"
 else
   for file in "${zsh_files[@]}"; do
     # Source the file

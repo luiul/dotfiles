@@ -1,0 +1,13 @@
+[sqlfluff]
+dialect = snowflake
+templater = jinja
+ignore_templated_areas = true
+exclude_rules = layout.indent, layout.cte_bracket, layout.keyword_newline, layout.cte_newline, layout.select_targets, layout.spacing
+max_line_length = 120
+
+[sqlfluff:rules]
+capitalisation_policy = lower
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:convention.terminator]
+multiline_newline = True

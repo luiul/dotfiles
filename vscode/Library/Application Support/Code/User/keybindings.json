@@ -11,26 +11,6 @@
         "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^markdown$|^rmd$|^qmd$/"
     },
     {
-        "key": "shift+alt+cmd+c",
-        "command": "-copyRelativeFilePath",
-        "when": "!editorFocus"
-    },
-    {
-        "key": "shift+alt+cmd+c",
-        "command": "copyFilePath",
-        "when": "!editorFocus"
-    },
-    {
-        "key": "alt+cmd+c",
-        "command": "-copyFilePath",
-        "when": "!editorFocus"
-    },
-    {
-        "key": "cmd+b",
-        "command": "-markdown.extension.editing.toggleBold",
-        "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^markdown$|^rmd$|^quarto$/"
-    },
-    {
         "key": "ctrl+enter",
         "command": "-jupyter.runcurrentcell",
         "when": "editorTextFocus && isWorkspaceTrusted && jupyter.hascodecells && !editorHasSelection && !jupyter.havenativecells && !notebookEditorFocused"
@@ -41,32 +21,8 @@
         "when": "notebookCellResource in 'jupyter.notebookeditor.runByLineCells'"
     },
     {
-        "key": "cmd+m",
-        "command": "-markdown.extension.editing.toggleMath",
-        "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^markdown$|^rmd$|^quarto$/"
-    },
-    {
-        "key": "alt+cmd+b",
-        "command": "-workbench.action.toggleAuxiliaryBar"
-    },
-    {
         "key": "cmd+d",
         "command": "markdown.extension.toc.addSecNumbers"
-    },
-    {
-        "key": "alt+cmd+f",
-        "command": "-editor.action.startFindReplaceAction",
-        "when": "editorFocus || editorIsOpen"
-    },
-    {
-        "key": "shift+cmd+i",
-        "command": "workbench.panel.chat",
-        "when": "workbench.panel.chat.view.copilot.active"
-    },
-    {
-        "key": "ctrl+cmd+i",
-        "command": "-workbench.panel.chat",
-        "when": "workbench.panel.chat.view.copilot.active"
     },
     {
         "key": "f2",

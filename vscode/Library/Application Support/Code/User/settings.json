@@ -171,13 +171,13 @@
         "editor.defaultFormatter": "charliermarsh.ruff"
     },
     "ruff.path": [
-        "/Users/luisaceituno/.local/bin/ruff"
+        "${env:HOME}/.local/bin/ruff"
     ],
     // Use the latest Python version
     "ruff.interpreter": [
         "/opt/homebrew/bin/python3.13"
     ],
-    // "ruff.configuration": "/Users/luisaceituno/.config/ruff/ruff.toml",
+    // "ruff.configuration": "${env:HOME}/.config/ruff/ruff.toml",
     // Jupyter Notebooks formatter
     "notebook.formatOnSave.enabled": true,
     "notebook.codeActionsOnSave": {
@@ -194,7 +194,7 @@
     "python.analysis.inlayHints.functionReturnTypes": true,
     "python.analysis.inlayHints.variableTypes": true,
     // "python.analysis.extraPaths": [
-    //     "/Users/luisaceituno/projects/",
+    //     "${env:HOME}/projects/",
     //     "${workspaceFolder}/src"
     // ],
     "python.analysis.autoFormatStrings": true,
@@ -228,18 +228,13 @@
     "window.zoomLevel": -1,
     "window.openFilesInNewWindow": "on",
     // === Pylint ===
-    "pylint.args": [
-        // "--disable=W1203",
-        // "--disable=W1405",
-        "--max-line-length=120"
-    ],
     "files.exclude": {
         "**/__pycache__": true
     },
     "files.autoSave": "onWindowChange",
     "debug.toolBarLocation": "docked",
     "yaml.schemas": {
-        "file:///Users/luisaceituno/.vscode/extensions/docsmsft.docs-yaml-1.0.5/dist/toc.schema.json": "/toc\\.yml/i"
+        "file://${env:HOME}/.vscode/extensions/docsmsft.docs-yaml-1.0.5/dist/toc.schema.json": "/toc\\.yml/i"
     },
     "workbench.colorTheme": "Monokai",
     "python.languageServer": "Pylance",
@@ -247,7 +242,7 @@
     "jupyter.askForKernelRestart": false,
     // "markdown-preview-github-styles.darkTheme": "dark_high_contrast",
     // "markdown-pdf.styles": [
-    //     "/Users/luisaceituno/.config/markdown-pdf/markdown-pdf.css"
+    //     "${env:HOME}/.config/markdown-pdf/markdown-pdf.css"
     // ],
     // "scm.workingSets.enabled": false,
     // "scm.workingSets.default": "empty",
@@ -260,6 +255,10 @@
     "[jinja-sql]": {
         "editor.defaultFormatter": "innoverio.vscode-dbt-power-user"
     },
+    "dbt.sqlFmtAdditionalParams": [
+        "--line-length",
+        "120"
+    ],
     //
     //
     // Avoid sqlfmt on dbt projects
@@ -269,7 +268,7 @@
                 "match": ".*\\.sql(\\.jinja)?",
                 "notMatch": ".*/dbt/.*",
                 "isAsync": true,
-                "cmd": "sqlfmt ${file}"
+                "cmd": "sqlfmt --line-length 120 ${file}"
             }
         ]
     },
@@ -282,7 +281,7 @@
     "workbench.productIconTheme": "fluent-icons",
     // "gitblame.inlineMessageEnabled": true,
     "makefile.configureOnOpen": true,
-    "dbt.sqlFmtPath": "/Users/luisaceituno/.local/bin/sqlfmt",
+    "dbt.sqlFmtPath": "${env:HOME}/.local/bin/sqlfmt",
     "git.blame.editorDecoration.enabled": true,
     // "notebook.inlineValues": true,
     "macros": {

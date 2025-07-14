@@ -144,12 +144,6 @@
             "query": "state:open repo:${owner}/${repository} sort:updated-desc"
         }
     ],
-    "github.copilot.enable": {
-        "*": true,
-        "plaintext": true,
-        "markdown": true,
-        "scminput": true
-    },
     // === Language-Specific Settings ===
     "[markdown]": {
         "editor.tabSize": 4,
@@ -164,9 +158,6 @@
     },
     "[jsonc]": {
         "editor.defaultFormatter": "vscode.json-language-features"
-    },
-    "[dockerfile]": {
-        "editor.defaultFormatter": "ms-azuretools.vscode-docker"
     },
     "[html]": {
         "editor.defaultFormatter": "vscode.html-language-features"
@@ -291,10 +282,7 @@
     "workbench.productIconTheme": "fluent-icons",
     // "gitblame.inlineMessageEnabled": true,
     "makefile.configureOnOpen": true,
-    "snowflake.connectionsConfigFile": "/Users/luisaceituno/.snowflake/connections.toml",
     "dbt.sqlFmtPath": "/Users/luisaceituno/.local/bin/sqlfmt",
-    // Experimental 
-    // "github.copilot.nextEditSuggestions.enabled": true
     "git.blame.editorDecoration.enabled": true,
     // "notebook.inlineValues": true,
     "macros": {
@@ -305,5 +293,13 @@
     },
     "window.commandCenter": false,
     "diffEditor.ignoreTrimWhitespace": true,
-    "dbt.enableNewLineagePanel": true
+    "dbt.enableNewLineagePanel": true,
+    // Copilot and Chat 
+    "github.copilot.enable": {
+        "*": true,
+    },
+    "github.copilot.nextEditSuggestions.enabled": true,
+    // Copilot and Chat - Experimental
+    "github.copilot.chat.editor.temporalContext.enabled": true,
+    "github.copilot.chat.edits.temporalContext.enabled": true,
 }

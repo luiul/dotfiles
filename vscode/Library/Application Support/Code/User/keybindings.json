@@ -1,16 +1,6 @@
 // Place your key bindings in this file to override the defaultsauto[]
 [
     {
-        "key": "cmd+b",
-        "command": "-markdown.extension.editing.toggleBold",
-        "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^markdown$|^rmd$|^qmd$/"
-    },
-    {
-        "key": "cmd+m",
-        "command": "noop",
-        "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^markdown$|^rmd$|^qmd$/"
-    },
-    {
         "key": "ctrl+enter",
         "command": "-jupyter.runcurrentcell",
         "when": "editorTextFocus && isWorkspaceTrusted && jupyter.hascodecells && !editorHasSelection && !jupyter.havenativecells && !notebookEditorFocused"
@@ -40,5 +30,14 @@
     {
         "key": "alt+cmd+r",
         "command": "macros.refreshTerminal"
-    }
+    },
+    // Markdown All in One — Remove default keybindings that conflict with macOS shortcuts
+    {
+        "key": "cmd+b",
+        "command": "-markdown.extension.editing.toggleBold",
+    },
+    {
+        "key": "cmd+m",
+        "command": "-markdown.extension.editing.toggleMath",
+    },
 ]

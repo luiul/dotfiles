@@ -7,7 +7,7 @@
     },
     {
         "key": "cmd+m",
-        "command": "-markdown.extension.editing.toggleMath",
+        "command": "noop",
         "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^markdown$|^rmd$|^qmd$/"
     },
     {

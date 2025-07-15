@@ -324,9 +324,9 @@
     "sqlfluff.linter.run": "onSave",
     "sqlfluff.experimental.format.executeInTerminal": true,
     "sqlfluff.config": "/Users/luisaceituno/dotfiles/sqlfluff/.sqlfluff",
-    // "sqlfluff.excludeRules": [
-    //     "LT02",
-    //     "LT09",
-    //     "LT14"
-    // ]
+    "sqlfluff.excludeRules": [
+        "LT02",
+        "LT09",
+        "LT14"
+    ],
 }

@@ -37,7 +37,7 @@
     "editor.bracketPairColorization.enabled": true,
     "editor.inlineSuggest.enabled": true,
     "editor.copyWithSyntaxHighlighting": false,
-    "editor.minimap.autohide": true,
+    "editor.minimap.autohide": "mouseover",
     "editor.minimap.renderCharacters": false,
     "editor.folding": true,
     "editor.glyphMargin": true,
@@ -275,10 +275,10 @@
     "emeraldwalk.runonsave": {
         "commands": [
             {
-                "match": ".*\\.sql(\\.jinja)?",
+                "match": ".*\\.sql(\\.jinja)?$",
                 "notMatch": ".*/dbt/.*",
-                "isAsync": true,
-                "cmd": "sqlfmt --line-length 120 ${file}"
+                "isAsync": false,
+                "cmd": "echo 'Running sqlfmt on: ${file}' && /Users/luisaceituno/.local/bin/sqlfmt --line-length 120 \"${file}\""
             }
         ]
     },
@@ -318,15 +318,4 @@
     //
     "github.copilot.chat.editor.temporalContext.enabled": true,
     "github.copilot.chat.edits.temporalContext.enabled": true,
-    //
-    // SQLFluff Settings
-    //
-    "sqlfluff.linter.run": "onSave",
-    "sqlfluff.experimental.format.executeInTerminal": true,
-    "sqlfluff.config": "/Users/luisaceituno/dotfiles/sqlfluff/.sqlfluff",
-    "sqlfluff.excludeRules": [
-        "LT02",
-        "LT09",
-        "LT14"
-    ],
 }

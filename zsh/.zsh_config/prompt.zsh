@@ -33,9 +33,6 @@ my_prompt() {
     local current_time="$(date +%H:%M:%S)"
 
     if [[ -n "$VIRTUAL_ENV_PROMPT" ]]; then
-        # Debug line: shows ASCII codes if you suspect hidden chars
-        # echo "$VIRTUAL_ENV_PROMPT" | od -c
-
         # Use sed to remove the leading "(" and trailing ")" plus any trailing spaces
         local venv_display_name
         venv_display_name="$(
@@ -50,20 +47,40 @@ my_prompt() {
         fi
     fi
 
+    # Base (time + cwd)
+    prompt="%B[$current_time]%b %{$fg[magenta]%}%~%{$reset_color%}"
+
     if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        local branch_name="$(git symbolic-ref --short HEAD 2>/dev/null || echo "")"
-        prompt="%B[$current_time]%b %{$fg[magenta]%}%~%{$reset_color%}"
+        # Try to get a branch, otherwise show detached ref
+        local git_ref_display=""
+        local branch_name
+        branch_name="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 
         if [[ -n "$branch_name" ]]; then
-            local changes="$(check_git_changes)"
+            git_ref_display="$branch_name"
+        else
+            # Prefer exact tag, else short SHA
+            local tag sha
+            tag="$(git describe --tags --exact-match 2>/dev/null || true)"
+            if [[ -n "$tag" ]]; then
+                git_ref_display="detached@$tag"
+            else
+                sha="$(git rev-parse --short HEAD 2>/dev/null || true)"
+                [[ -n "$sha" ]] && git_ref_display="detached@$sha"
+            fi
+        fi
+
+        if [[ -n "$git_ref_display" ]]; then
+            # Color by repo state (works in detached HEAD too)
+            local changes
+            changes="$(check_git_changes 2>/dev/null || echo "")"
             case "$changes" in
-            unstaged) prompt="$prompt %{$fg[red]%}($branch_name)%{$reset_color%}" ;;
-            staged) prompt="$prompt %{$fg[blue]%}($branch_name)%{$reset_color%}" ;;
-            clean) prompt="$prompt %{$fg[green]%}($branch_name)%{$reset_color%}" ;;
+                unstaged) prompt="$prompt %{$fg[red]%}($git_ref_display)%{$reset_color%}" ;;
+                staged)   prompt="$prompt %{$fg[blue]%}($git_ref_display)%{$reset_color%}" ;;
+                clean)    prompt="$prompt %{$fg[green]%}($git_ref_display)%{$reset_color%}" ;;
+                *)        prompt="$prompt ($git_ref_display)" ;;
             esac
         fi
-    else
-        prompt="%B[$current_time]%b %{$fg[magenta]%}%~%{$reset_color%}"
     fi
 
     prompt="$prompt$venv_symbol$venv_warning %B%{$reset_color%}$%b "
@@ -71,7 +88,8 @@ my_prompt() {
 }
 
 # Set the dynamic prompt
+# (Ensure you have: setopt PROMPT_SUBST; autoload -U colors && colors)
 PROMPT='$(my_prompt)'
 
-# Run vcs_info before each prompt
-precmd() {vcs_info}
+# Run vcs_info before each prompt (optional; not used by this prompt)
+precmd() { vcs_info }

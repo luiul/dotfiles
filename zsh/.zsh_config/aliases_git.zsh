@@ -96,5 +96,8 @@ alias gunstage='git reset HEAD --' # usage: gunstage <file1> <file2> …
 # Force-sync current branch to its upstream tip
 alias gresetremote='git fetch --prune && git reset --hard "$(git rev-parse --abbrev-ref --symbolic-full-name @{u})"'
 
+# Open pull request in browser
+alias gopenpr='gh pr view --web'
+
 # Function wrapper – reset to any commit you pass in
 gresetto() { git reset --hard "${1:-HEAD}"; } # usage: gresetto <commit-ish>

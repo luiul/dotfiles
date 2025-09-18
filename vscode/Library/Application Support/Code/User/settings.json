@@ -320,4 +320,5 @@
     "github.copilot.chat.edits.temporalContext.enabled": true,
     "docker.extension.enableComposeLanguageServer": false,
     "parquet-viewer.format": "csv",
+    "chat.mcp.autostart": "newAndOutdated",
 }

@@ -800,3 +800,46 @@ upgrade-tools() {
     brew upgrade
     uv tool upgrade --all
 }
+
+gurl() {
+  # Optional: pass a remote name (default: origin)
+  local remote="${1:-origin}"
+
+  # Get the remote URL (works better than parsing `git remote show`)
+  local url
+  if ! url="$(git remote get-url "$remote" 2>/dev/null)"; then
+    echo "gurl: couldn't get URL for remote '$remote' (are you in a git repo?)" >&2
+    return 1
+  fi
+
+  # Keep the original for display
+  local shown_url="$url"
+
+  # Convert SSH/SSH-like URLs to https for browser opening
+  # Examples:
+  #   git@github.com:org/repo.git     -> https://github.com/org/repo
+  #   ssh://git@github.com/org/repo   -> https://github.com/org/repo
+  if [[ "$url" =~ ^git@([^:]+):(.+)$ ]]; then
+    url="https://${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+  elif [[ "$url" =~ ^ssh://git@([^/]+)/(.+)$ ]]; then
+    url="https://${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+  fi
+
+  # Strip trailing .git for nicer web URLs
+  url="${url%.git}"
+
+  # Show the original remote URL in the terminal
+  echo "$shown_url"
+
+  # Open in default browser (macOS `open`, Linux `xdg-open`, WSL `wslview` if available)
+  if command -v open >/dev/null 2>&1; then
+    open "$url"
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$url" >/dev/null 2>&1 &
+  elif command -v wslview >/dev/null 2>&1; then
+    wslview "$url" >/dev/null 2>&1 &
+  else
+    echo "gurl: couldn't find a way to open the browser (tried: open, xdg-open, wslview)" >&2
+    return 2
+  fi
+}

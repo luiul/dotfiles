@@ -17,7 +17,6 @@ alias gfetch="git fetch --prune"                                 # Fetch and pru
 alias gfetchall="git fetch --all --prune"                        # Fetch all remotes and prune deleted branches
 alias gpull="gfetch && git pull --recurse-submodules"            # Pull changes from the remote
 alias gpullrebase="git pull --rebase"                            # Pull with rebase
-alias gurl="git remote show origin | grep URL"
 alias goriginmaster='git fetch origin && git reset --hard origin/master && git clean -fd'
 
 # Switching Branches

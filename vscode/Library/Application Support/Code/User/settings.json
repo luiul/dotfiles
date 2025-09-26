@@ -11,7 +11,7 @@
     "workbench.colorCustomizations": {
         "tab.activeBorderTop": "#ff00ee",
         "notebook.focusedCellBackground": "#0099ff30",
-        "editor.lineHighlightBackground": "#008cff3a",
+        "editor.lineHighlightBackground": "#008cff28",
         "editor.lineHighlightBorder": "#9fced11f",
         // "tree.indentGuidesStroke": "#EBEBEB",
         "editor.findMatchBackground": "#8ffa876b",

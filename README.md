@@ -24,5 +24,4 @@ stow -D <folder>
 
 ## Homebrew
 
-Use `brew bundle dump --file=brew/Brewfile --force` to keep the Brewfile updated.  
-To restore the Brewfile, use `brew bundle --file=brew/Brewfile`.
+Use `brew bundle dump --file=brew/Brewfile --force` to keep the Brewfile updated. To restore the Brewfile, use `brew bundle --file=brew/Brewfile`.

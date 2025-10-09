@@ -32,7 +32,6 @@
     "editor.wordWrap": "on",
     "editor.smoothScrolling": true,
     "editor.cursorBlinking": "solid",
-    "editor.renderWhitespace": "all",
     "editor.guides.bracketPairs": true,
     "editor.bracketPairColorization.enabled": true,
     "editor.inlineSuggest.enabled": true,
@@ -81,8 +80,13 @@
         ]
     },
     "editor.lineNumbers": "relative",
-    // "editor.minimap.enabled": false,
     "editor.unicodeHighlight.ambiguousCharacters": false,
+    // === Editor hygiene ===
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    "editor.renderWhitespace": "all",
+    "editor.tabSize": 4,
+    // === Format on Save (global & per-language)
     "editor.formatOnSave": true,
     // === Terminal Settings ===
     "terminal.integrated.fontFamily": "Menlo,DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
@@ -117,7 +121,6 @@
     "git.autoStash": true,
     "git.autoRepositoryDetection": "openEditors",
     "git.openRepositoryInParentFolders": "always",
-    // "git.blame.statusBarItem.enabled": true,
     "git.autofetch": true,
     // === GitHub Settings ===
     "githubPullRequests.remotes": [
@@ -162,11 +165,12 @@
     "[html]": {
         "editor.defaultFormatter": "vscode.html-language-features"
     },
-    // Python formatter
+    // === Python formatter  ===
     "[python]": {
         "editor.formatOnSave": true,
         "editor.codeActionsOnSave": {
-            "source.fixAll": "explicit"
+            "source.fixAll": "explicit",
+            "source.organizeImports": "explicit"
         },
         "editor.defaultFormatter": "charliermarsh.ruff"
     },
@@ -240,11 +244,30 @@
     "redhat.telemetry.enabled": false,
     "window.zoomLevel": -1,
     "window.openFilesInNewWindow": "on",
-    // === Pylint ===
+    // === Files/Housekeeping ===
     "files.exclude": {
-        "**/__pycache__": true
+        // "**/__pycache__": true,
+        // "target/": true,
+        // "logs/": true
+    },
+    "search.exclude": {
+        // "**/__pycache__": true,
+        // "target/": true,
+        // "logs/": true,
+        // "**/.venv": true,
+        // "**/.mypy_cache": true,
+        // "**/.pytest_cache": true
+    },
+    "files.watcherExclude": {
+        // "**/target/**": true,
+        // "**/logs/**": true,
+        // "**/.venv/**": true,
+        // "**/.mypy_cache/**": true,
+        // "**/.pytest_cache/**": true,
+        // "**/node_modules/**": true
     },
     "files.autoSave": "onWindowChange",
+    // === Debug/Other ===
     "debug.toolBarLocation": "docked",
     "yaml.schemas": {
         "file:///Users/luisaceituno/.vscode/extensions/docsmsft.docs-yaml-1.0.5/dist/toc.schema.json": "/toc\\.yml/i"
@@ -253,12 +276,7 @@
     "python.languageServer": "Pylance",
     "editor.inlayHints.enabled": "offUnlessPressed",
     "jupyter.askForKernelRestart": false,
-    // "markdown-preview-github-styles.darkTheme": "dark_high_contrast",
-    // "markdown-pdf.styles": [
-    //     "/Users/luisaceituno/.config/markdown-pdf/markdown-pdf.css"
-    // ],
-    // "scm.workingSets.enabled": false,
-    // "scm.workingSets.default": "empty",
+    // === dbt & SQL ===
     "files.associations": {
         "*.sql": "jinja-sql",
         "*.yaml": "jinja-yaml",
@@ -282,18 +300,11 @@
             }
         ]
     },
-    //
-    //
-    // "indentRainbow.excludedLanguages": [
-    //     "sql",
-    //     "jinja-sql"
-    // ],
-    "workbench.productIconTheme": "fluent-icons",
-    // "gitblame.inlineMessageEnabled": true,
-    "makefile.configureOnOpen": true,
     "dbt.sqlFmtPath": "/Users/luisaceituno/.local/bin/sqlfmt",
+    // === UI & Misc ===
+    "workbench.productIconTheme": "fluent-icons",
+    "makefile.configureOnOpen": true,
     "git.blame.editorDecoration.enabled": true,
-    // "notebook.inlineValues": true,
     "macros": {
         "refreshTerminal": [
             "workbench.action.terminal.kill",
@@ -318,6 +329,7 @@
     //
     "github.copilot.chat.editor.temporalContext.enabled": true,
     "github.copilot.chat.edits.temporalContext.enabled": true,
+    // === Extensions/Tools ===
     "docker.extension.enableComposeLanguageServer": false,
     "parquet-viewer.format": "csv",
     "chat.mcp.autostart": "newAndOutdated",

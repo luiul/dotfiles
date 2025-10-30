@@ -843,3 +843,28 @@ gurl() {
     return 2
   fi
 }
+
+# Clone multiple git repositories, skipping existing directories
+gclone() {
+  if [ "$#" -eq 0 ]; then
+    echo "Usage: gclone <url1> [url2 ...]"
+    return 1
+  fi
+
+  for repo in "$@"; do
+    local repo_name
+    repo_name=$(basename -s .git "$repo")
+
+    if [ -d "$repo_name" ]; then
+      echo "⚠️  Skipping '$repo_name' — directory already exists."
+      continue
+    fi
+
+    echo "⬇️  Cloning $repo..."
+    if git clone --recurse-submodules "$repo"; then
+      echo "✅ Successfully cloned '$repo_name'"
+    else
+      echo "❌ Failed to clone '$repo_name'"
+    fi
+  done
+}

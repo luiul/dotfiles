@@ -15,3 +15,6 @@ adjust-cursor-thickness = 2
 
 # Keybindings
 keybind = global:control+command+shift+option+r=toggle_quick_terminal
+
+# Padding
+window-padding-x = 8

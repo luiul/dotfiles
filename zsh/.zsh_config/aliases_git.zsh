@@ -1,7 +1,6 @@
 # Basic Repository Information
 alias ghash="git rev-parse --short HEAD"      # Get the short hash of the current commit
 alias gst="git status -sb"                    # Show short, branch-based status
-alias gclone="git clone --recurse-submodules" # Clone a repository with submodules
 
 # Branch Management
 alias gco="git checkout"          # Checkout a branch

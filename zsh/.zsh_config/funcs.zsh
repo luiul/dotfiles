@@ -868,3 +868,55 @@ gclone() {
     fi
   done
 }
+
+# ldel: list matches (case-insensitive) and move them to ~/.Trash after confirm
+ldel() {
+  emulate -L zsh
+
+  if [ "$#" -lt 1 ]; then
+    print "Usage: ldel <pattern>"
+    return 1
+  fi
+
+  local pattern="$1"
+  local -a matches=()
+
+  # list current dir entries, including dotfiles (not . or ..)
+  local -a entries
+  entries=(*(D))
+  # filter: case-insensitive substring match
+  local f
+  for f in "${entries[@]}"; do
+    [[ "$f" == "." || "$f" == ".." ]] && continue
+    if [[ "${(L)f}" == *"${(L)pattern}"* ]]; then
+      matches+=("$f")
+    fi
+  done
+
+  if (( ${#matches} == 0 )); then
+    print "No matches for: $pattern"
+    return 0
+  fi
+
+  print "Matches (${#matches}):"
+  printf '  %s\n' "${matches[@]}"
+
+  printf "Move ALL of these to Trash? (y/N): "
+  local ans
+  read -r ans
+  if [[ "$ans" != [Yy] ]]; then
+    print "Aborted."
+    return 0
+  fi
+
+  mkdir -p ~/.Trash
+  local m ok=0 fail=0
+  for m in "${matches[@]}"; do
+    if mv -iv -- "$m" ~/.Trash/; then
+      ((ok++))
+    else
+      ((fail++))
+    fi
+  done
+  print "Done. Moved: $ok  Failed: $fail"
+}

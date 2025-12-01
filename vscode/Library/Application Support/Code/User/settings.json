@@ -333,4 +333,5 @@
     "docker.extension.enableComposeLanguageServer": false,
     "parquet-viewer.format": "csv",
     "chat.mcp.autostart": "newAndOutdated",
+    "aws.cloudformation.telemetry.enabled": false,
 }

@@ -19,6 +19,7 @@
         "command": "renameFile",
         "when": "explorerViewletVisible && filesExplorerFocus && !explorerResourceIsRoot && !explorerResourceReadonly && !inputFocus"
     },
+    // Disable default keybinding for 'Close Other Editors' to free up Alt+Cmd+T for terminal toggle
     {
         "key": "alt+cmd+t",
         "command": "-workbench.action.closeOtherEditors"
@@ -26,6 +27,12 @@
     {
         "key": "alt+cmd+t",
         "command": "workbench.action.terminal.toggleTerminal"
+    },
+    // Reassign 'Close Other Editors' to Alt+Cmd+W
+    {
+        "key": "alt+cmd+w",
+        "command": "workbench.action.closeOtherEditors",
+        "when": "editorTextFocus"
     },
     {
         "key": "alt+cmd+r",

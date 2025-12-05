@@ -920,3 +920,41 @@ ldel() {
   done
   print "Done. Moved: $ok  Failed: $fail"
 }
+
+# Force-reset current branch to origin/<branch>, no diff
+gforcereset() {
+  # Ensure we are in a git repo
+  local branch remote_branch
+  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || {
+    echo "❌ Not inside a git repository."
+    return 1
+  }
+
+  remote_branch="origin/$branch"
+
+  echo "🔍 Current branch: $branch"
+  echo "🔗 Will reset to:  $remote_branch"
+  echo
+  echo "⚠️  This will permanently discard ALL local changes."
+  read "?Are you sure? (yes/no): " confirm
+
+  if [[ "$confirm" != "yes" ]]; then
+    echo "❌ Aborted."
+    return 1
+  fi
+
+  echo "🔄 Fetching origin..."
+  git fetch origin || return 1
+
+  echo "🧨 Resetting branch to $remote_branch..."
+  git reset --hard "$remote_branch" || return 1
+
+  echo
+  read "?Clean untracked files too? (yes/no): " do_clean
+  if [[ "$do_clean" == "yes" ]]; then
+    echo "🧹 Cleaning untracked files..."
+    git clean -fd
+  fi
+
+  echo "✅ Branch '$branch' is now fully reset to '$remote_branch'."
+}

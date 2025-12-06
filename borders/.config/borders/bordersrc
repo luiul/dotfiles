@@ -1,0 +1,20 @@
+#!/bin/bash
+
+options=(
+    # Rounded borders for a modern look
+    style=round
+
+    # Reduced width; 6px can be a bit heavy with bright colors
+    width=6.0
+
+    # Keep HiDPI off unless you want auto scaling
+    hidpi=off
+
+    # Dracula active border: pink (#ff79c6)
+    active_color=0xffff79c6
+
+    # Dracula inactive border: current line gray (#44475a)
+    inactive_color=0xff44475a
+)
+
+borders "${options[@]}"

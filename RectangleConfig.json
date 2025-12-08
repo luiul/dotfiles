@@ -5,7 +5,7 @@
       "bool" : false
     },
     "allowAnyShortcut" : {
-      "bool" : false
+      "bool" : true
     },
     "almostMaximizeHeight" : {
       "float" : 0
@@ -17,7 +17,7 @@
       "int" : 0
     },
     "alternateDefaultShortcuts" : {
-      "bool" : false
+      "bool" : true
     },
     "alwaysAccountForStage" : {
       "int" : 0
@@ -89,7 +89,7 @@
 
     },
     "gapSize" : {
-      "float" : 0
+      "float" : 2
     },
     "hapticFeedbackOnSnap" : {
       "int" : 1
@@ -163,6 +163,9 @@
     "screenEdgeGapsOnMainScreenOnly" : {
       "bool" : false
     },
+    "screensOrderedByX" : {
+      "int" : 0
+    },
     "selectedCycleSizes" : {
       "int" : 0
     },
@@ -212,7 +215,7 @@
 
     },
     "todo" : {
-      "int" : 2
+      "int" : 0
     },
     "todoApplication" : {
 
@@ -232,8 +235,11 @@
     "unsnapRestore" : {
       "int" : 0
     },
+    "widthStepSize" : {
+      "float" : 30
+    },
     "windowSnapping" : {
-      "int" : 1
+      "int" : 0
     }
   },
   "shortcuts" : {
@@ -290,5 +296,5 @@
       "modifierFlags" : 1966080
     }
   },
-  "version" : "94"
+  "version" : "98"
 }

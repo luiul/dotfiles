@@ -178,18 +178,18 @@
     // Ruff
     //
     "ruff.path": [
-        "/Users/luisaceituno/.local/bin/ruff"
+        "${env:HOME}/.local/bin/ruff"
     ],
     "ruff.importStrategy": "fromEnvironment",
     // "ruff.interpreter": [
     //     "${workspaceFolder}/.venv/bin/python"
     // ],
-    "ruff.configuration": "/Users/luisaceituno/.config/ruff/ruff.toml",
+    "ruff.configuration": "${env:HOME}/.config/ruff/ruff.toml",
     //
     // Ty
     //
     "ty.path": [
-        "/Users/luisaceituno/.local/bin/ty"
+        "${env:HOME}/.local/bin/ty"
     ],
     "ty.importStrategy": "fromEnvironment",
     "ty.interpreter": [
@@ -211,7 +211,7 @@
     "python.analysis.inlayHints.functionReturnTypes": true,
     "python.analysis.inlayHints.variableTypes": true,
     // "python.analysis.extraPaths": [
-    //     "/Users/luisaceituno/projects/",
+    //     "${env:HOME}/projects/",
     //     "${workspaceFolder}/src"
     // ],
     "python.analysis.autoFormatStrings": true,
@@ -237,12 +237,10 @@
     // === Python Testing ===
     "python.testing.pytestEnabled": true,
     "python.testing.cwd": "${workspaceFolder}/tests",
-    "python.testing.pytestPath": "${workspaceFolder}/.venv/bin/pytest",
     // === Miscellaneous ===
     "update.mode": "manual",
     "telemetry.telemetryLevel": "off",
     "redhat.telemetry.enabled": false,
-    "window.zoomLevel": -1,
     "window.openFilesInNewWindow": "on",
     // === Files/Housekeeping ===
     "files.exclude": {
@@ -270,7 +268,7 @@
     // === Debug/Other ===
     "debug.toolBarLocation": "docked",
     "yaml.schemas": {
-        "file:///Users/luisaceituno/.vscode/extensions/docsmsft.docs-yaml-1.0.5/dist/toc.schema.json": "/toc\\.yml/i"
+        "file://${env:HOME}/.vscode/extensions/docsmsft.docs-yaml-1.0.5/dist/toc.schema.json": "/toc\\.yml/i"
     },
     "workbench.colorTheme": "Monokai",
     "python.languageServer": "Pylance",
@@ -284,7 +282,8 @@
         // "*.html": "jinja-html"
     },
     "[jinja-sql]": {
-        "editor.defaultFormatter": "innoverio.vscode-dbt-power-user"
+        "editor.defaultFormatter": "innoverio.vscode-dbt-power-user",
+        "editor.formatOnSave": true
     },
     "dbt.sqlFmtAdditionalParams": [
         "--line-length",
@@ -296,11 +295,11 @@
                 "match": ".*\\.sql(\\.jinja)?$",
                 "notMatch": ".*/dbt/.*",
                 "isAsync": false,
-                "cmd": "echo 'Running sqlfmt on: ${file}' && /Users/luisaceituno/.local/bin/sqlfmt --line-length 120 \"${file}\""
+                "cmd": "echo 'Running sqlfmt on: ${file}' && \"${env:HOME}/.local/bin/sqlfmt\" --line-length 120 \"${file}\""
             }
         ]
     },
-    "dbt.sqlFmtPath": "/Users/luisaceituno/.local/bin/sqlfmt",
+    "dbt.sqlFmtPath": "${env:HOME}/.local/bin/sqlfmt",
     // === UI & Misc ===
     "workbench.productIconTheme": "fluent-icons",
     "makefile.configureOnOpen": true,
@@ -334,4 +333,5 @@
     "parquet-viewer.format": "csv",
     "chat.mcp.autostart": "newAndOutdated",
     "aws.cloudformation.telemetry.enabled": false,
+    "aws.telemetry": false,
 }

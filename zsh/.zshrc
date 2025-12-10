@@ -40,14 +40,15 @@ source ~/Repos/znap/znap.zsh # Start Znap
 # Install plugins
 znap source marlonrichert/zsh-autocomplete
 
+# TODO: Ensure these are still required
 # Load plugins
-eval "$(gh copilot alias -- zsh)"
-eval "$(fzf --zsh)"
-eval "$(zoxide init --cmd cd zsh)"
+# eval "$(gh copilot alias -- zsh)"
+# eval "$(fzf --zsh)"
+# eval "$(zoxide init --cmd cd zsh)"
 
-. "$HOME/.cargo/env"
+# . "$HOME/.cargo/env"
 
-. "$HOME/.local/share/../bin/env"
+# . "$HOME/.local/share/../bin/env"
 eval "$(uv generate-shell-completion zsh)"
 eval "$(uvx --generate-shell-completion zsh)"
 

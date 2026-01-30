@@ -958,3 +958,34 @@ gforcereset() {
 
   echo "✅ Branch '$branch' is now fully reset to '$remote_branch'."
 }
+
+# Start or reuse a single ssh-agent and add your key
+ssh_agent_start() {
+  local agent_env_file="$HOME/.ssh/agent_env"
+
+  # If we have a saved agent environment, try to reuse it
+  if [[ -f "$agent_env_file" ]]; then
+    source "$agent_env_file" >/dev/null 2>&1
+
+    # If the agent is alive and responding, we're done
+    if ssh-add -l >/dev/null 2>&1; then
+      return
+    else
+      # Dead / invalid agent; clean up and start a fresh one
+      rm -f "$agent_env_file"
+      unset SSH_AUTH_SOCK SSH_AGENT_PID
+    fi
+  fi
+
+  # Start a new ssh-agent
+  eval "$(ssh-agent -s)" >/dev/null
+
+  # Add your key (change path if your key file is different)
+  ssh-add "$HOME/.ssh/id_ed25519" </dev/null
+
+  # Save environment variables so new shells can reuse this agent
+  {
+    echo "export SSH_AUTH_SOCK=$SSH_AUTH_SOCK"
+    echo "export SSH_AGENT_PID=$SSH_AGENT_PID"
+  } >! "$agent_env_file"
+}

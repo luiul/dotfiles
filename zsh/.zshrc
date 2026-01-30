@@ -31,6 +31,11 @@ fi
 
 echo "✅ Zsh configuration files loaded."
 
+# Start or attach to ssh-agent (function lives in ~/.zsh_config/funcs.zsh)
+if typeset -f ssh_agent_start >/dev/null 2>&1; then
+  ssh_agent_start
+fi
+
 # Download Znap, if it's not there yet.
 [[ -r ~/Repos/znap/znap.zsh ]] ||
   git clone --depth 1 -- \

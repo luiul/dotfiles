@@ -45,26 +45,15 @@ source ~/Repos/znap/znap.zsh # Start Znap
 # Install plugins
 znap source marlonrichert/zsh-autocomplete
 
-# TODO: Ensure these are still required
-# Load plugins
-# eval "$(gh copilot alias -- zsh)"
-# eval "$(fzf --zsh)"
-# eval "$(zoxide init --cmd cd zsh)"
-
-# . "$HOME/.cargo/env"
-
-# . "$HOME/.local/share/../bin/env"
 eval "$(uv generate-shell-completion zsh)"
 eval "$(uvx --generate-shell-completion zsh)"
-
-# fpath+=~/.zfunc
-# autoload -Uz compinit && compinit
-
-# zstyle ':completion:*' list-prompt ''
-# zstyle ':completion:*' select-prompt ''
 
 # Automatically activate virtualenvs
 activate
 
 # Run the following command at the end of the shell config file
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+# Set up fzf key bindings and fuzzy completion
+source <(fzf --zsh)
+eval "$(zoxide init zsh)"

@@ -57,11 +57,11 @@ znap source marlonrichert/zsh-autocomplete
 eval "$(uv generate-shell-completion zsh)"
 eval "$(uvx --generate-shell-completion zsh)"
 
-fpath+=~/.zfunc
-autoload -Uz compinit && compinit
+# fpath+=~/.zfunc
+# autoload -Uz compinit && compinit
 
-zstyle ':completion:*' list-prompt ''
-zstyle ':completion:*' select-prompt ''
+# zstyle ':completion:*' list-prompt ''
+# zstyle ':completion:*' select-prompt ''
 
 # Automatically activate virtualenvs
 activate

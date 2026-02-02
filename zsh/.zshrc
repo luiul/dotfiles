@@ -37,10 +37,10 @@ if typeset -f ssh_agent_start >/dev/null 2>&1; then
 fi
 
 # Download Znap, if it's not there yet.
-[[ -r ~/Repos/znap/znap.zsh ]] ||
+[[ -r ~/repos/znap/znap.zsh ]] ||
   git clone --depth 1 -- \
-    https://github.com/marlonrichert/zsh-snap.git ~/Repos/znap
-source ~/Repos/znap/znap.zsh # Start Znap
+    https://github.com/marlonrichert/zsh-snap.git ~/repos/znap
+source ~/repos/znap/znap.zsh # Start Znap
 
 # Install plugins
 znap source marlonrichert/zsh-autocomplete
@@ -56,4 +56,7 @@ source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 
 # Set up fzf key bindings and fuzzy completion
 source <(fzf --zsh)
-eval "$(zoxide init zsh)"
+eval "$(zoxide init --cmd cd zsh)"
+
+# zstyle ':completion:*' list-prompt ''
+# zstyle ':completion:*' select-prompt ''

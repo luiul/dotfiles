@@ -334,4 +334,5 @@
     "chat.mcp.autostart": "newAndOutdated",
     "aws.cloudformation.telemetry.enabled": false,
     "aws.telemetry": false,
+    "git.blame.statusBarItem.enabled": true,
 }

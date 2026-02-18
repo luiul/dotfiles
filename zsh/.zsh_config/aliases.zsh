@@ -18,6 +18,10 @@ alias pip-upgrade-all="pip freeze --local | grep -v '^\-e' | cut -d = -f 1  | xa
 alias pip-uninstall-all="pip uninstall -y -r <(pip freeze)"
 # alias pip-install-reqs="find . -name 'requirements.txt' -exec pip install -r {} \;"
 
+# Homebrew Services for Borders
+alias borders-start='brew services start borders'
+alias borders-restart='brew services restart borders'
+
 # alias aws-sso-it="aws_sso sso-hf-it-developer"
 
 # Misc

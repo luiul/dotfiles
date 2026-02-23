@@ -631,16 +631,16 @@ gsquashmergehere() {
 		echo "📌 squash-merge-here"
 		echo ""
 		echo "Prompts for a source branch and squash merges it into the current branch."
-		echo "Creates a new branch and commits the squash with a conventional message."
+		echo "Optionally creates a new branch and commits the squash with a conventional message."
 		echo ""
 		echo "🔧 Usage:"
-		echo "  squash-merge-here"
+		echo "  gsquashmergehere [source_branch]"
 		echo ""
 		echo "🧠 Workflow:"
-		echo "  1. Prompts for source branch"
+		echo "  1. Source branch from arg or prompt"
 		echo "  2. Updates source branch"
-		echo "  3. Checks out current branch as target"
-		echo "  4. Creates a new branch: <target_branch>__into_<target_prefix>_from_<source_branch>"
+		echo "  3. Returns to target branch"
+		echo "  4. Optionally creates/switches to a new branch"
 		echo "  5. Squash merges source branch"
 		echo "  6. Commits with: chore: squash merge '<source>' into '<target>'"
 		echo ""
@@ -648,17 +648,21 @@ gsquashmergehere() {
 	fi
 
 	local target_branch
-	target_branch=$(git symbolic-ref --short HEAD)
+	target_branch=$(git symbolic-ref --short HEAD) || return 1
 
 	echo "🧩 You are currently on: '$target_branch'"
 
 	echo ""
 	echo "📂 Available local branches:"
-	git branch --format="  - %(refname:short)" | grep -v "^\*"
+	git branch --format="  - %(refname:short)" | grep -v "^\*" || true
 
-	echo ""
-	echo -n "🔍 Enter the source branch to squash merge from: "
-	read source_branch
+	# Source branch: use arg if provided, else prompt
+	local source_branch="${1:-}"
+	if [[ -z "$source_branch" ]]; then
+		echo ""
+		echo -n "🔍 Enter the source branch to squash merge from: "
+		read source_branch
+	fi
 
 	if [[ -z "$source_branch" ]]; then
 		echo "❌ Source branch is required."
@@ -689,13 +693,25 @@ gsquashmergehere() {
 	# Clean source branch for use in new branch name (replace slashes)
 	local safe_source_branch="${source_branch//\//-}"
 
-	# Build new branch name
+	# Build suggested new branch name
 	local base_name="${target_branch}__into__${target_prefix}__from__${safe_source_branch}"
-	echo -n "🔧 Enter new branch name (default: $base_name): "
+	echo -n "🔧 Enter new branch name (default: $base_name). Enter '$target_branch' to use current branch: "
+	local new_branch
 	read new_branch
 	new_branch=${new_branch:-$base_name}
 
-	git checkout -b "$new_branch" || return 1
+	# If user chose the current branch, do NOT create a new branch
+	if [[ "$new_branch" == "$target_branch" ]]; then
+		echo "ℹ️ Using current branch: $target_branch (no new branch will be created)"
+	else
+		# If branch exists, switch to it; otherwise create it
+		if git show-ref --verify --quiet "refs/heads/$new_branch"; then
+			echo "ℹ️ Branch '$new_branch' already exists — switching to it"
+			git checkout "$new_branch" || return 1
+		else
+			git checkout -b "$new_branch" || return 1
+		fi
+	fi
 
 	# Perform squash merge
 	git merge --squash "$source_branch" || return 1
@@ -703,7 +719,7 @@ gsquashmergehere() {
 	local commit_msg="chore: squash merge '$source_branch' into '$target_branch'"
 	git commit -m "$commit_msg" || return 1
 
-	echo "✅ Squash merge complete on branch: $new_branch"
+	echo "✅ Squash merge complete on branch: $(git symbolic-ref --short HEAD)"
 }
 
 gbranch() {

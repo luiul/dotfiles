@@ -268,7 +268,7 @@
     // === Debug/Other ===
     "debug.toolBarLocation": "docked",
     "yaml.schemas": {
-        "file://${env:HOME}/.vscode/extensions/docsmsft.docs-yaml-1.0.5/dist/toc.schema.json": "/toc\\.yml/i"
+        "file:///Users/luis.aceituno/.vscode/extensions/docsmsft.docs-yaml-1.0.6/dist/toc.schema.json": "/toc\\.yml/i"
     },
     "workbench.colorTheme": "Monokai",
     "python.languageServer": "Pylance",
@@ -277,8 +277,8 @@
     // === dbt & SQL ===
     "files.associations": {
         "*.sql": "jinja-sql",
-        "*.yaml": "jinja-yaml",
-        "*.yml": "jinja-yaml",
+        // "*.yaml": "jinja-yaml",
+        // "*.yml": "jinja-yaml",
         // "*.html": "jinja-html"
     },
     "[jinja-sql]": {

@@ -558,43 +558,67 @@ gpullall() {
 }
 
 gac() {
-    # Ensure we're inside a Git repo
-    if ! git rev-parse --is-inside-work-tree &>/dev/null; then
-        echo "❌ Not inside a Git repository."
-        return 1
+  # Ensure we're inside a Git repo
+  if ! git rev-parse --is-inside-work-tree &>/dev/null; then
+    echo "❌ Not inside a Git repository."
+    return 1
+  fi
+
+  # Stage all changes
+  git add .
+
+  # Check if pre-commit is configured
+  if [ -f ".pre-commit-config.yaml" ]; then
+    echo "🛡️  pre-commit detected."
+  fi
+
+  local msg="$1"
+
+  # If nothing is staged, git commit will abort before opening the editor.
+  # In that case, open an editor via --amend (if HEAD exists) or --allow-empty (if no commits yet).
+  if git diff --cached --quiet; then
+    if git rev-parse --verify HEAD &>/dev/null; then
+      echo "ℹ️  No staged changes. Opening editor with: git commit --amend"
+      git commit --amend
+      return $?
+    else
+      echo "ℹ️  No staged changes and no commits yet. Opening editor with: git commit --allow-empty"
+      git commit --allow-empty
+      return $?
     fi
+  fi
 
-    # Stage all changes
-    git add .
+  if [[ -z "$msg" ]]; then
+    echo "📝 No commit message provided. Launching default commit editor..."
+    git commit
+    return $?
+  fi
 
-    # Check if pre-commit is configured
-    if [ -f ".pre-commit-config.yaml" ]; then
-        echo "🛡️  pre-commit detected."
-    fi
+  # Trim leading/trailing whitespace
+  local trimmed_msg
+  trimmed_msg="$(printf '%s' "$msg" | awk '{$1=$1; print}')"
 
-    local msg="$1"
+  if [[ -z "$trimmed_msg" ]]; then
+    echo "❌ Commit message cannot be empty after trimming."
+    return 1
+  fi
 
-    if [[ -z "$msg" ]]; then
-        echo "📝 No commit message provided. Launching default commit editor..."
-        git commit
-        return $?
-    fi
+  # Copy to clipboard (macOS pbcopy, Wayland wl-copy, X11 xclip)
+  if command -v pbcopy &>/dev/null; then
+    printf '%s' "$trimmed_msg" | pbcopy
+    echo "📋 Commit message copied to clipboard (pbcopy)."
+  elif command -v wl-copy &>/dev/null; then
+    printf '%s' "$trimmed_msg" | wl-copy
+    echo "📋 Commit message copied to clipboard (wl-copy)."
+  elif command -v xclip &>/dev/null; then
+    printf '%s' "$trimmed_msg" | xclip -selection clipboard
+    echo "📋 Commit message copied to clipboard (xclip)."
+  else
+    echo "ℹ️  No clipboard tool found; skipping copy."
+  fi
 
-    # Trim leading/trailing whitespace
-    local trimmed_msg
-    trimmed_msg=$(echo "$msg" | awk '{$1=$1; print}')
-
-    if [[ -z "$trimmed_msg" ]]; then
-        echo "❌ Commit message cannot be empty after trimming."
-        return 1
-    fi
-
-    # Copy to clipboard
-    echo "$trimmed_msg" | pbcopy
-    echo "📋 Commit message copied to clipboard."
-
-    # Perform the commit with the message
-    git commit -m "$trimmed_msg"
+  # Perform the commit with the message
+  git commit -m "$trimmed_msg"
 }
 
 gsquashmergehere() {

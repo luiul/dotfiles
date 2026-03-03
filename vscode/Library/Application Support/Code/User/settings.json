@@ -227,7 +227,8 @@
         "**/node_modules/**",
         "**/dist/**",
         "**/build/**",
-        "**/site-packages"
+        "**/site-packages",
+        "**/.*",
     ],
     // === Python Virtual Environment ===
     "python.envFile": "${workspaceFolder}/.env",

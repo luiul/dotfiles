@@ -546,14 +546,76 @@ EOF
 }
 
 gpullall() {
+	local reset_diverged_branches_without_prompt=false
+
+	case "${1:-}" in
+	--reset | -r)
+		reset_diverged_branches_without_prompt=true
+		;;
+	"") ;;
+	*)
+		echo "Usage: gpullall [--reset|-r]"
+		return 1
+		;;
+	esac
+
 	for dir in */; do
-		if [ -d "$dir/.git" ]; then
-			echo "🔄 Updating repo: $dir"
-			(
-				cd "$dir" || continue
-				git fetch --prune && git pull --recurse-submodules
-			)
-		fi
+		[ -d "$dir/.git" ] || continue
+
+		echo "🔄 Updating repo: $dir"
+
+		(
+			cd "$dir" || exit 1
+
+			if ! git fetch --prune; then
+				echo "❌ Fetch failed: $dir"
+				exit 1
+			fi
+
+			current_branch_name="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+			upstream_branch_name="$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null)"
+
+			if [ -z "$upstream_branch_name" ]; then
+				echo "⚠️  No upstream configured for '$current_branch_name' in $dir — skipping"
+				exit 0
+			fi
+
+			if git pull --ff-only --recurse-submodules; then
+				git submodule update --init --recursive
+				echo "✅ Updated: $dir"
+				exit 0
+			fi
+
+			echo "⚠️  Cannot fast-forward '$current_branch_name' in $dir."
+			echo "    Local branch and '$upstream_branch_name' have diverged."
+
+			should_reset_diverged_branch="$reset_diverged_branches_without_prompt"
+
+			if [ "$should_reset_diverged_branch" != true ]; then
+				printf "Reset local branch '%s' to '%s'? This will discard local commits and changes [y/N]: " \
+					"$current_branch_name" "$upstream_branch_name"
+				read -r reset_confirmation
+
+				case "$reset_confirmation" in
+				[yY] | [yY][eE][sS])
+					should_reset_diverged_branch=true
+					;;
+				*)
+					should_reset_diverged_branch=false
+					;;
+				esac
+			fi
+
+			if [ "$should_reset_diverged_branch" = true ]; then
+				if git reset --hard "$upstream_branch_name" && git submodule update --init --recursive; then
+					echo "✅ Reset to remote: $dir"
+				else
+					echo "❌ Reset failed: $dir"
+				fi
+			else
+				echo "⏭️  Skipped reset: $dir"
+			fi
+		)
 	done
 }
 

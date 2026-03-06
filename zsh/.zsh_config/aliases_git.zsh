@@ -1,6 +1,6 @@
 # Basic Repository Information
-alias ghash="git rev-parse --short HEAD"      # Get the short hash of the current commit
-alias gst="git status -sb"                    # Show short, branch-based status
+alias ghash="git rev-parse --short HEAD" # Get the short hash of the current commit
+alias gst="git status -sb"               # Show short, branch-based status
 
 # Branch Management
 alias gco="git checkout"          # Checkout a branch
@@ -92,7 +92,7 @@ alias gunstage='git reset HEAD --' # usage: gunstage <file1> <file2> …
 # alias gresetprev='git reset --mixed HEAD~1'
 
 # Force-sync current branch to its upstream tip
-alias gresetremote='git fetch --prune && git reset --hard "$(git rev-parse --abbrev-ref --symbolic-full-name @{u})"'
+alias gresetremote='git fetch --prune && git reset --hard "$(git rev-parse --abbrev-ref --symbolic-full-name @{u})" && git submodule update --init --recursive'
 
 # Open pull request in browser
 alias gopenpr='gh pr view --web'

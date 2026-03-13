@@ -336,4 +336,7 @@
     "aws.cloudformation.telemetry.enabled": false,
     "aws.telemetry": false,
     "git.blame.statusBarItem.enabled": true,
+    "chat.viewSessions.orientation": "stacked",
+    "terminal.external.osxExec": "Ghostty.app",
+    "claudeCode.preferredLocation": "panel"
 }

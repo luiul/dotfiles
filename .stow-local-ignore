@@ -24,8 +24,6 @@ _darcs
 
 # Custom ignores
 
-settings.json
-keybindings.json
-ruff.toml
-
-.DS_Store
+\.DS_Store
+^/RectangleConfig.json
+^/brew$

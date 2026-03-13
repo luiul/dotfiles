@@ -2,6 +2,8 @@
 
 This repository contains my dotfiles. I use [GNU Stow](https://www.gnu.org/software/stow/) for managing them. The naming convention for GNU Stow is explained in this video: [GNU Stow Naming Convention](https://youtu.be/NoFiYOqnC4o?si=SlQi1YkUaC4GziYH&t=520).
 
+Clone to `~/projects/dotfiles`.
+
 ## Applying Changes with Stow
 
 GNU Stow manages your dotfiles by creating symlinks in your home directory.
@@ -12,10 +14,10 @@ Below is a reliable workflow for stowing, updating, and resolving conflicts safe
 From the root of this repository:
 
 ```sh
-stow .
+stow */
 ```
 
-This will (re)symlink all directories into your `$HOME` according to their internal folder structure.
+This will (re)symlink all packages into your `$HOME` according to their internal folder structure.
 
 ### Stow a Single Configuration Folder
 
@@ -27,7 +29,13 @@ Replace `<folder>` with the name of the folder you want to stow (e.g., `zsh`, `k
 
 ### Remove Symlinks (Unstow)
 
-To remove symlinks created by Stow:
+To remove all symlinks created by Stow:
+
+```sh
+stow -D */
+```
+
+To remove symlinks for a single package:
 
 ```sh
 stow -D <folder>
@@ -40,10 +48,10 @@ If Stow warns that a file already exists and is **not** a symlink (e.g., Karabin
 #### Option 1 — Adopt Existing Files into Your Dotfiles Repo
 
 ```sh
-stow --adopt <folder>
+stow --adopt */
 ```
 
-This moves existing files on your system into your dotfiles repo and replaces them with symlinks.
+This moves existing files on your system into your dotfiles repo and replaces them with symlinks. Run `git diff` afterwards to review any changes.
 
 #### Option 2 — Manually Remove or Back Up the Conflicting File
 

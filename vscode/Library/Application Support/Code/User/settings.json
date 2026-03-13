@@ -296,7 +296,7 @@
                 "match": ".*\\.sql(\\.jinja)?$",
                 "notMatch": ".*/dbt/.*",
                 "isAsync": false,
-                "cmd": "echo 'Running sqlfmt on: ${file}' && \"${env:HOME}/.local/bin/sqlfmt\" --line-length 120 \"${file}\""
+                "cmd": "echo 'Running sqlfmt on: ${file}' && $HOME/.local/bin/sqlfmt --line-length 120 '${file}'"
             }
         ]
     },
@@ -327,8 +327,6 @@
     //
     // Copilot and Chat - Experimental
     //
-    "github.copilot.chat.editor.temporalContext.enabled": true,
-    "github.copilot.chat.edits.temporalContext.enabled": true,
     // === Extensions/Tools ===
     "docker.extension.enableComposeLanguageServer": false,
     "parquet-viewer.format": "csv",
@@ -338,5 +336,6 @@
     "git.blame.statusBarItem.enabled": true,
     "chat.viewSessions.orientation": "stacked",
     "terminal.external.osxExec": "Ghostty.app",
-    "claudeCode.preferredLocation": "panel"
+    "claudeCode.preferredLocation": "panel",
+    "python.terminal.useEnvFile": false,
 }

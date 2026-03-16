@@ -303,7 +303,11 @@ connect_to_ec2() { # Connect to EC2 instance after logging into AWS SSO
 
 del() { # Move files to Trash instead of deleting them
 	for file in "$@"; do
-		mv -iv -- "$file" ~/.Trash/
+		local dest=~/.Trash/$(basename -- "$file")
+		if [ -e "$dest" ]; then
+			dest="${dest} $(date +%H-%M-%S)"
+		fi
+		mv -iv -- "$file" "$dest"
 	done
 }
 

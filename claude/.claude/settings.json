@@ -5,23 +5,43 @@
         "PreToolUse": [
             {
                 "matcher": "AskUserQuestion",
-                "hooks": [{"type": "command", "command": "~/.claude/notify.sh \"Claude has a question in $(basename $PWD)\""}]
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/notify.sh \"Claude has a question in $(basename $PWD)\""
+                    }
+                ]
             },
             {
                 "matcher": "ExitPlanMode",
-                "hooks": [{"type": "command", "command": "~/.claude/notify.sh \"Plan ready for review in $(basename $PWD)\""}]
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/notify.sh \"Plan ready for review in $(basename $PWD)\""
+                    }
+                ]
             }
         ],
         "PermissionRequest": [
             {
                 "matcher": "",
-                "hooks": [{"type": "command", "command": "~/.claude/notify.sh \"Permission required in $(basename $PWD)\""}]
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/notify.sh \"Permission required in $(basename $PWD)\""
+                    }
+                ]
             }
         ],
         "Stop": [
             {
                 "matcher": "",
-                "hooks": [{"type": "command", "command": "~/.claude/notify.sh \"Task completed in $(basename $PWD)\""}]
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/notify.sh \"Task completed in $(basename $PWD)\""
+                    }
+                ]
             }
         ]
     },

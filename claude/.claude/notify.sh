@@ -11,5 +11,4 @@ esac
 	if [ "$result" = "Show" ]; then
 		open -b "$APP"
 	fi
-) &
-disown
+) </dev/null >/dev/null 2>&1 &

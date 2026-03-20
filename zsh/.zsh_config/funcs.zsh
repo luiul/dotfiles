@@ -295,3 +295,74 @@ ssh_agent_start() {
 		echo "export SSH_AGENT_PID=$SSH_AGENT_PID"
 	} >|"$agent_env_file"
 }
+
+spellcheck() {
+	local audience="team"
+
+	# Parse -a flag
+	while getopts "a:" opt; do
+		case $opt in
+		a) audience="$OPTARG" ;;
+		esac
+	done
+	shift $((OPTIND - 1))
+	OPTIND=1
+
+	# Validate audience
+	case "$audience" in
+	team | leadership | cross-functional | external) ;;
+	*)
+		echo "Invalid audience: $audience" >&2
+		echo "Valid audiences: team, leadership, cross-functional, external" >&2
+		return 1
+		;;
+	esac
+
+	# Get message from args or stdin
+	local message
+	if (($# > 0)); then
+		message="$*"
+	else
+		message=$(cat)
+	fi
+
+	if [[ -z "$message" ]]; then
+		echo "Usage: spellcheck [-a audience] <message>" >&2
+		echo "       echo \"message\" | spellcheck [-a audience]" >&2
+		return 1
+	fi
+
+	local prompt
+	read -r -d '' prompt <<'PROMPT'
+You are a spell-checker for a senior data/analytics engineer striving for staff level.
+
+Rules:
+- Fix spelling, grammar, and light structural issues only
+- Preserve the author's voice and writing style — do not rewrite or rephrase beyond what's necessary
+- Verify data engineering and analytics terminology is used correctly (e.g., ETL vs ELT, data lakehouse, medallion architecture, SCD, idempotency, orchestration, lineage, observability, dbt, dimensional modeling, etc.)
+- Flag or fix any technically inaccurate statements related to data pipelines, warehousing, transformation, modeling, or analytics engineering
+- Ensure the language reflects the seniority and technical depth expected at a staff level
+- Output ONLY the corrected text — no explanations, no markdown fences, no preamble
+
+Audience tones:
+- team: Casual-professional — Slack messages to your team
+- leadership: Polished and concise — messages to managers/directors
+- cross-functional: Clear, minimal jargon — stakeholders outside the team
+- external: Formal — vendors, partners, or clients
+PROMPT
+
+	local result
+	result=$(echo "$message" | claude -p "$prompt
+
+Audience: $audience
+
+Correct the following message:")
+
+	if [[ $? -ne 0 ]]; then
+		echo "Error: claude command failed" >&2
+		return 1
+	fi
+
+	echo "$result"
+	echo -n "$result" | pbcopy
+}

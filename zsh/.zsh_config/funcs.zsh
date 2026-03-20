@@ -299,7 +299,7 @@ ssh_agent_start() {
 spellcheck() {
 	local audience="team"
 	local copy_variant="polished"
-	local model="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-claude-haiku-4-5-20251001}"
+	local model="$ANTHROPIC_DEFAULT_HAIKU_MODEL"
 
 	# Parse flags
 	while getopts "a:c:m:h" opt; do
@@ -308,9 +308,9 @@ spellcheck() {
 		c) copy_variant="$OPTARG" ;;
 		m)
 			case "$OPTARG" in
-			haiku) model="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-claude-haiku-4-5-20251001}" ;;
-			sonnet) model="${ANTHROPIC_DEFAULT_SONNET_MODEL:-claude-sonnet-4-6}" ;;
-			opus) model="${ANTHROPIC_DEFAULT_OPUS_MODEL:-claude-opus-4-6}" ;;
+			haiku) model="$ANTHROPIC_DEFAULT_HAIKU_MODEL" ;;
+			sonnet) model="$ANTHROPIC_DEFAULT_SONNET_MODEL" ;;
+			opus) model="$ANTHROPIC_DEFAULT_OPUS_MODEL" ;;
 			*) model="$OPTARG" ;;
 			esac
 			;;
@@ -425,7 +425,7 @@ PROMPT
 	trap "kill $spinner_pid 2>/dev/null; wait $spinner_pid 2>/dev/null" EXIT INT TERM
 
 	local raw_result
-	raw_result=$(echo "$message" | claude -p --model "$model" "$prompt
+	raw_result=$(echo "$message" | claude --model "$model" -p "$prompt
 
 Audience: $audience
 

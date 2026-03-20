@@ -298,11 +298,27 @@ ssh_agent_start() {
 
 spellcheck() {
 	local audience="team"
+	local copy_variant="polished"
 
-	# Parse -a flag
-	while getopts "a:" opt; do
+	# Parse flags
+	while getopts "a:c:h" opt; do
 		case $opt in
 		a) audience="$OPTARG" ;;
+		c) copy_variant="$OPTARG" ;;
+		h)
+			cat >&2 <<'EOF'
+Usage: spellcheck [-a audience] [-c variant] [-h] <message>
+       echo "message" | spellcheck [-a audience] [-c variant]
+
+Flags:
+  -a <audience>   Who you're writing to (default: team)
+                  Options: team, leadership, cross-functional, external
+  -c <variant>    Which variant to copy to clipboard (default: polished)
+                  Options: casual, concise, polished, verbose
+  -h              Print this help text
+EOF
+			return 0
+			;;
 		esac
 	done
 	shift $((OPTIND - 1))
@@ -318,6 +334,26 @@ spellcheck() {
 		;;
 	esac
 
+	# Validate copy variant
+	case "$copy_variant" in
+	casual | concise | polished | verbose) ;;
+	*)
+		echo "Invalid variant: $copy_variant" >&2
+		echo "Valid variants: casual, concise, polished, verbose" >&2
+		return 1
+		;;
+	esac
+
+	# Check dependencies
+	if ! command -v claude &>/dev/null; then
+		echo "Error: claude CLI not found" >&2
+		return 1
+	fi
+	if ! command -v python3 &>/dev/null; then
+		echo "Error: python3 not found" >&2
+		return 1
+	fi
+
 	# Get message from args or stdin
 	local message
 	if (($# > 0)); then
@@ -327,8 +363,7 @@ spellcheck() {
 	fi
 
 	if [[ -z "$message" ]]; then
-		echo "Usage: spellcheck [-a audience] <message>" >&2
-		echo "       echo \"message\" | spellcheck [-a audience]" >&2
+		echo "Usage: spellcheck [-a audience] [-c variant] [-h] <message>" >&2
 		return 1
 	fi
 
@@ -342,27 +377,113 @@ Rules:
 - Verify data engineering and analytics terminology is used correctly (e.g., ETL vs ELT, data lakehouse, medallion architecture, SCD, idempotency, orchestration, lineage, observability, dbt, dimensional modeling, etc.)
 - Flag or fix any technically inaccurate statements related to data pipelines, warehousing, transformation, modeling, or analytics engineering
 - Ensure the language reflects the seniority and technical depth expected at a staff level
-- Output ONLY the corrected text — no explanations, no markdown fences, no preamble
 
 Audience tones:
 - team: Casual-professional — Slack messages to your team
 - leadership: Polished and concise — messages to managers/directors
 - cross-functional: Clear, minimal jargon — stakeholders outside the team
 - external: Formal — vendors, partners, or clients
+
+Return a JSON object with exactly 4 keys: "casual", "concise", "polished", "verbose".
+Each value is the corrected message in that tone variant.
+- casual: Friendly, relaxed but correct
+- concise: Shortest version that keeps the full meaning
+- polished: Professional and well-structured
+- verbose: Thorough, detailed, and formal
+
+Output ONLY the raw JSON object — no explanations, no markdown fences, no preamble.
 PROMPT
 
-	local result
-	result=$(echo "$message" | claude -p "$prompt
+	# Loading spinner
+	local spinner_pid
+	(
+		local frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+		local i=0
+		while true; do
+			printf '\r  %s Checking with Claude...' "${frames[$((i % ${#frames[@]} + 1))]}" >&2
+			i=$((i + 1))
+			sleep 0.1
+		done
+	) &
+	spinner_pid=$!
+
+	trap "kill $spinner_pid 2>/dev/null; wait $spinner_pid 2>/dev/null" EXIT INT TERM
+
+	local raw_result
+	raw_result=$(echo "$message" | claude -p "$prompt
 
 Audience: $audience
 
 Correct the following message:")
+	local exit_code=$?
 
-	if [[ $? -ne 0 ]]; then
+	kill $spinner_pid 2>/dev/null
+	wait $spinner_pid 2>/dev/null
+	trap - EXIT INT TERM
+	printf '\r\033[K' >&2
+
+	if [[ $exit_code -ne 0 ]]; then
 		echo "Error: claude command failed" >&2
 		return 1
 	fi
 
-	echo "$result"
-	echo -n "$result" | pbcopy
+	# Strip markdown fences if present
+	raw_result=$(echo "$raw_result" | sed 's/^```json//;s/^```//')
+
+	# Parse JSON into shell variables
+	local parsed
+	parsed=$(python3 -c "
+import json, sys, shlex
+data = json.loads(sys.stdin.read())
+for key in ('casual', 'concise', 'polished', 'verbose'):
+    print(f'{key}={shlex.quote(data[key])}')
+" <<<"$raw_result" 2>/dev/null)
+
+	if [[ $? -ne 0 ]]; then
+		echo "Error: failed to parse JSON response" >&2
+		echo "Raw response:" >&2
+		echo "$raw_result" >&2
+		return 1
+	fi
+
+	eval "$parsed"
+
+	# Display variants
+	local bold=$(tput bold)
+	local reset=$(tput sgr0)
+	local green=$(tput setaf 2)
+	local yellow=$(tput setaf 3)
+	local cyan=$(tput setaf 6)
+	local magenta=$(tput setaf 5)
+	local dim=$(tput dim)
+	local hr="${dim}$(printf '%.0s─' {1..60})${reset}"
+
+	local copied_label=""
+
+	for variant in casual concise polished verbose; do
+		case $variant in
+		casual) local color=$green ;;
+		concise) local color=$yellow ;;
+		polished) local color=$cyan ;;
+		verbose) local color=$magenta ;;
+		esac
+
+		if [[ "$variant" == "$copy_variant" ]]; then
+			copied_label=" ${dim}[copied]${reset}"
+		else
+			copied_label=""
+		fi
+
+		echo ""
+		echo "${color}${bold}${variant:u}${reset}${copied_label}"
+		echo "$hr"
+		echo "${(P)variant}"
+	done
+
+	echo ""
+
+	# Copy selected variant to clipboard
+	local to_copy="${(P)copy_variant}"
+	echo -n "$to_copy" | pbcopy
+	echo "${dim}Copied ${bold}${copy_variant}${reset}${dim} variant to clipboard.${reset}"
 }

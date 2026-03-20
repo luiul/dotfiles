@@ -299,14 +299,21 @@ ssh_agent_start() {
 spellcheck() {
 	local audience="team"
 	local copy_variant="polished"
-	local model="claude-haiku-4-5-20251001"
+	local model="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-claude-haiku-4-5-20251001}"
 
 	# Parse flags
 	while getopts "a:c:m:h" opt; do
 		case $opt in
 		a) audience="$OPTARG" ;;
 		c) copy_variant="$OPTARG" ;;
-		m) model="$OPTARG" ;;
+		m)
+			case "$OPTARG" in
+			haiku) model="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-claude-haiku-4-5-20251001}" ;;
+			sonnet) model="${ANTHROPIC_DEFAULT_SONNET_MODEL:-claude-sonnet-4-6}" ;;
+			opus) model="${ANTHROPIC_DEFAULT_OPUS_MODEL:-claude-opus-4-6}" ;;
+			*) model="$OPTARG" ;;
+			esac
+			;;
 		h)
 			cat >&2 <<'EOF'
 Usage: spellcheck [-a audience] [-c variant] [-m model] [-h] <message>
@@ -317,7 +324,9 @@ Flags:
                   Options: team, leadership, cross-functional, external
   -c <variant>    Which variant to copy to clipboard (default: polished)
                   Options: casual, concise, polished, verbose
-  -m <model>      Claude model to use (default: claude-haiku-4-5-20251001)
+  -m <model>      Claude model (default: haiku)
+                  Shortcuts: haiku, sonnet, opus
+                  Or pass a full model ID directly
   -h              Print this help text
 EOF
 			return 0

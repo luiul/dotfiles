@@ -30,13 +30,14 @@ Follow conventional commit style:
 
 - **Assignee**: always assign to me
 - **Labels**: always add `squad: scm-analytics-engineers` and `tribe: intl-scm-analytics`
+- No emoji prefixes in title or body
+- No Claude Code links or attribution
+- Omit empty sections rather than writing "N/A"
+- Focus on the "why", not a list of every file changed
 
 ## Commits
 
+- Complete all file changes before staging or committing — let the user review first
 - Use conventional commits: `type: short description` (e.g. `fix: venv info display`, `feat: add terminal keybindings`)
 - Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `style`, `perf`, `ci`, `test`
-- Do NOT add `Co-Authored-By` lines to commit messages
-- Do NOT add Claude Code links or attribution to PR descriptions
-- No emoji prefixes in PR titles or body
-- Omit empty sections (e.g. Test Plan, Key Changes) rather than writing "N/A"
-- Don't list every file changed — focus on the "why"
+- Do NOT add `Co-Authored-By` lines

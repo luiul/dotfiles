@@ -25,7 +25,7 @@ _darcs
 # Custom ignores
 
 \.DS_Store
-^/RectangleConfig.json
+^/rectangle
 ^/CLAUDE.md
 ^/setup\.sh
 ^/\.githooks

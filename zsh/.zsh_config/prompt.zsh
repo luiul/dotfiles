@@ -24,7 +24,7 @@ my_prompt() {
     local prompt=""
     local venv_info=""
 
-    if [[ -n "$VIRTUAL_ENV_PROMPT" ]]; then
+    if [[ -n "$VIRTUAL_ENV" ]] && [[ "$PWD" = "$(dirname "$VIRTUAL_ENV")"* ]]; then
         local venv_name
         venv_name="$(echo "$VIRTUAL_ENV_PROMPT" | sed -E 's/^\((.*)\)[[:space:]]*$/\1/')"
         venv_info=" %F{149}($venv_name)%f"

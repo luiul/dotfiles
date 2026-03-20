@@ -24,7 +24,6 @@
     },
     "workbench.tree.enableStickyScroll": true,
     "workbench.sideBar.location": "right",
-    "workbench.activityBar.location": "top",
     "workbench.editor.alwaysShowEditorActions": true,
     // === Editor Settings ===
     "editor.fontFamily": "Menlo, DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
@@ -338,4 +337,5 @@
     "terminal.external.osxExec": "Ghostty.app",
     "claudeCode.preferredLocation": "panel",
     "python.terminal.useEnvFile": false,
+    "workbench.activityBar.location": "top",
 }

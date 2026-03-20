@@ -299,22 +299,25 @@ ssh_agent_start() {
 spellcheck() {
 	local audience="team"
 	local copy_variant="polished"
+	local model="claude-haiku-4-5-20251001"
 
 	# Parse flags
-	while getopts "a:c:h" opt; do
+	while getopts "a:c:m:h" opt; do
 		case $opt in
 		a) audience="$OPTARG" ;;
 		c) copy_variant="$OPTARG" ;;
+		m) model="$OPTARG" ;;
 		h)
 			cat >&2 <<'EOF'
-Usage: spellcheck [-a audience] [-c variant] [-h] <message>
-       echo "message" | spellcheck [-a audience] [-c variant]
+Usage: spellcheck [-a audience] [-c variant] [-m model] [-h] <message>
+       echo "message" | spellcheck [-a audience] [-c variant] [-m model]
 
 Flags:
   -a <audience>   Who you're writing to (default: team)
                   Options: team, leadership, cross-functional, external
   -c <variant>    Which variant to copy to clipboard (default: polished)
                   Options: casual, concise, polished, verbose
+  -m <model>      Claude model to use (default: claude-haiku-4-5-20251001)
   -h              Print this help text
 EOF
 			return 0
@@ -363,7 +366,7 @@ EOF
 	fi
 
 	if [[ -z "$message" ]]; then
-		echo "Usage: spellcheck [-a audience] [-c variant] [-h] <message>" >&2
+		echo "Usage: spellcheck [-a audience] [-c variant] [-m model] [-h] <message>" >&2
 		return 1
 	fi
 
@@ -413,7 +416,7 @@ PROMPT
 	trap "kill $spinner_pid 2>/dev/null; wait $spinner_pid 2>/dev/null" EXIT INT TERM
 
 	local raw_result
-	raw_result=$(echo "$message" | claude -p "$prompt
+	raw_result=$(echo "$message" | claude -p --model "$model" "$prompt
 
 Audience: $audience
 

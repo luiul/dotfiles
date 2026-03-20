@@ -473,6 +473,9 @@ for key in ('casual', 'concise', 'polished', 'verbose'):
 	local dim=$(tput dim)
 	local hr="${dim}$(printf '%.0s─' {1..60})${reset}"
 
+	echo ""
+	echo "${dim}audience: ${reset}${bold}${audience}${reset}  ${dim}model: ${reset}${bold}${model}${reset}"
+
 	local copied_label=""
 
 	for variant in casual concise polished verbose; do

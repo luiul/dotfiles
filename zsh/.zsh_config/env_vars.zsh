@@ -13,6 +13,11 @@ export PYLINTRC=~/.pylintrc
 # Pip Configuration
 export PIP_CONFIG_FILE=~/.config/pip/pip.conf
 
+# Anthropic / Claude CLI
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="eu.anthropic.claude-sonnet-4-6"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="eu.anthropic.claude-opus-4-6-v1"
+
 # Tardis
 export SF_ACCOUNT="oo69432.eu-west-1"
 export SF_USER='luis.aceituno@hellofresh.com'

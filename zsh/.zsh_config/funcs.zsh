@@ -394,6 +394,9 @@ Each value is the corrected message in that tone variant.
 Output ONLY the raw JSON object — no explanations, no markdown fences, no preamble.
 PROMPT
 
+	# Suppress zsh job control messages for background spinner
+	setopt LOCAL_OPTIONS NO_MONITOR
+
 	# Loading spinner
 	local spinner_pid
 	(

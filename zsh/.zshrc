@@ -1,35 +1,21 @@
-# ⚙️ Loading Zsh configuration files from ~/.zsh_config
-echo "📦 Loading Zsh configuration files..."
-
 zsh_config_dir="$HOME/.zsh_config"
 
-# Check if the directory exists
 if [[ ! -d "$zsh_config_dir" ]]; then
-  echo "❌ Config directory not found: $zsh_config_dir"
+  echo "Config directory not found: $zsh_config_dir" >&2
   return 1
 fi
 
-# Enable nullglob so the for-loop doesn't run if no .zsh files exist
 setopt nullglob
 
 zsh_files=("$zsh_config_dir"/*.zsh)
 
-# Check if any files were found
 if [[ ${#zsh_files[@]} -eq 0 ]]; then
-  echo "❗ No .zsh files found in $zsh_config_dir"
+  echo "No .zsh files found in $zsh_config_dir" >&2
 else
   for file in "${zsh_files[@]}"; do
-    # Source the file
-    source "$file"
-
-    # Check if the file was loaded successfully
-    if [[ $? -ne 0 ]]; then
-      printf "❌ Error loading: %s\n" "$file"
-    fi
+    source "$file" || printf "Error loading: %s\n" "$file" >&2
   done
 fi
-
-echo "✅ Zsh configuration files loaded."
 
 # Start or attach to ssh-agent (function lives in ~/.zsh_config/funcs.zsh)
 if typeset -f ssh_agent_start >/dev/null 2>&1; then
@@ -48,8 +34,10 @@ znap source marlonrichert/zsh-autocomplete
 eval "$(uv generate-shell-completion zsh)"
 eval "$(uvx --generate-shell-completion zsh)"
 
-# Automatically activate virtualenvs
-activate
+# Activate virtualenv if one exists in the current directory
+if [[ -f ".venv/bin/activate" || -f "venv/bin/activate" ]]; then
+  activate
+fi
 
 # Run the following command at the end of the shell config file
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh

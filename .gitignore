@@ -2,3 +2,4 @@
 # .zwc files are Zsh compiled files, which are generated to speed up the loading of Zsh scripts.
 # They are typically generated after calling the `zsh` command or when Zsh scripts are sourced.
 **/*.zwc
+.DS_Store

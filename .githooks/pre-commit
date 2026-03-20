@@ -1,0 +1,6 @@
+#!/bin/bash
+# Auto-update Brewfile before committing if brew packages changed
+if command -v brew &>/dev/null; then
+    brew bundle dump --file=brew/Brewfile --force
+    git add brew/Brewfile
+fi

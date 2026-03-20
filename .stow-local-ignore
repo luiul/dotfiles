@@ -26,4 +26,7 @@ _darcs
 
 \.DS_Store
 ^/RectangleConfig.json
+^/CLAUDE.md
+^/setup\.sh
+^/\.githooks
 ^/brew$

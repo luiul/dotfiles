@@ -1,72 +1,74 @@
 # My Dotfiles
 
-This repository contains my dotfiles. I use [GNU Stow](https://www.gnu.org/software/stow/) for managing them. The naming convention for GNU Stow is explained in this video: [GNU Stow Naming Convention](https://youtu.be/NoFiYOqnC4o?si=SlQi1YkUaC4GziYH&t=520).
+This repository contains my dotfiles managed with [GNU Stow](https://www.gnu.org/software/stow/). Clone to `~/dotfiles`.
 
-Clone to `~/dotfiles`.
-
-## Applying Changes with Stow
-
-GNU Stow manages your dotfiles by creating symlinks in your home directory.
-Below is a reliable workflow for stowing, updating, and resolving conflicts safely.
-
-### Apply or Update All Dotfiles
-
-From the root of this repository:
+## Quick Start
 
 ```sh
-stow */
+./setup.sh
 ```
 
-This will (re)symlink all packages into your `$HOME` according to their internal folder structure.
+This will:
 
-### Stow a Single Configuration Folder
+1. Install Homebrew (if missing) and packages from the Brewfile
+2. Stow all dotfile packages into `$HOME`
+3. Install the pre-commit hook (secret detection)
+4. Register launchd agents (weekly Brewfile dump)
+
+## Stow Packages
+
+Each top-level directory is a stow package that mirrors `$HOME`:
+
+`borders`, `brew`, `claude`, `ghostty`, `karabiner`, `pip`, `pylint`, `rectangle`, `ruff`, `sqlfluff`, `vscode`, `zsh`
+
+Non-stow directories: `cron` (launch agents and scheduled scripts)
+
+### Apply or Update All
 
 ```sh
-stow <folder>
+stow --ignore='^cron$' */
 ```
 
-Replace `<folder>` with the name of the folder you want to stow (e.g., `zsh`, `karabiner`, `vscode`, etc.).
-
-### Remove Symlinks (Unstow)
-
-To remove all symlinks created by Stow:
+### Stow a Single Package
 
 ```sh
-stow -D */
+stow <package>
 ```
 
-To remove symlinks for a single package:
+### Remove Symlinks
 
 ```sh
-stow -D <folder>
+stow -D */        # all packages
+stow -D <package> # single package
 ```
 
 ### Handling Conflicts
 
-If Stow warns that a file already exists and is **not** a symlink (e.g., Karabiner, VSCode settings, etc.), you have two options:
-
-#### Option 1 — Adopt Existing Files into Your Dotfiles Repo
+If Stow warns a file already exists and is not a symlink:
 
 ```sh
+# Option 1: adopt existing files into the repo
 stow --adopt */
-```
 
-This moves existing files on your system into your dotfiles repo and replaces them with symlinks. Run `git diff` afterwards to review any changes.
-
-#### Option 2 — Manually Remove or Back Up the Conflicting File
-
-If you prefer to keep the existing file as a backup:
-
-```sh
+# Option 2: back up and re-stow
 mv ~/.config/<path>/<file> ~/.config/<path>/<file>.backup
-stow <folder>
+stow <package>
 ```
-
-### Tips
-
-- Always run Stow **from the root** of the dotfiles repository.
-- Each top-level folder (e.g., `zsh/`, `karabiner/`, `vscode/`) should mirror your `$HOME` structure inside it.
 
 ## Homebrew
 
-Use `brew bundle dump --file=brew/Brewfile --force` to keep the Brewfile updated. To restore the Brewfile, use `brew bundle --file=brew/Brewfile`.
+The Brewfile is automatically updated weekly via a launchd agent (`cron/com.dotfiles.brew-dump.plist`). To manually update:
+
+```sh
+brew bundle dump --file=brew/Brewfile --force
+```
+
+To restore packages from the Brewfile:
+
+```sh
+brew bundle --file=brew/Brewfile
+```
+
+## Pre-commit Hook
+
+A secret detection hook scans staged diffs for API keys, tokens, and private keys. Bypass with `--no-verify` for false positives.

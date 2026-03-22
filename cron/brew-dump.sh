@@ -4,7 +4,7 @@ set -euo pipefail
 
 eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv 2>/dev/null)" || exit 0
 
-DOTFILES="$HOME/dotfiles"
+DOTFILES="$(cd "$(dirname "$0")/.." && pwd)"
 BREWFILE="$DOTFILES/brew/Brewfile"
 
 brew bundle dump --file="$BREWFILE" --force

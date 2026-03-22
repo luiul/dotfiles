@@ -4,12 +4,7 @@ set -euo pipefail
 
 SECRETS_PATTERN='AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}|sk-[A-Za-z0-9]{20,}|xox[bpsar]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|[aA][pP][iI][_-]?[kK][eE][yY][[:space:]]*[:=][[:space:]]*[A-Za-z0-9/+=_-]{16,}|[aA][pP][iI][_-]?[sS][eE][cC][rR][eE][tT][[:space:]]*[:=][[:space:]]*[A-Za-z0-9/+=_-]{16,}|[sS][eE][cC][rR][eE][tT][_-]?[kK][eE][yY][[:space:]]*[:=][[:space:]]*[A-Za-z0-9/+=_-]{16,}'
 
-staged=$(git diff --cached --name-only --diff-filter=ACM)
-if [[ -z "$staged" ]]; then
-	exit 0
-fi
-
-matches=$(echo "$staged" | xargs grep -En -e "$SECRETS_PATTERN" 2>/dev/null || true)
+matches=$(git diff --cached -U0 --diff-filter=ACM | grep -En -e "$SECRETS_PATTERN" 2>/dev/null || true)
 if [[ -n "$matches" ]]; then
 	echo "Possible secrets detected in staged files:"
 	echo ""

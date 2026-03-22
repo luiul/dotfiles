@@ -3,3 +3,4 @@
 # They are typically generated after calling the `zsh` command or when Zsh scripts are sourced.
 **/*.zwc
 .DS_Store
+.claude/

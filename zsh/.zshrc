@@ -44,7 +44,9 @@ source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 
 # Set up fzf key bindings and fuzzy completion
 source <(fzf --zsh)
-eval "$(zoxide init --cmd cd zsh)"
 
 # zstyle ':completion:*' list-prompt ''
 # zstyle ':completion:*' select-prompt ''
+
+# zoxide must be the last thing initialized
+eval "$(zoxide init --cmd cd zsh)"

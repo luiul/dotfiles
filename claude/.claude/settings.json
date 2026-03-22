@@ -45,6 +45,9 @@
             }
         ]
     },
+    "attribution": {
+        "commit": ""
+    },
     "env": {
         "AWS_PROFILE": "sso-bedrock",
         "AWS_REGION": "eu-west-1",

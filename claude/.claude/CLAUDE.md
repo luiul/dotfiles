@@ -4,10 +4,10 @@
 
 Use the format: `type/TICKET_description`
 
-- Types: major, minor, patch, issue, hotfix, feature, release
+- Types (must be one of): `major`, `minor`, `patch`, `issue`, `hotfix`, `feature`, `release`
 - Ticket format: `ABC-123` (uppercase letters, dash, numbers)
 - Description: lowercase, words separated by hyphens
-- Always ask for the Jira ticket. If none is provided, default to `ISA-1234`
+- Ask for the Jira ticket. Only include the ticket in the branch name if one is provided.
 - Examples: `feature/ISA-1234_add-login`, `hotfix/ISA-567_fix-null-pointer`
 
 ## Pull Requests
@@ -25,7 +25,7 @@ Follow conventional commit style:
   - List of specific changes made
 
   ## Test Plan
-  - How the changes were tested
+  - [ ] How the changes were tested
   ```
 
 - **Assignee**: always assign to me

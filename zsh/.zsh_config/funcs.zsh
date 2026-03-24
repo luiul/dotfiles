@@ -405,7 +405,7 @@ Each value is the corrected message in that tone variant.
 
 Use markdown formatting where appropriate:
 - Wrap code references (variable names, function names, file paths, CLI commands, SQL keywords, etc.) in inline backticks (e.g., `item`, `dbt run`, `SELECT`)
-- Use fenced code blocks for multi-line code or command snippets — do not specify a language
+- Do NOT use fenced code blocks (triple backticks) — they break JSON parsing. Leave multi-line code or command snippets as-is
 - Convert URLs into meaningful and descriptive markdown hyperlinks — use the page title or a clear description of the destination, never the raw URL as link text
   Example: https://docs.getdbt.com/docs/build/metrics → [dbt Metrics documentation](https://docs.getdbt.com/docs/build/metrics)
 

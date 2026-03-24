@@ -403,6 +403,12 @@ Each value is the corrected message in that tone variant.
 - polished: Professional and well-structured
 - verbose: Thorough, detailed, and formal
 
+Use markdown formatting where appropriate:
+- Wrap code references (variable names, function names, file paths, CLI commands, SQL keywords, etc.) in inline backticks (e.g., `item`, `dbt run`, `SELECT`)
+- Use fenced code blocks for multi-line code or command snippets — do not specify a language
+- Convert URLs into meaningful and descriptive markdown hyperlinks — use the page title or a clear description of the destination, never the raw URL as link text
+  Example: https://docs.getdbt.com/docs/build/metrics → [dbt Metrics documentation](https://docs.getdbt.com/docs/build/metrics)
+
 Output ONLY the raw JSON object — no explanations, no markdown fences, no preamble.
 PROMPT
 
@@ -477,7 +483,6 @@ for key in ('casual', 'concise', 'polished', 'verbose'):
 	echo "${dim}audience: ${reset}${bold}${audience}${reset}  ${dim}model: ${reset}${bold}${model}${reset}"
 
 	local copied_label=""
-
 	for variant in casual concise polished verbose; do
 		case $variant in
 		casual) local color=$green ;;

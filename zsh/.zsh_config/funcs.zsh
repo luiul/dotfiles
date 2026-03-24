@@ -455,7 +455,32 @@ Correct the following message:")
 	local parsed
 	parsed=$(python3 -c "
 import json, sys, shlex
-data = json.loads(sys.stdin.read())
+
+text = sys.stdin.read().strip()
+
+# Fix literal newlines inside JSON string values (invalid JSON)
+fixed = []
+in_string = False
+i = 0
+while i < len(text):
+    c = text[i]
+    if c == '\\\\' and in_string:
+        fixed.append(c)
+        i += 1
+        if i < len(text):
+            fixed.append(text[i])
+        i += 1
+        continue
+    if c == '\"':
+        in_string = not in_string
+        fixed.append(c)
+    elif c == '\n' and in_string:
+        fixed.append('\\\\n')
+    else:
+        fixed.append(c)
+    i += 1
+
+data = json.loads(''.join(fixed))
 for key in ('casual', 'concise', 'polished', 'verbose'):
     print(f'{key}={shlex.quote(data[key])}')
 " <<<"$raw_result" 2>/dev/null)

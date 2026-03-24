@@ -310,7 +310,6 @@
             "workbench.action.terminal.new"
         ]
     },
-    "window.commandCenter": false,
     "diffEditor.ignoreTrimWhitespace": true,
     "dbt.enableNewLineagePanel": true,
     //
@@ -338,4 +337,5 @@
     "claudeCode.preferredLocation": "panel",
     "python.terminal.useEnvFile": false,
     "workbench.activityBar.location": "top",
+    "window.commandCenter": false,
 }

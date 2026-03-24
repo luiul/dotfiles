@@ -86,12 +86,25 @@ activate() {
 			local activate_path="$current_dir/$venv_dir/bin/activate"
 			if [ -f "$activate_path" ]; then
 				source "$activate_path"
+
+				local dim=$(tput dim)
+				local bold=$(tput bold)
+				local reset=$(tput sgr0)
+				local green=$(tput setaf 2)
+				local venv_path="$current_dir/$venv_dir"
+				local py_version=$(python3 --version 2>/dev/null | awk '{print $2}')
+				local pkg_count=$(pip list --format=freeze 2>/dev/null | wc -l | tr -d ' ')
+
+				echo ""
+				echo "${green}${bold}activated${reset} ${dim}${venv_path/$HOME/~}${reset}"
+				echo "${dim}python ${reset}${bold}${py_version}${reset}  ${dim}packages ${reset}${bold}${pkg_count}${reset}"
 				return 0
 			fi
 		done
 		current_dir=$(dirname "$current_dir")
 	done
 
+	echo "No virtual environment found" >&2
 	return 1
 }
 

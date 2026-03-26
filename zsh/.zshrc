@@ -31,24 +31,19 @@ source ~/repos/znap/znap.zsh # Start Znap
 # Install plugins
 znap source marlonrichert/zsh-autocomplete
 
-eval "$(uv generate-shell-completion zsh)"
-eval "$(uvx --generate-shell-completion zsh)"
-
-# Activate virtualenv if one exists in the current directory
-if [[ -f ".venv/bin/activate" || -f "venv/bin/activate" ]]; then
-	activate
-fi
+znap eval uv  'uv generate-shell-completion zsh'
+znap eval uvx 'uvx --generate-shell-completion zsh'
 
 # Run the following command at the end of the shell config file
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 
 # Set up fzf key bindings and fuzzy completion
-source <(fzf --zsh)
+znap eval fzf 'fzf --zsh'
 
 # zstyle ':completion:*' list-prompt ''
 # zstyle ':completion:*' select-prompt ''
 
-if command -v wt >/dev/null 2>&1; then eval "$(command wt config shell init zsh)"; fi
+if command -v wt >/dev/null 2>&1; then znap eval wt 'command wt config shell init zsh'; fi
 
 # zoxide must be the last thing initialized
-eval "$(zoxide init --cmd cd zsh)"
+znap eval zoxide 'zoxide init --cmd cd zsh'

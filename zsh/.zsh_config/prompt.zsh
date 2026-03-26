@@ -7,17 +7,6 @@ setopt PROMPT_SUBST
 # Prevent venvs from modifying PROMPT (handled manually in my_prompt)
 export VIRTUAL_ENV_DISABLE_PROMPT=1
 
-# Function to check Git repository changes
-check_git_changes() {
-    if ! git diff --quiet || git ls-files --others --exclude-standard | grep -q .; then
-        echo "unstaged"
-    elif ! git diff --cached --quiet; then
-        echo "staged"
-    else
-        echo "clean"
-    fi
-}
-
 # Prompt function to dynamically set the prompt
 my_prompt() {
     local exit_code=$1
@@ -25,53 +14,91 @@ my_prompt() {
     local venv_info=""
 
     if [[ -n "$VIRTUAL_ENV" ]] && [[ "$PWD" = "$(dirname "$VIRTUAL_ENV")"* ]]; then
-        local venv_name
-        venv_name="$(echo "$VIRTUAL_ENV_PROMPT" | sed -E 's/^\((.*)\)[[:space:]]*$/\1/')"
+        local venv_name="${VIRTUAL_ENV_PROMPT//[()]/}"
+        venv_name="${venv_name%% }"
         venv_info=" %F{149}($venv_name)%f"
     fi
 
     # Base (time + cwd)
     prompt="%F{245}╭─%f %F{245}[%D{%H:%M:%S}]%f %F{183}%~%f"
 
-    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        # Try to get a branch, otherwise show detached ref
-        local git_ref_display=""
-        local branch_name
-        branch_name="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+    # Single git status call replaces ~19 separate git commands
+    local git_status
+    if git_status="$(git status --porcelain=v2 --branch 2>/dev/null)"; then
 
-        if [[ -n "$branch_name" ]]; then
-            git_ref_display="$branch_name"
-        else
-            # Prefer exact tag, else short SHA
-            local tag sha
+        # Parse branch headers
+        local branch_head="" branch_oid="" branch_ab=""
+        local header_lines=("${(f)git_status}")
+        local line
+        for line in "${header_lines[@]}"; do
+            case "$line" in
+                '# branch.head '*)  branch_head="${line#\# branch.head }" ;;
+                '# branch.oid '*)   branch_oid="${line#\# branch.oid }" ;;
+                '# branch.ab '*)    branch_ab="${line#\# branch.ab }" ;;
+                [12u\?]\ *)         break ;;
+            esac
+        done
+
+        # Determine ref display
+        local git_ref_display=""
+        if [[ "$branch_head" == "(detached)" ]]; then
+            local tag
             tag="$(git describe --tags --exact-match 2>/dev/null || true)"
             if [[ -n "$tag" ]]; then
                 git_ref_display="detached@$tag"
             else
-                sha="$(git rev-parse --short HEAD 2>/dev/null || true)"
-                [[ -n "$sha" ]] && git_ref_display="detached@$sha"
+                git_ref_display="detached@${branch_oid[1,7]}"
+            fi
+        elif [[ -n "$branch_head" ]]; then
+            git_ref_display="$branch_head"
+        fi
+
+        # Count file statuses from porcelain lines
+        local staged_added=0 staged_modified=0 staged_deleted=0
+        local unstaged_modified=0 unstaged_deleted=0 untracked=0
+        local has_unstaged=0 has_staged=0
+
+        for line in "${header_lines[@]}"; do
+            case "$line" in
+                '? '*)
+                    (( untracked++ ))
+                    has_unstaged=1
+                    ;;
+                '1 '* | '2 '*)
+                    local xy="${line:2:2}"
+                    local x="${xy[1]}" y="${xy[2]}"
+                    case "$x" in
+                        A|R) (( staged_added++ ));    has_staged=1 ;;
+                        M)   (( staged_modified++ )); has_staged=1 ;;
+                        D)   (( staged_deleted++ ));   has_staged=1 ;;
+                    esac
+                    case "$y" in
+                        M) (( unstaged_modified++ )); has_unstaged=1 ;;
+                        D) (( unstaged_deleted++ ));   has_unstaged=1 ;;
+                    esac
+                    ;;
+                'u '*)
+                    (( unstaged_modified++ ))
+                    has_unstaged=1
+                    ;;
+            esac
+        done
+
+        # Branch color by state
+        if [[ -n "$git_ref_display" ]]; then
+            if (( has_unstaged )); then
+                prompt="$prompt %F{210}($git_ref_display)%f"
+            elif (( has_staged )); then
+                prompt="$prompt %F{117}($git_ref_display)%f"
+            else
+                prompt="$prompt %F{114}($git_ref_display)%f"
             fi
         fi
 
-        if [[ -n "$git_ref_display" ]]; then
-            # Color by repo state (works in detached HEAD too)
-            local changes
-            changes="$(check_git_changes 2>/dev/null || echo "")"
-            case "$changes" in
-                unstaged) prompt="$prompt %F{210}($git_ref_display)%f" ;;
-                staged)   prompt="$prompt %F{117}($git_ref_display)%f" ;;
-                clean)    prompt="$prompt %F{114}($git_ref_display)%f" ;;
-                *)        prompt="$prompt ($git_ref_display)" ;;
-            esac
-        fi
-
-        # Ahead/behind remote
-        local upstream
-        upstream="$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || true)"
-        if [[ -n "$upstream" ]]; then
-            local ahead behind
-            ahead="$(git rev-list --count '@{upstream}..HEAD' 2>/dev/null || echo 0)"
-            behind="$(git rev-list --count 'HEAD..@{upstream}' 2>/dev/null || echo 0)"
+        # Ahead/behind (from branch header)
+        if [[ -n "$branch_ab" ]]; then
+            local ahead="${branch_ab[(w)1]#+}"
+            local behind="${branch_ab[(w)2]#-}"
             local ab_parts=()
             (( ahead > 0 ))  && ab_parts+=("%F{114}↑${ahead}%f")
             (( behind > 0 )) && ab_parts+=("%F{210}↓${behind}%f")
@@ -99,14 +126,6 @@ my_prompt() {
         fi
 
         # File status counts
-        local staged_added staged_modified staged_deleted unstaged_modified unstaged_deleted untracked
-        staged_added=$(git diff --cached --diff-filter=A --name-only 2>/dev/null | wc -l | tr -d ' ')
-        staged_modified=$(git diff --cached --diff-filter=M --name-only 2>/dev/null | wc -l | tr -d ' ')
-        staged_deleted=$(git diff --cached --diff-filter=D --name-only 2>/dev/null | wc -l | tr -d ' ')
-        unstaged_modified=$(git diff --diff-filter=M --name-only 2>/dev/null | wc -l | tr -d ' ')
-        unstaged_deleted=$(git diff --diff-filter=D --name-only 2>/dev/null | wc -l | tr -d ' ')
-        untracked=$(git ls-files --others --exclude-standard 2>/dev/null | wc -l | tr -d ' ')
-
         local staged_parts=()
         (( staged_added > 0 ))    && staged_parts+=("%F{114}+${staged_added}%f")
         (( staged_modified > 0 )) && staged_parts+=("%F{117}~${staged_modified}%f")

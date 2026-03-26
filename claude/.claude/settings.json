@@ -53,5 +53,19 @@
       }
     ]
   },
-  "model": "opus"
+  "model": "opus",
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "Bash(git:*)",
+      "Bash(stow:*)",
+      "Bash(gh:*)",
+      "Bash(brew:*)",
+      "Bash(ls:*)"
+    ]
+  }
 }

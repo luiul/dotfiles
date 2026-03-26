@@ -41,3 +41,7 @@ Follow conventional commit style:
 - Use conventional commits: `type: short description` (e.g. `fix: venv info display`, `feat: add terminal keybindings`)
 - Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `style`, `perf`, `ci`, `test`
 - Do NOT add `Co-Authored-By` lines
+
+## GitHub
+
+- Always use `gh` CLI for GitHub interactions (PRs, issues, checks, releases, etc.)

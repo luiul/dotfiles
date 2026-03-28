@@ -65,7 +65,8 @@
       "Bash(stow:*)",
       "Bash(gh:*)",
       "Bash(brew:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "WebFetch"
     ]
   }
 }

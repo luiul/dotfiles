@@ -13,7 +13,6 @@
         "notebook.focusedCellBackground": "#0099ff30",
         "editor.lineHighlightBackground": "#008cff28",
         "editor.lineHighlightBorder": "#9fced11f",
-        // "tree.indentGuidesStroke": "#EBEBEB",
         "editor.findMatchBackground": "#8ffa876b",
         "editor.findMatchHighlightBackground": "#ff7dbe75",
         "sqltools.currentQueryBg": "#7b798a03",
@@ -180,9 +179,6 @@
         "${env:HOME}/.local/bin/ruff"
     ],
     "ruff.importStrategy": "fromEnvironment",
-    // "ruff.interpreter": [
-    //     "${workspaceFolder}/.venv/bin/python"
-    // ],
     "ruff.configuration": "${env:HOME}/.config/ruff/ruff.toml",
     //
     // Ty
@@ -209,10 +205,6 @@
     // === Python Analysis ===
     "python.analysis.inlayHints.functionReturnTypes": true,
     "python.analysis.inlayHints.variableTypes": true,
-    // "python.analysis.extraPaths": [
-    //     "${env:HOME}/projects/",
-    //     "${workspaceFolder}/src"
-    // ],
     "python.analysis.autoFormatStrings": true,
     "python.analysis.typeCheckingMode": "standard",
     "python.analysis.exclude": [
@@ -231,7 +223,6 @@
     ],
     // === Python Virtual Environment ===
     "python.envFile": "${workspaceFolder}/.env",
-    // "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
     "python.terminal.activateEnvironment": false,
     "python.terminal.activateEnvInCurrentTerminal": false,
     // === Python Testing ===
@@ -243,27 +234,6 @@
     "redhat.telemetry.enabled": false,
     "window.openFilesInNewWindow": "on",
     // === Files/Housekeeping ===
-    "files.exclude": {
-        // "**/__pycache__": true,
-        // "target/": true,
-        // "logs/": true
-    },
-    "search.exclude": {
-        // "**/__pycache__": true,
-        // "target/": true,
-        // "logs/": true,
-        // "**/.venv": true,
-        // "**/.mypy_cache": true,
-        // "**/.pytest_cache": true
-    },
-    "files.watcherExclude": {
-        // "**/target/**": true,
-        // "**/logs/**": true,
-        // "**/.venv/**": true,
-        // "**/.mypy_cache/**": true,
-        // "**/.pytest_cache/**": true,
-        // "**/node_modules/**": true
-    },
     "files.autoSave": "onWindowChange",
     // === Debug/Other ===
     "debug.toolBarLocation": "docked",
@@ -276,10 +246,7 @@
     "jupyter.askForKernelRestart": false,
     // === dbt & SQL ===
     "files.associations": {
-        "*.sql": "jinja-sql",
-        // "*.yaml": "jinja-yaml",
-        // "*.yml": "jinja-yaml",
-        // "*.html": "jinja-html"
+        "*.sql": "jinja-sql"
     },
     "[jinja-sql]": {
         "editor.defaultFormatter": "innoverio.vscode-dbt-power-user",

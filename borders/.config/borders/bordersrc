@@ -5,10 +5,10 @@ options=(
 	style=round
 
 	# Border width in pixels (adjust as needed)
-	width=4.0
+	width=5.0
 
-	# Keep HiDPI off unless you want auto scaling
-	hidpi=off
+	# Enable HiDPI for sharp borders on Retina displays
+	hidpi=on
 
 	# Draw border over the window edge for a tighter look
 	order=above

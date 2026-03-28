@@ -301,7 +301,10 @@ ssh_agent_start() {
 
 	eval "$(ssh-agent -s)" >/dev/null
 
-	ssh-add "$HOME/.ssh/id_ed25519" </dev/null
+	local key_file
+	for key_file in "$HOME"/.ssh/id_{ed25519,ecdsa,rsa}; do
+		[[ -f "$key_file" ]] && ssh-add "$key_file" </dev/null && break
+	done
 
 	{
 		echo "export SSH_AUTH_SOCK=$SSH_AUTH_SOCK"

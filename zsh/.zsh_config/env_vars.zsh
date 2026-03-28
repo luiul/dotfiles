@@ -7,9 +7,6 @@ export KUBECONFIG="$HOME/.kube/config:$HOME/.kube/eksconfig"
 # SQL Formatter Configuration
 export SQLFMT_LINE_LENGTH=120
 
-# Pylint Configuration
-export PYLINTRC=~/.pylintrc
-
 # Pip Configuration
 export PIP_CONFIG_FILE=~/.config/pip/pip.conf
 

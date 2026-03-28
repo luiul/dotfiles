@@ -4,7 +4,7 @@
 
 This repo uses GNU Stow. Each top-level directory is a stow package that mirrors the home directory structure and is symlinked into `$HOME` via `stow <package>`.
 
-Packages: `borders`, `brew`, `claude`, `ghostty`, `karabiner`, `pip`, `pylint`, `rectangle`, `ruff`, `sqlfluff`, `vscode`, `zsh`
+Packages: `borders`, `brew`, `claude`, `ghostty`, `karabiner`, `pip`, `rectangle`, `ruff`, `sqlfluff`, `vscode`, `zsh`
 
 Non-stow directories: `cron` (launch agents and scheduled scripts, installed via `setup.sh`)
 

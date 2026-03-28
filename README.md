@@ -19,7 +19,7 @@ This will:
 
 Each top-level directory is a stow package that mirrors `$HOME`:
 
-`borders`, `brew`, `claude`, `ghostty`, `karabiner`, `pip`, `pylint`, `rectangle`, `ruff`, `sqlfluff`, `vscode`, `zsh`
+`borders`, `brew`, `claude`, `ghostty`, `karabiner`, `pip`, `rectangle`, `ruff`, `sqlfluff`, `vscode`, `zsh`
 
 Non-stow directories: `cron` (launch agents and scheduled scripts)
 

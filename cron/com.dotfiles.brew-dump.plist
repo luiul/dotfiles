@@ -16,8 +16,8 @@
 			<integer>43</integer>
 		</dict>
 		<key>StandardOutPath</key>
-		<string>/tmp/brew-dump.log</string>
+		<string>/Users/luis.aceituno/Library/Logs/brew-dump.log</string>
 		<key>StandardErrorPath</key>
-		<string>/tmp/brew-dump.log</string>
+		<string>/Users/luis.aceituno/Library/Logs/brew-dump.log</string>
 	</dict>
 </plist>

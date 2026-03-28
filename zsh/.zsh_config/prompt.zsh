@@ -109,7 +109,7 @@ my_prompt() {
 
         # Stash count
         local stash_count
-        stash_count="$(git stash list 2>/dev/null | wc -l | tr -d ' ')"
+        stash_count="$(git rev-list --walk-reflogs --count refs/stash 2>/dev/null || echo 0)"
         if (( stash_count > 0 )); then
             prompt="$prompt %F{222}stash:${stash_count}%f"
         fi

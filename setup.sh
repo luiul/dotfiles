@@ -13,6 +13,15 @@ fi
 echo "Installing Homebrew packages..."
 brew bundle --file=brew/Brewfile
 
+if ! command -v alerter &>/dev/null; then
+	echo "Installing alerter..."
+	curl -sL https://github.com/vjeantet/alerter/releases/latest/download/alerter -o /opt/homebrew/bin/alerter
+	chmod +x /opt/homebrew/bin/alerter
+fi
+
+echo "Installing znap..."
+[[ -d "$HOME/repos/znap" ]] || git clone --depth 1 -- https://github.com/marlonrichert/zsh-snap.git "$HOME/repos/znap"
+
 echo "Stowing dotfiles..."
 for pkg in */; do
 	[[ "$pkg" == "cron/" ]] && continue

@@ -22,11 +22,12 @@ if typeset -f ssh_agent_start >/dev/null 2>&1; then
 	ssh_agent_start
 fi
 
-# Download Znap, if it's not there yet.
-[[ -r ~/repos/znap/znap.zsh ]] ||
-	git clone --depth 1 -- \
-		https://github.com/marlonrichert/zsh-snap.git ~/repos/znap
-source ~/repos/znap/znap.zsh # Start Znap
+# Source Znap (installed via setup.sh)
+if [[ ! -r ~/repos/znap/znap.zsh ]]; then
+	echo "znap not found. Run setup.sh to install." >&2
+	return 1
+fi
+source ~/repos/znap/znap.zsh
 
 # Install plugins
 znap source marlonrichert/zsh-autocomplete

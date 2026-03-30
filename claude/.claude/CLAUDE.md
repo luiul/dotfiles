@@ -42,6 +42,10 @@ Follow conventional commit style:
 - Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `style`, `perf`, `ci`, `test`
 - Do NOT add `Co-Authored-By` lines
 
+## Python
+
+- Always use `uv` for Python operations (`uv run` instead of `python`, `uv pip` instead of `pip`, `uv venv` instead of `python -m venv`, etc.)
+
 ## GitHub
 
 - Always use `gh` CLI for GitHub interactions (PRs, issues, checks, releases, etc.)

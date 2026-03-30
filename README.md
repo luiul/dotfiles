@@ -12,21 +12,18 @@ This will:
 
 1. Install Homebrew (if missing) and packages from the Brewfile
 2. Stow all dotfile packages into `$HOME`
-3. Install the pre-commit hook (secret detection)
-4. Register launchd agents (weekly Brewfile dump)
+3. Install git hooks (Brewfile dump, example.env generation, secret detection)
 
 ## Stow Packages
 
 Each top-level directory is a stow package that mirrors `$HOME`:
 
-`borders`, `brew`, `claude`, `ghostty`, `karabiner`, `pip`, `rectangle`, `ruff`, `sqlfluff`, `vscode`, `zsh`
-
-Non-stow directories: `cron` (launch agents and scheduled scripts)
+`borders`, `brew`, `claude`, `ghostty`, `git`, `karabiner`, `pip`, `rectangle`, `ruff`, `sqlfluff`, `vscode`, `zsh`
 
 ### Apply or Update All
 
 ```sh
-stow --ignore='^cron$' */
+stow */
 ```
 
 ### Stow a Single Package
@@ -57,7 +54,7 @@ stow <package>
 
 ## Homebrew
 
-The Brewfile is automatically updated weekly via a launchd agent (`cron/com.dotfiles.brew-dump.plist`). To manually update:
+The Brewfile is automatically updated on every commit via the pre-commit hook. To manually update:
 
 ```sh
 brew bundle dump --file=brew/Brewfile --force
@@ -71,4 +68,4 @@ brew bundle --file=brew/Brewfile
 
 ## Pre-commit Hook
 
-A secret detection hook scans staged diffs for API keys, tokens, and private keys. Bypass with `--no-verify` for false positives.
+The pre-commit hook auto-generates `example.env` from `~/.env` (keys only), updates the Brewfile, and scans staged diffs for API keys, tokens, and private keys. Bypass with `--no-verify` for false positives.

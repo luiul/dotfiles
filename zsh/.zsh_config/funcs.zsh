@@ -284,7 +284,7 @@ ldel() {
 	print "Done. Moved: $ok  Failed: $fail"
 }
 
-co() {
+cod() {
 	cd "$@" && code .
 }
 

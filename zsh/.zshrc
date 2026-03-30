@@ -22,8 +22,14 @@ if typeset -f ssh_agent_init >/dev/null 2>&1; then
 	ssh_agent_init
 fi
 
-# Load secrets from ~/.env (not tracked in git)
-[[ -f ~/.env ]] && source ~/.env
+# Load environment variables from ~/.env (not tracked in git)
+if [[ -f ~/.env ]]; then
+	set -a
+	source ~/.env
+	set +a
+else
+	echo "Warning: ~/.env not found. Copy dotfiles/example.env to ~/.env and fill in your values." >&2
+fi
 
 # Source Znap (installed via setup.sh)
 if [[ ! -r ~/repos/znap/znap.zsh ]]; then

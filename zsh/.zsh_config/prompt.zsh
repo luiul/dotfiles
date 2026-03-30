@@ -24,7 +24,9 @@ my_prompt() {
 
     # Single git status call replaces ~19 separate git commands
     local git_status
-    if git_status="$(git status --porcelain=v2 --branch 2>/dev/null)"; then
+    local git_dir
+    if git_dir="$(git rev-parse --git-dir 2>/dev/null)" && \
+       git_status="$(git status --porcelain=v2 --branch 2>/dev/null)"; then
 
         # Parse branch headers
         local branch_head="" branch_oid="" branch_ab=""
@@ -107,16 +109,17 @@ my_prompt() {
             fi
         fi
 
-        # Stash count
-        local stash_count
-        stash_count="$(git rev-list --walk-reflogs --count refs/stash 2>/dev/null || echo 0)"
-        if (( stash_count > 0 )); then
-            prompt="$prompt %F{222}stash:${stash_count}%f"
+        # Stash count (read reflog file directly, no subprocess)
+        local stash_reflog="$git_dir/logs/refs/stash"
+        if [[ -f "$stash_reflog" ]]; then
+            local stash_count=0
+            while IFS= read -r _; do (( stash_count++ )); done < "$stash_reflog"
+            if (( stash_count > 0 )); then
+                prompt="$prompt %F{222}stash:${stash_count}%f"
+            fi
         fi
 
         # Merge/rebase/cherry-pick state
-        local git_dir
-        git_dir="$(git rev-parse --git-dir 2>/dev/null)"
         if [[ -d "$git_dir/rebase-merge" || -d "$git_dir/rebase-apply" ]]; then
             prompt="$prompt %F{203}%BREBASING%b%f"
         elif [[ -f "$git_dir/MERGE_HEAD" ]]; then

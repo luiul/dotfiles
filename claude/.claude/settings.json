@@ -66,6 +66,17 @@
       "Bash(gh:*)",
       "Bash(brew:*)",
       "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(diff:*)",
+      "Bash(which:*)",
+      "Bash(command:*)",
+      "Bash(uv:*)",
+      "Bash(pip:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
       "WebFetch"
     ]
   }

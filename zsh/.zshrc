@@ -17,9 +17,9 @@ else
 	done
 fi
 
-# Start or attach to ssh-agent (function lives in ~/.zsh_config/funcs.zsh)
-if typeset -f ssh_agent_start >/dev/null 2>&1; then
-	ssh_agent_start
+# Start ssh-agent and load encrypted secrets (function lives in ~/.zsh_config/funcs.zsh)
+if typeset -f session_init >/dev/null 2>&1; then
+	session_init
 fi
 
 # Source Znap (installed via setup.sh)

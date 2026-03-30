@@ -284,30 +284,40 @@ ldel() {
 	print "Done. Moved: $ok  Failed: $fail"
 }
 
-# Start or reuse a single ssh-agent and add your key
-ssh_agent_start() {
+# Start or reuse ssh-agent and load encrypted secrets (once per reboot)
+session_init() {
+	# --- SSH agent ---
 	local agent_env_file="$HOME/.ssh/agent_env"
 
 	if [[ -f "$agent_env_file" ]]; then
 		source "$agent_env_file" >/dev/null 2>&1
 
-		if ssh-add -l >/dev/null 2>&1; then
-			return 0
+		if ! ssh-add -l >/dev/null 2>&1; then
+			rm -f "$agent_env_file"
+			unset SSH_AUTH_SOCK SSH_AGENT_PID
 		fi
-
-		rm -f "$agent_env_file"
-		unset SSH_AUTH_SOCK SSH_AGENT_PID
 	fi
 
-	eval "$(ssh-agent -s)" >/dev/null
+	if [[ -z "$SSH_AUTH_SOCK" ]]; then
+		eval "$(ssh-agent -s)" >/dev/null
 
-	local key_file
-	for key_file in "$HOME"/.ssh/id_{ed25519,ecdsa,rsa}; do
-		[[ -f "$key_file" ]] && ssh-add "$key_file" </dev/null && break
-	done
+		local key_file
+		for key_file in "$HOME"/.ssh/id_{ed25519,ecdsa,rsa}; do
+			[[ -f "$key_file" ]] && ssh-add "$key_file" </dev/null && break
+		done
 
-	{
-		echo "export SSH_AUTH_SOCK=$SSH_AUTH_SOCK"
-		echo "export SSH_AGENT_PID=$SSH_AGENT_PID"
-	} >|"$agent_env_file"
+		{
+			echo "export SSH_AUTH_SOCK=$SSH_AUTH_SOCK"
+			echo "export SSH_AGENT_PID=$SSH_AGENT_PID"
+		} >|"$agent_env_file"
+	fi
+
+	# --- Encrypted secrets ---
+	local secrets_cache="/tmp/.secrets.$UID"
+
+	if [[ -f "$secrets_cache" ]]; then
+		source "$secrets_cache"
+	elif [[ -f "$HOME/.secrets.age" ]]; then
+		age -d "$HOME/.secrets.age" >|"$secrets_cache" && chmod 600 "$secrets_cache" && source "$secrets_cache"
+	fi
 }

@@ -20,8 +20,3 @@ export ANTHROPIC_DEFAULT_OPUS_MODEL="eu.anthropic.claude-opus-4-6-v1"
 
 # Zoxide
 export _ZO_DOCTOR=0
-
-# Tardis
-export SF_ACCOUNT="oo69432.eu-west-1"
-export SF_USER='luis.aceituno@hellofresh.com'
-

@@ -284,6 +284,10 @@ ldel() {
 	print "Done. Moved: $ok  Failed: $fail"
 }
 
+co() {
+	cd "$@" && code .
+}
+
 # Start or reuse ssh-agent (once per reboot)
 ssh_agent_init() {
 	local agent_env_file="$HOME/.ssh/agent_env"

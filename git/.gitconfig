@@ -1,0 +1,6 @@
+[user]
+	name = luiul
+	email = aceitunosoriano@gmail.com
+[core]
+	excludesfile = /Users/luis.aceituno/.gitignore_global
+	editor = code --wait

@@ -17,10 +17,13 @@ else
 	done
 fi
 
-# Start ssh-agent and load encrypted secrets (function lives in ~/.zsh_config/funcs.zsh)
-if typeset -f session_init >/dev/null 2>&1; then
-	session_init
+# Start ssh-agent (function lives in ~/.zsh_config/funcs.zsh)
+if typeset -f ssh_agent_init >/dev/null 2>&1; then
+	ssh_agent_init
 fi
+
+# Load secrets from ~/.env (not tracked in git)
+[[ -f ~/.env ]] && source ~/.env
 
 # Source Znap (installed via setup.sh)
 if [[ ! -r ~/repos/znap/znap.zsh ]]; then

@@ -1,5 +1,4 @@
 tap "felixkratz/formulae"
-brew "age"
 brew "bat"
 brew "fastfetch"
 brew "fzf"

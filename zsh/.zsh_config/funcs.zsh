@@ -284,9 +284,8 @@ ldel() {
 	print "Done. Moved: $ok  Failed: $fail"
 }
 
-# Start or reuse ssh-agent and load encrypted secrets (once per reboot)
-session_init() {
-	# --- SSH agent ---
+# Start or reuse ssh-agent (once per reboot)
+ssh_agent_init() {
 	local agent_env_file="$HOME/.ssh/agent_env"
 
 	if [[ -f "$agent_env_file" ]]; then
@@ -310,14 +309,5 @@ session_init() {
 			echo "export SSH_AUTH_SOCK=$SSH_AUTH_SOCK"
 			echo "export SSH_AGENT_PID=$SSH_AGENT_PID"
 		} >|"$agent_env_file"
-	fi
-
-	# --- Encrypted secrets ---
-	local secrets_cache="/tmp/.secrets.$UID"
-
-	if [[ -f "$secrets_cache" ]]; then
-		source "$secrets_cache"
-	elif [[ -f "$HOME/.secrets.age" ]]; then
-		age -d "$HOME/.secrets.age" >|"$secrets_cache" && chmod 600 "$secrets_cache" && source "$secrets_cache"
 	fi
 }

@@ -7,6 +7,12 @@ if [[ -f "$HOME/.env" ]]; then
 	git add example.env
 fi
 
+# Update Brewfile with current packages
+if command -v brew &>/dev/null; then
+	brew bundle dump --file=brew/Brewfile --force
+	git add brew/Brewfile
+fi
+
 # Detect secrets in staged files before committing
 SECRETS_PATTERN='AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}|sk-[A-Za-z0-9]{20,}|xox[bpsar]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|[aA][pP][iI][_-]?[kK][eE][yY][[:space:]]*[:=][[:space:]]*[A-Za-z0-9/+=_-]{16,}|[aA][pP][iI][_-]?[sS][eE][cC][rR][eE][tT][[:space:]]*[:=][[:space:]]*[A-Za-z0-9/+=_-]{16,}|[sS][eE][cC][rR][eE][tT][_-]?[kK][eE][yY][[:space:]]*[:=][[:space:]]*[A-Za-z0-9/+=_-]{16,}'
 

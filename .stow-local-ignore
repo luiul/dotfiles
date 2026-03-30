@@ -30,4 +30,4 @@ _darcs
 ^/setup\.sh
 ^/\.githooks
 ^/brew$
-^/cron$
+^/example\.env

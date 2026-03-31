@@ -40,17 +40,6 @@
           }
         ]
       }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/notify.sh \"Task completed in $(basename $PWD)\""
-          }
-        ]
-      }
     ]
   },
   "model": "opus",

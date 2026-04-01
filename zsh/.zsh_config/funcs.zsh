@@ -285,7 +285,8 @@ ldel() {
 }
 
 cod() {
-	cd "$@" && code .
+	cd "$@" 2> >(grep -v "already in the only match" >&2)
+	code .
 }
 
 # Start or reuse ssh-agent (once per reboot)

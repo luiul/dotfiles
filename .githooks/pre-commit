@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Auto-generate example.env from ~/.env (keys only, values stripped)
-if [[ -f "$HOME/.env" ]]; then
-	sed 's/=.*/=/' "$HOME/.env" >| example.env
+# Auto-generate example.env from .env (keys only, values stripped)
+DOTFILES_DIR="$(git rev-parse --show-toplevel)"
+if [[ -f "$DOTFILES_DIR/.env" ]]; then
+	sed 's/=.*/=/' "$DOTFILES_DIR/.env" >| example.env
 	git add example.env
+fi
+
+# Block .env from being committed (contains secrets)
+if git diff --cached --name-only | grep -qx '\.env'; then
+	echo "ERROR: .env contains secrets and must not be committed."
+	echo "It is gitignored — if you force-added it, run: git reset HEAD .env"
+	exit 1
 fi
 
 # Update Brewfile with current packages

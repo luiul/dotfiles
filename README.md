@@ -13,6 +13,7 @@ This will:
 1. Install Homebrew (if missing) and packages from the Brewfile
 2. Stow all dotfile packages into `$HOME`
 3. Install git hooks (Brewfile dump, example.env generation, secret detection)
+4. Create `.env` from `example.env` if it doesn't exist
 
 ## Stow Packages
 
@@ -72,4 +73,4 @@ brew bundle --file=brew/Brewfile
 
 ## Pre-commit Hook
 
-The pre-commit hook auto-generates `example.env` from `~/.env` (keys only), updates the Brewfile, and scans staged diffs for API keys, tokens, and private keys. Bypass with `--no-verify` for false positives.
+The pre-commit hook auto-generates `example.env` from `.env` (keys only), updates the Brewfile, blocks `.env` from being committed, and scans staged diffs for API keys, tokens, and private keys. Bypass with `--no-verify` for false positives.

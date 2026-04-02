@@ -36,4 +36,9 @@ find "$DOTFILES_DIR" -name '*.zwc' -delete
 echo "Configuring git hooks..."
 git config core.hooksPath .githooks
 
+if [[ ! -f "$DOTFILES_DIR/.env" ]]; then
+	cp "$DOTFILES_DIR/example.env" "$DOTFILES_DIR/.env"
+	echo "Created .env from example.env — fill in your values."
+fi
+
 echo "Done!"

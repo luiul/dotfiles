@@ -5,6 +5,8 @@
 .DS_Store
 # Ignore project-level Claude data (the claude/ stow package is tracked separately)
 /.claude/
+# Real .env contains secrets — only example.env is tracked
+/.env
 # Snowflake CLI runtime files
 snowflake/.snowflake/logs/
 snowflake/.snowflake/.cli_version.cache

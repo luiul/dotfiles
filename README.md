@@ -54,14 +54,7 @@ stow <package>
 
 ## Snowflake CLI
 
-The `snowflake` package stows `~/.snowflake/config.toml` (browser SSO auth). Connection credentials (`account`, `user`) are injected via env vars in `~/.env`:
-
-```
-SNOWFLAKE_CONNECTIONS_DEFAULT_ACCOUNT=...
-SNOWFLAKE_CONNECTIONS_DEFAULT_USER=...
-```
-
-The package is stowed with `--no-folding` so that Snowflake CLI runtime files (logs, cache) stay out of the repo.
+The `snowflake` package stows `~/.snowflake/config.toml` with three connections (`default`, `staging`, `dev`) using browser SSO auth. All connection settings live in `config.toml`. The package is stowed with `--no-folding` so that Snowflake CLI runtime files (logs, cache) stay out of the repo.
 
 ## Homebrew
 

@@ -2,3 +2,21 @@ default_connection_name = "default"
 
 [connections.default]
 authenticator = "externalbrowser"
+database = "SCM_ANALYTICS"
+warehouse = "scm_analytics_load_medium"
+schema = "PUBLIC"
+role = "SCM_ANALYTICS_SA_NONSENSITIVE"
+
+[connections.staging]
+authenticator = "externalbrowser"
+database = "SCM_ANALYTICS_STAGING"
+warehouse = "SCM_ANALYTICS_DEV"
+schema = "PUBLIC"
+role = "SCM_ANALYTICS_SA_NONSENSITIVE"
+
+[connections.dev]
+authenticator = "externalbrowser"
+database = "SCM_ANALYTICS_DEV"
+warehouse = "SCM_ANALYTICS_DEV"
+schema = "PUBLIC"
+role = "SCM_ANALYTICS_SA_NONSENSITIVE"

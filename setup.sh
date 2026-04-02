@@ -23,8 +23,11 @@ echo "Installing znap..."
 [[ -d "$HOME/repos/znap" ]] || git clone --depth 1 -- https://github.com/marlonrichert/zsh-snap.git "$HOME/repos/znap"
 
 echo "Stowing dotfiles..."
+# Pre-create directories that need file-level symlinks (--no-folding)
+# to prevent stow from symlinking the entire directory
+mkdir -p "$HOME/.snowflake"
 for pkg in */; do
-	stow "$pkg"
+	stow --no-folding "$pkg"
 done
 
 echo "Cleaning up stale .zwc files..."

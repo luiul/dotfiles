@@ -5,3 +5,6 @@
 .DS_Store
 # Ignore project-level Claude data (the claude/ stow package is tracked separately)
 /.claude/
+# Snowflake CLI runtime files
+snowflake/.snowflake/logs/
+snowflake/.snowflake/.cli_version.cache

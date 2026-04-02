@@ -1,0 +1,4 @@
+default_connection_name = "default"
+
+[connections.default]
+authenticator = "externalbrowser"

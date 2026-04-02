@@ -223,8 +223,8 @@
     ],
     // === Python Virtual Environment ===
     "python.envFile": "${workspaceFolder}/.env",
-    "python.terminal.activateEnvironment": false,
-    "python.terminal.activateEnvInCurrentTerminal": false,
+    "python.terminal.activateEnvironment": true,
+    "python.terminal.activateEnvInCurrentTerminal": true,
     // === Python Testing ===
     "python.testing.pytestEnabled": true,
     "python.testing.cwd": "${workspaceFolder}/tests",

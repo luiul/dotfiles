@@ -19,7 +19,7 @@ This will:
 
 Each top-level directory is a stow package that mirrors `$HOME`:
 
-`borders`, `brew`, `claude`, `ghostty`, `git`, `karabiner`, `pip`, `rectangle`, `ruff`, `snowflake`, `sqlfluff`, `vscode`, `zsh`
+`borders`, `brew`, `claude`, `ghostty`, `git`, `hellofresh`, `karabiner`, `pip`, `rectangle`, `ruff`, `snowflake`, `sqlfluff`, `streamlit`, `vscode`, `zsh`
 
 ### Apply or Update All
 

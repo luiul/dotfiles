@@ -32,3 +32,4 @@ _darcs
 ^/brew$
 ^/\.env
 ^/example\.env
+^/Skillfile

@@ -71,6 +71,16 @@ To restore packages from the Brewfile:
 brew bundle --file=brew/Brewfile
 ```
 
+## Claude Code Skills
+
+Skills are installed globally via [`npx skills`](https://github.com/mattpocock/skills):
+
+```sh
+npx skills@latest add -g <source>
+```
+
+The `Skillfile` tracks installed skills and is automatically updated on every commit via the pre-commit hook.
+
 ## Pre-commit Hook
 
-The pre-commit hook auto-generates `example.env` from `.env` (keys only), updates the Brewfile, blocks `.env` from being committed, and scans staged diffs for API keys, tokens, and private keys. Bypass with `--no-verify` for false positives.
+The pre-commit hook auto-generates `example.env` from `.env` (keys only), updates the Brewfile, updates the Skillfile, blocks `.env` from being committed, and scans staged diffs for API keys, tokens, and private keys. Bypass with `--no-verify` for false positives.

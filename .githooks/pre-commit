@@ -4,7 +4,7 @@ set -euo pipefail
 # Auto-generate example.env from .env (keys only, values stripped)
 DOTFILES_DIR="$(git rev-parse --show-toplevel)"
 if [[ -f "$DOTFILES_DIR/.env" ]]; then
-	sed 's/=.*/=/' "$DOTFILES_DIR/.env" >| example.env
+	sed 's/=.*/=/' "$DOTFILES_DIR/.env" >|example.env
 	git add example.env
 fi
 
@@ -19,6 +19,12 @@ fi
 if command -v brew &>/dev/null; then
 	brew bundle dump --file=brew/Brewfile --force
 	git add brew/Brewfile
+fi
+
+# Update Skillfile with installed skills
+if [[ -d "$HOME/.agents/skills" ]]; then
+	ls -1 "$HOME/.agents/skills" >|Skillfile
+	git add Skillfile
 fi
 
 # Detect secrets in staged files before committing

@@ -16,6 +16,10 @@ my_prompt() {
     if [[ -n "$VIRTUAL_ENV" ]] && [[ "$PWD" = "$(dirname "$VIRTUAL_ENV")"* ]]; then
         local venv_name="${VIRTUAL_ENV_PROMPT//[()]/}"
         venv_name="${venv_name%% }"
+        # Fall back to parent directory name if VIRTUAL_ENV_PROMPT is empty (e.g. uv venvs)
+        if [[ -z "$venv_name" ]]; then
+            venv_name="${$(dirname "$VIRTUAL_ENV"):t}"
+        fi
         venv_info=" %F{149}($venv_name)%f"
     fi
 

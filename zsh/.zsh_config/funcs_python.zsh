@@ -5,17 +5,20 @@ activate() {
 
 	while [ "$current_dir" != "/" ]; do
 		for venv_dir in ".venv" "venv"; do
-			local activate_path="$current_dir/$venv_dir/bin/activate"
+			local venv_path="$current_dir/$venv_dir"
+			local activate_path="$venv_path/bin/activate"
 			if [ -f "$activate_path" ]; then
 				source "$activate_path"
+				# Ensure venv is active (uv-generated activate scripts can be stale)
+				export VIRTUAL_ENV="$venv_path"
+				[[ ":$PATH:" != *":$venv_path/bin:"* ]] && export PATH="$venv_path/bin:$PATH"
 
 				local dim=$(tput dim)
 				local bold=$(tput bold)
 				local reset=$(tput sgr0)
 				local green=$(tput setaf 2)
-				local venv_path="$current_dir/$venv_dir"
-				local py_version=$(python3 --version 2>/dev/null | awk '{print $2}')
-				local pkg_count=$(pip list --format=freeze 2>/dev/null | wc -l | tr -d ' ')
+				local py_version=$("$venv_path/bin/python" --version 2>/dev/null | awk '{print $2}')
+				local pkg_count=$(uv pip list 2>/dev/null | tail -n +3 | wc -l | tr -d ' ')
 
 				echo ""
 				echo "${green}${bold}activated${reset} ${dim}${venv_path/$HOME/~}${reset}"

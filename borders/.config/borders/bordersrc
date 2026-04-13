@@ -5,7 +5,7 @@ options=(
 	style=round
 
 	# Border width in pixels (adjust as needed)
-	width=5.0
+	width=3.0
 
 	# Enable HiDPI for sharp borders on Retina displays
 	hidpi=on

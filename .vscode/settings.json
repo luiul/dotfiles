@@ -1,0 +1,6 @@
+{
+  "files.exclude": {
+    "**/*.zwc": true,
+    "**/.DS_Store": true
+  }
+}

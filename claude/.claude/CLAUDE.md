@@ -35,3 +35,7 @@
   - `labels`: `["dbt", "xps"]` for data engineering work
 - Assignee: `luis.aceituno@hellofresh.com`
 - Always draft tickets in a scratch file first, let the user review, then create in Jira
+
+## 1.6. Large Files
+
+- When reading files over 2,000 lines, use the `offset` and `limit` parameters on the Read tool to read in chunks rather than attempting to read the entire file at once

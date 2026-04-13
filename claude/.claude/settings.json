@@ -87,6 +87,7 @@
       "Bash(databricks:*)",
       "Bash(ruff:*)",
       "Bash(gcloud:*)",
+      "Bash(cd:*)",
       "WebFetch"
     ]
   }

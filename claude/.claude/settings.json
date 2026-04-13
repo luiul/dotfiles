@@ -36,6 +36,17 @@
         ]
       }
     ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/notify.sh \"Claude is done in $(basename $PWD)\""
+          }
+        ]
+      }
+    ],
     "PermissionRequest": [
       {
         "matcher": "",
@@ -69,9 +80,13 @@
       "Bash(which:*)",
       "Bash(command:*)",
       "Bash(uv:*)",
-      "Bash(pip:*)",
       "Bash(python:*)",
       "Bash(python3:*)",
+      "Bash(jq:*)",
+      "Bash(wc:*)",
+      "Bash(databricks:*)",
+      "Bash(ruff:*)",
+      "Bash(gcloud:*)",
       "WebFetch"
     ]
   }

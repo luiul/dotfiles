@@ -15,6 +15,38 @@
     "commit": "",
     "pr": ""
   },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "Bash(git:*)",
+      "Bash(stow:*)",
+      "Bash(gh:*)",
+      "Bash(brew:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(diff:*)",
+      "Bash(which:*)",
+      "Bash(command:*)",
+      "Bash(uv:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(jq:*)",
+      "Bash(wc:*)",
+      "Bash(databricks:*)",
+      "Bash(ruff:*)",
+      "Bash(gcloud:*)",
+      "Bash(cd:*)",
+      "WebFetch"
+    ]
+  },
+  "model": "opus",
   "hooks": {
     "PreToolUse": [
       {
@@ -59,36 +91,7 @@
       }
     ]
   },
-  "model": "opus",
-  "permissions": {
-    "allow": [
-      "Read",
-      "Glob",
-      "Grep",
-      "Edit",
-      "Write",
-      "Bash(git:*)",
-      "Bash(stow:*)",
-      "Bash(gh:*)",
-      "Bash(brew:*)",
-      "Bash(ls:*)",
-      "Bash(find:*)",
-      "Bash(cat:*)",
-      "Bash(mkdir:*)",
-      "Bash(cp:*)",
-      "Bash(diff:*)",
-      "Bash(which:*)",
-      "Bash(command:*)",
-      "Bash(uv:*)",
-      "Bash(python:*)",
-      "Bash(python3:*)",
-      "Bash(jq:*)",
-      "Bash(wc:*)",
-      "Bash(databricks:*)",
-      "Bash(ruff:*)",
-      "Bash(gcloud:*)",
-      "Bash(cd:*)",
-      "WebFetch"
-    ]
+  "enabledPlugins": {
+    "slack@claude-plugins-official": true
   }
 }

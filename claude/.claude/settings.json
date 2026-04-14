@@ -36,6 +36,7 @@
       "Bash(brew search:*)",
       "Bash(ls:*)",
       "Bash(find:*)",
+      "Bash(grep:*)",
       "Bash(cat:*)",
       "Bash(mkdir:*)",
       "Bash(cp:*)",

@@ -67,4 +67,10 @@
         "command": "-copyRelativeFilePath",
         "when": "editorFocus"
     },
+    // Disable external terminal (keeps accidentally opening)
+    {
+        "key": "shift+cmd+c",
+        "command": "-workbench.action.terminal.openNativeConsole",
+        "when": "!terminalFocus"
+    },
 ]

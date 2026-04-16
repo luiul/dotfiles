@@ -57,15 +57,33 @@ stow <package>
 
 The `snowflake` package stows `~/.snowflake/config.toml` with three connections (`default`, `staging`, `dev`) using browser SSO auth. All connection settings live in `config.toml`. The package is stowed with `--no-folding` so that Snowflake CLI runtime files (logs, cache) stay out of the repo.
 
-## Homebrew
+## Brewfile
 
-The Brewfile is automatically updated on every commit via the pre-commit hook. To manually update:
+The Brewfile serves as a single source of truth for all packages needed on a fresh machine. It is automatically updated on every commit via the pre-commit hook.
+
+`brew bundle` natively handles these directives:
+
+| Directive | What it installs |
+|-----------|-----------------|
+| `tap` | Homebrew taps |
+| `brew` | Formulae |
+| `cask` | GUI apps |
+| `vscode` | VS Code extensions |
+
+The Brewfile also contains custom entries that `brew bundle` silently ignores. These are parsed and installed by `setup.sh`:
+
+| Directive | What it installs |
+|-----------|-----------------|
+| `uv` | Python tools (via `uv tool install`) |
+| `npm` | Node.js packages (via `npm install -g`) |
+
+To manually update the Brewfile:
 
 ```sh
 brew bundle dump --file=brew/Brewfile --force
 ```
 
-To restore packages from the Brewfile:
+To restore Homebrew packages from the Brewfile:
 
 ```sh
 brew bundle --file=brew/Brewfile

@@ -69,13 +69,9 @@ The Brewfile serves as a single source of truth for all packages needed on a fre
 | `brew` | Formulae |
 | `cask` | GUI apps |
 | `vscode` | VS Code extensions |
-
-The Brewfile also contains custom entries that `brew bundle` silently ignores. These are parsed and installed by `setup.sh`:
-
-| Directive | What it installs |
-|-----------|-----------------|
 | `uv` | Python tools (via `uv tool install`) |
-| `npm` | Node.js packages (via `npm install -g`) |
+
+The Brewfile also contains `npm` entries for global Node.js packages. These are ignored by `brew bundle` and installed by `setup.sh` via `npm install -g`. The pre-commit hook auto-detects installed npm global packages and appends them to the Brewfile on each commit.
 
 To manually update the Brewfile:
 
@@ -83,10 +79,11 @@ To manually update the Brewfile:
 brew bundle dump --file=brew/Brewfile --force
 ```
 
-To restore Homebrew packages from the Brewfile:
+To restore packages from the Brewfile:
 
 ```sh
 brew bundle --file=brew/Brewfile
+grep '^npm ' brew/Brewfile | sed 's/^npm "\(.*\)"/\1/' | xargs -I{} npm install -g {}
 ```
 
 ## Claude Code Skills

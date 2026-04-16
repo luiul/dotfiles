@@ -15,9 +15,13 @@ if git diff --cached --name-only | grep -qx '\.env'; then
 	exit 1
 fi
 
-# Update Brewfile with current packages
+# Update Brewfile with current packages, preserving custom entries (npm, uv)
 if command -v brew &>/dev/null; then
+	custom=$(grep -E '^(npm|uv) ' brew/Brewfile 2>/dev/null || true)
 	brew bundle dump --file=brew/Brewfile --force
+	if [[ -n "$custom" ]]; then
+		echo "$custom" >>brew/Brewfile
+	fi
 	git add brew/Brewfile
 fi
 

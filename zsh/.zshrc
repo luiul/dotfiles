@@ -62,3 +62,5 @@ if command -v wt >/dev/null 2>&1; then znap eval wt 'command wt config shell ini
 
 # zoxide must be the last thing initialized
 znap eval zoxide 'zoxide init --cmd cd zsh'
+
+alias claude-mem='bun "/Users/luis.aceituno/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs"'

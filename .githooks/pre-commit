@@ -17,9 +17,8 @@ fi
 
 # Update Brewfile with current packages, preserving custom entries (npm, uv)
 if command -v brew &>/dev/null; then
-	custom=$(grep -E '^(npm|uv) ' brew/Brewfile 2>/dev/null | sort -u || true)
+	custom=$(grep -E '^npm ' brew/Brewfile 2>/dev/null | sort -u || true)
 	brew bundle dump --file=brew/Brewfile --force
-	sed -i '' '/^npm \|^uv /d' brew/Brewfile
 	if [[ -n "$custom" ]]; then
 		echo "$custom" >>brew/Brewfile
 	fi

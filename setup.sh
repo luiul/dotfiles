@@ -13,6 +13,9 @@ fi
 echo "Installing Homebrew packages..."
 brew bundle --file=brew/Brewfile
 
+echo "Installing global npm packages..."
+grep '^npm ' brew/Brewfile | sed 's/^npm "\(.*\)"/\1/' | xargs -I{} npm install -g {}
+
 if ! command -v alerter &>/dev/null; then
 	echo "Installing alerter..."
 	curl -sL https://github.com/vjeantet/alerter/releases/latest/download/alerter -o /opt/homebrew/bin/alerter

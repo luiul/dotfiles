@@ -103,11 +103,11 @@ upgrade-tools() {
 		fi
 		plugins=$(claude plugin list --json 2>/dev/null | jq -r '.[].id' 2>/dev/null)
 		if [[ -n "$plugins" ]]; then
-			local failed=0
-			echo "$plugins" | while read -r plugin; do
+			local failed=0 plugin
+			while IFS= read -r plugin; do
 				[[ -z "$plugin" ]] && continue
 				claude plugin update "$plugin" || failed=1
-			done
+			done <<<"$plugins"
 			if (( failed == 0 )); then
 				_upgrade_ok "Claude plugins up to date"
 			else

@@ -131,10 +131,14 @@ fi
 
 # --- Stow dotfiles ---
 step "Stow dotfiles"
-if confirm "Stow all packages into \$HOME?"; then
+if ! command -v stow &>/dev/null; then
+	skip "stow not installed"
+elif confirm "Stow all packages into \$HOME?"; then
+	# snowflake package uses --no-folding so runtime files (logs, cache) stay
+	# outside the repo — target dir must exist before stow creates per-file links
 	mkdir -p "$HOME/.snowflake"
 	for pkg in */; do
-		stow --no-folding "$pkg"
+		stow --no-folding "${pkg%/}"
 	done
 	ok "All packages stowed"
 else

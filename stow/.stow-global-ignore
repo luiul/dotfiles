@@ -1,0 +1,32 @@
+# Applies across all stow packages (unless a package has its own .stow-local-ignore).
+# Defining this file replaces stow's built-in defaults, so they are re-listed below.
+# Patterns match paths relative to each package root (anchor with ^/...).
+# Docs: https://www.gnu.org/software/stow/manual/html_node/Types-And-Syntax-Of-Ignore-Lists.html
+
+# --- Stow defaults ---
+
+RCS
+.+,v
+
+CVS
+\.\#.+
+\.cvsignore
+
+\.svn
+_darcs
+\.hg
+
+\.git
+\.gitignore
+\.gitmodules
+
+.+~
+\#.*\#
+
+^/README.*
+^/LICENSE.*
+^/COPYING
+
+# --- Custom ignores ---
+
+\.DS_Store

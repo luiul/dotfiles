@@ -130,7 +130,6 @@
       "mcp__mcp-atlassian__jira_add_issues_to_sprint"
     ]
   },
-  "model": "opus",
   "hooks": {
     "PreToolUse": [
       {
@@ -186,5 +185,6 @@
         "repo": "jarrodwatts/claude-hud"
       }
     }
-  }
+  },
+  "model": "opus"
 }

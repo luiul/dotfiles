@@ -8,18 +8,20 @@ This repository contains my dotfiles managed with [GNU Stow](https://www.gnu.org
 ./setup.sh
 ```
 
-This will:
+The script is idempotent and prompts before each step. It will:
 
-1. Install Homebrew (if missing) and packages from the Brewfile
-2. Stow all dotfile packages into `$HOME`
-3. Install git hooks (Brewfile dump, example.env generation, secret detection)
-4. Create `.env` from `example.env` if it doesn't exist
+1. Install Homebrew and Brewfile packages
+2. Install global npm packages listed in the Brewfile
+3. Install Claude Code (native build), register plugin marketplaces, and install plugins
+4. Install `alerter` (notification helper) and `znap` (zsh plugin manager)
+5. Stow all dotfile packages into `$HOME`
+6. Clean stale `.zwc` files, configure git hooks, and create `.env` from `example.env`
 
 ## Stow Packages
 
 Each top-level directory is a stow package that mirrors `$HOME`:
 
-`borders`, `brew`, `claude`, `ghostty`, `git`, `hellofresh`, `karabiner`, `pip`, `rectangle`, `ruff`, `snowflake`, `sqlfluff`, `streamlit`, `vscode`, `zsh`
+`borders`, `brew`, `claude`, `ghostty`, `git`, `hellofresh`, `karabiner`, `pip`, `rectangle`, `ruff`, `snowflake`, `sqlfluff`, `stow`, `streamlit`, `vscode`, `zsh`
 
 ### Apply or Update All
 
@@ -63,13 +65,13 @@ The Brewfile serves as a single source of truth for all packages needed on a fre
 
 `brew bundle` natively handles these directives:
 
-| Directive | What it installs |
-|-----------|-----------------|
-| `tap` | Homebrew taps |
-| `brew` | Formulae |
-| `cask` | GUI apps |
-| `vscode` | VS Code extensions |
-| `uv` | Python tools (via `uv tool install`) |
+| Directive | What it installs                     |
+| --------- | ------------------------------------ |
+| `tap`     | Homebrew taps                        |
+| `brew`    | Formulae                             |
+| `cask`    | GUI apps                             |
+| `vscode`  | VS Code extensions                   |
+| `uv`      | Python tools (via `uv tool install`) |
 
 The Brewfile also contains `npm` entries for global Node.js packages. These are ignored by `brew bundle` and installed by `setup.sh` via `npm install -g`. The pre-commit hook auto-detects installed npm global packages and appends them to the Brewfile on each commit.
 
@@ -102,10 +104,10 @@ Claude Code itself is installed via the native installer (`curl -fsSL https://cl
 
 Two files track this state, both auto-updated on every commit via the pre-commit hook:
 
-| File | Format | Purpose |
-|------|--------|---------|
-| `Marketplacefile` | `<name> <owner/repo>` per line | Marketplaces to register with `claude plugin marketplace add` |
-| `Pluginfile` | `<plugin>@<marketplace>` per line | Plugins to install with `claude plugin install` |
+| File              | Format                            | Purpose                                                       |
+| ----------------- | --------------------------------- | ------------------------------------------------------------- |
+| `Marketplacefile` | `<name> <owner/repo>` per line    | Marketplaces to register with `claude plugin marketplace add` |
+| `Pluginfile`      | `<plugin>@<marketplace>` per line | Plugins to install with `claude plugin install`               |
 
 On a fresh machine, `setup.sh` first registers marketplaces, then installs plugins. `upgrade-tools` refreshes marketplace indices and updates each installed plugin.
 

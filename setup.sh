@@ -60,6 +60,52 @@ else
 	skip "npm not available"
 fi
 
+# --- Claude Code (native installer) ---
+step "Claude Code"
+if command -v claude &>/dev/null; then
+	ok "Claude Code already installed"
+elif confirm "Install Claude Code (native build)?"; then
+	curl -fsSL https://claude.ai/install.sh | bash
+	ok "Claude Code installed"
+else
+	skip "Claude Code"
+fi
+
+# --- Claude plugin marketplaces ---
+step "Claude plugin marketplaces"
+if command -v claude &>/dev/null && [[ -s "$DOTFILES_DIR/Marketplacefile" ]]; then
+	markets=$(grep -vE '^[[:space:]]*(#|$)' "$DOTFILES_DIR/Marketplacefile")
+	echo "  Marketplaces:"
+	echo "$markets" | sed 's/^/    /'
+	if confirm "Add Claude plugin marketplaces from Marketplacefile?"; then
+		echo "$markets" | while read -r _name repo; do
+			[[ -n "$repo" ]] && claude plugin marketplace add "$repo"
+		done
+		ok "Marketplaces added"
+	else
+		skip "Marketplaces"
+	fi
+else
+	skip "Marketplacefile empty or claude not available"
+fi
+
+# --- Claude plugins ---
+step "Claude plugins"
+if command -v claude &>/dev/null && [[ -s "$DOTFILES_DIR/Pluginfile" ]]; then
+	plugins=$(grep -vE '^[[:space:]]*(#|$)' "$DOTFILES_DIR/Pluginfile")
+	echo "  Plugins: $(echo "$plugins" | tr '\n' ' ')"
+	if confirm "Install Claude plugins from Pluginfile?"; then
+		echo "$plugins" | while read -r plugin; do
+			[[ -n "$plugin" ]] && claude plugin install "$plugin"
+		done
+		ok "Claude plugins installed"
+	else
+		skip "Claude plugins"
+	fi
+else
+	skip "Pluginfile empty or claude not available"
+fi
+
 # --- alerter ---
 step "alerter (notification helper)"
 if command -v alerter &>/dev/null; then

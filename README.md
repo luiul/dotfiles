@@ -96,6 +96,23 @@ npx skills@latest add -g <source>
 
 The `Skillfile` tracks installed skills and is automatically updated on every commit via the pre-commit hook.
 
+## Claude Code Plugins
+
+Claude Code itself is installed via the native installer (`curl -fsSL https://claude.ai/install.sh | bash`) and self-updates with `claude update`. Plugins are managed through `claude plugin install|update|list` and live inside registered marketplaces.
+
+Two files track this state, both auto-updated on every commit via the pre-commit hook:
+
+| File | Format | Purpose |
+|------|--------|---------|
+| `Marketplacefile` | `<name> <owner/repo>` per line | Marketplaces to register with `claude plugin marketplace add` |
+| `Pluginfile` | `<plugin>@<marketplace>` per line | Plugins to install with `claude plugin install` |
+
+On a fresh machine, `setup.sh` first registers marketplaces, then installs plugins. `upgrade-tools` refreshes marketplace indices and updates each installed plugin.
+
+## `upgrade-tools`
+
+The `upgrade-tools` shell function (defined in `zsh/.zsh_config/funcs.zsh`) upgrades everything in one go: Homebrew, `uv` tools, npm globals, Claude Code, Claude plugins, and Claude skills. Missing tools are skipped rather than failing.
+
 ## Pre-commit Hook
 
-The pre-commit hook auto-generates `example.env` from `.env` (keys only), updates the Brewfile, updates the Skillfile, blocks `.env` from being committed, and scans staged diffs for API keys, tokens, and private keys. Bypass with `--no-verify` for false positives.
+The pre-commit hook auto-generates `example.env` from `.env` (keys only), updates the Brewfile, Skillfile, Marketplacefile, and Pluginfile, blocks `.env` from being committed, and scans staged diffs for API keys, tokens, and private keys. Bypass with `--no-verify` for false positives.

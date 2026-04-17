@@ -42,9 +42,69 @@ md-to-rtf() {
 }
 
 upgrade-tools() {
-	brew update
-	brew upgrade
-	uv tool upgrade --all
+	local GREEN='\033[0;32m' YELLOW='\033[0;33m' BLUE='\033[0;34m' RESET='\033[0m'
+	_upgrade_step() { echo -e "\n${BLUE}==>${RESET} $1"; }
+	_upgrade_ok() { echo -e "  ${GREEN}✓${RESET} $1"; }
+	_upgrade_skip() { echo -e "  ${YELLOW}⊘${RESET} $1 (skipped)"; }
+
+	_upgrade_step "Homebrew"
+	if command -v brew &>/dev/null; then
+		brew update && brew upgrade && brew cleanup
+		_upgrade_ok "Homebrew up to date"
+	else
+		_upgrade_skip "brew not installed"
+	fi
+
+	_upgrade_step "uv tools"
+	if command -v uv &>/dev/null; then
+		uv tool upgrade --all
+		_upgrade_ok "uv tools up to date"
+	else
+		_upgrade_skip "uv not installed"
+	fi
+
+	_upgrade_step "npm global packages"
+	if command -v npm &>/dev/null; then
+		npm update -g
+		_upgrade_ok "npm globals up to date"
+	else
+		_upgrade_skip "npm not installed"
+	fi
+
+	_upgrade_step "Claude Code"
+	if command -v claude &>/dev/null; then
+		claude update
+		_upgrade_ok "Claude Code up to date"
+	else
+		_upgrade_skip "claude not installed"
+	fi
+
+	_upgrade_step "Claude plugins"
+	if command -v claude &>/dev/null && command -v jq &>/dev/null; then
+		claude plugin marketplace update
+		local plugins
+		plugins=$(claude plugin list --json 2>/dev/null | jq -r '.[].id' 2>/dev/null)
+		if [[ -n "$plugins" ]]; then
+			echo "$plugins" | while read -r plugin; do
+				[[ -n "$plugin" ]] && claude plugin update "$plugin"
+			done
+			_upgrade_ok "Claude plugins up to date"
+		else
+			_upgrade_skip "no plugins installed"
+		fi
+	else
+		_upgrade_skip "claude or jq not installed"
+	fi
+
+	_upgrade_step "Claude skills"
+	if command -v npx &>/dev/null; then
+		npx --yes skills@latest update -g -y
+		_upgrade_ok "Claude skills up to date"
+	else
+		_upgrade_skip "npx not installed"
+	fi
+
+	unfunction _upgrade_step _upgrade_ok _upgrade_skip 2>/dev/null
 }
 
 cod() {

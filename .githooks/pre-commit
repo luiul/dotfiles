@@ -27,10 +27,27 @@ if command -v brew &>/dev/null; then
 	git add brew/Brewfile
 fi
 
-# Update Skillfile with installed skills
-if [[ -d "$HOME/.agents/skills" ]]; then
-	ls -1 "$HOME/.agents/skills" >|Skillfile
+# Update Skillfile with installed skills (union of ~/.agents/skills and ~/.claude/skills)
+if [[ -d "$HOME/.agents/skills" || -d "$HOME/.claude/skills" ]]; then
+	{
+		[[ -d "$HOME/.agents/skills" ]] && ls -1 "$HOME/.agents/skills"
+		[[ -d "$HOME/.claude/skills" ]] && ls -1 "$HOME/.claude/skills"
+	} | sort -u >|Skillfile
 	git add Skillfile
+fi
+
+# Update Claude plugin tracking: Marketplacefile + Pluginfile
+if command -v claude &>/dev/null && command -v jq &>/dev/null; then
+	# Marketplacefile: "<name> <owner/repo>" per line (source type is always github today)
+	claude plugin marketplace list --json 2>/dev/null |
+		jq -r '.[] | select(.source == "github") | "\(.name) \(.repo)"' 2>/dev/null |
+		sort >|Marketplacefile || true
+	[[ -s Marketplacefile ]] && git add Marketplacefile
+
+	# Pluginfile: "<plugin>@<marketplace>" per line (consumed by `claude plugin install`)
+	claude plugin list --json 2>/dev/null |
+		jq -r '.[].id' 2>/dev/null | sort >|Pluginfile || true
+	[[ -s Pluginfile ]] && git add Pluginfile
 fi
 
 # Detect secrets in staged files before committing

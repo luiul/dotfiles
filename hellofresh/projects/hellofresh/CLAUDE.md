@@ -84,3 +84,10 @@ This repo uses the schemachange tool to manage Snowflake objects.
 ## GitHub
 
 - Always use `gh` CLI for GitHub interactions (PRs, issues, checks, releases, etc.)
+
+## Jira
+
+- The `description` field in `mcp__mcp-atlassian__jira_create_issue` / `jira_update_issue` takes **Markdown with real newlines**, not `\\n` literals. The MCP server converts Markdown to wiki markup. Double-escaped `\\n` sequences render as visible `\n` text in Jira.
+- Wrap every file path, SQL identifier, column name, and code token in backticks. Bare underscores inside Markdown get interpreted as emphasis and rendered as `*` (e.g. `supplier_sku` must be `` `supplier_sku` ``).
+- Do not use Markdown link syntax `[text](path)` for local file references — list the path in a code span instead.
+- After creating a ticket, fetch it back with `jira_get_issue` (fields=description) and verify the first lines render as intended. If you see literal `\n` text, re-submit.

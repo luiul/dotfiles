@@ -42,96 +42,85 @@ md-to-rtf() {
 }
 
 upgrade-tools() {
-	local GREEN='\033[0;32m' YELLOW='\033[0;33m' RED='\033[0;31m' BLUE='\033[0;34m' RESET='\033[0m'
-	_upgrade_step() { echo -e "\n${BLUE}==>${RESET} $1"; }
-	_upgrade_ok() { echo -e "  ${GREEN}✓${RESET} $1"; }
-	_upgrade_skip() { echo -e "  ${YELLOW}⊘${RESET} $1 (skipped)"; }
-	_upgrade_fail() { echo -e "  ${RED}✗${RESET} $1"; }
-	_upgrade_cleanup() { unfunction _upgrade_step _upgrade_ok _upgrade_skip _upgrade_fail _upgrade_cleanup _upgrade_interrupt 2>/dev/null; trap - INT; }
-	_upgrade_interrupt() { echo -e "\n  ${YELLOW}⚠${RESET} interrupted"; _upgrade_cleanup; return 130; }
-	trap _upgrade_interrupt INT
+	# TRAPINT returning 0 swallows Ctrl+C so only the current step dies and
+	# the next step runs. Use Ctrl+\ (SIGQUIT) to abort the whole function.
+	TRAPINT() { return 0; }
 
-	_upgrade_step "Homebrew"
-	if command -v brew &>/dev/null; then
-		if brew update && brew upgrade && brew cleanup; then
-			_upgrade_ok "Homebrew up to date"
-		else
-			_upgrade_fail "Homebrew failed (exit $?)"
+	_report() {
+		case $2 in
+		0) print -P "  %F{green}✓%f $1 up to date" ;;
+		130) print -P "  %F{yellow}⚠%f $1 interrupted" ;;
+		*) print -P "  %F{red}✗%f $1 failed (exit $2)" ;;
+		esac
+	}
+	_run() {
+		local label=$1 tool=$2
+		shift 2
+		print -P "\n%F{blue}==>%f $label"
+		if ! command -v "$tool" &>/dev/null; then
+			print -P "  %F{yellow}⊘%f $tool not installed (skipped)"
+			return
 		fi
-	else
-		_upgrade_skip "brew not installed"
+		"$@"
+		_report "$label" $?
+	}
+	_preview() {
+		local label=$1 tool=$2
+		shift 2
+		print -P "\n%F{blue}==>%f $label"
+		if ! command -v "$tool" &>/dev/null; then
+			print -P "  %F{yellow}⊘%f $tool not installed"
+			return
+		fi
+		if (($# == 0)); then
+			print -P "  %F{yellow}⊘%f no preview available"
+			return
+		fi
+		local out
+		out=$("$@" 2>/dev/null)
+		[[ -n "$out" ]] && print "$out" | sed 's/^/  /' || print -P "  %F{green}✓%f up to date"
+	}
+
+	if [[ $1 == --check || $1 == -c ]]; then
+		command -v brew &>/dev/null && brew update >/dev/null 2>&1
+		_preview "Homebrew"            brew   brew outdated
+		_preview "uv tools"            uv
+		_preview "npm global packages" npm    npm outdated -g
+		_preview "Claude Code"         claude
+		_preview "Claude plugins"      claude
+		_preview "Claude skills"       npx
+		unfunction _run _report _preview TRAPINT
+		return
 	fi
 
-	_upgrade_step "uv tools"
-	if command -v uv &>/dev/null; then
-		if uv tool upgrade --all; then
-			_upgrade_ok "uv tools up to date"
-		else
-			_upgrade_fail "uv tools failed (exit $?)"
-		fi
-	else
-		_upgrade_skip "uv not installed"
-	fi
+	_run "Homebrew" brew sh -c 'brew update && brew upgrade && brew cleanup'
+	_run "uv tools" uv uv tool upgrade --all
+	_run "npm global packages" npm npm update -g
+	_run "Claude Code" claude claude update
 
-	_upgrade_step "npm global packages"
-	if command -v npm &>/dev/null; then
-		if npm update -g; then
-			_upgrade_ok "npm globals up to date"
-		else
-			_upgrade_fail "npm update failed (exit $?)"
-		fi
+	print -P "\n%F{blue}==>%f Claude plugins"
+	if ! command -v claude &>/dev/null || ! command -v jq &>/dev/null; then
+		print -P "  %F{yellow}⊘%f claude or jq not installed (skipped)"
 	else
-		_upgrade_skip "npm not installed"
-	fi
-
-	_upgrade_step "Claude Code"
-	if command -v claude &>/dev/null; then
-		if claude update; then
-			_upgrade_ok "Claude Code up to date"
-		else
-			_upgrade_fail "Claude Code update failed (exit $?)"
-		fi
-	else
-		_upgrade_skip "claude not installed"
-	fi
-
-	_upgrade_step "Claude plugins"
-	if command -v claude &>/dev/null && command -v jq &>/dev/null; then
-		local plugins
-		if ! claude plugin marketplace update; then
-			_upgrade_fail "marketplace refresh failed (exit $?)"
-		fi
+		claude plugin marketplace update
+		_report "marketplace refresh" $?
+		local plugins plugin
 		plugins=$(claude plugin list --json 2>/dev/null | jq -r '.[].id' 2>/dev/null)
-		if [[ -n "$plugins" ]]; then
-			local failed=0 plugin
+		if [[ -z "$plugins" ]]; then
+			print -P "  %F{yellow}⊘%f no plugins installed (skipped)"
+		else
 			while IFS= read -r plugin; do
-				[[ -z "$plugin" ]] && continue
-				claude plugin update "$plugin" || failed=1
+				[[ -n "$plugin" ]] && {
+					claude plugin update "$plugin"
+					_report "$plugin" $?
+				}
 			done <<<"$plugins"
-			if (( failed == 0 )); then
-				_upgrade_ok "Claude plugins up to date"
-			else
-				_upgrade_fail "one or more plugin updates failed"
-			fi
-		else
-			_upgrade_skip "no plugins installed"
 		fi
-	else
-		_upgrade_skip "claude or jq not installed"
 	fi
 
-	_upgrade_step "Claude skills"
-	if command -v npx &>/dev/null; then
-		if npx --yes skills@latest update -g -y; then
-			_upgrade_ok "Claude skills up to date"
-		else
-			_upgrade_fail "skills update failed (exit $?)"
-		fi
-	else
-		_upgrade_skip "npx not installed"
-	fi
+	_run "Claude skills" npx npx --yes skills@latest update -g -y
 
-	_upgrade_cleanup
+	unfunction _run _report _preview TRAPINT
 }
 
 cod() {

@@ -19,8 +19,9 @@ fi
 if command -v brew &>/dev/null; then
 	brew bundle dump --file=brew/Brewfile --force
 	if command -v npm &>/dev/null; then
+		# `|| true` so grep exiting non-zero (no non-npm globals) doesn't abort under pipefail
 		npm list -g --depth=0 --parseable 2>/dev/null | tail -n +2 | xargs -I{} basename {} |
-			grep -v '^npm$' | sort | while read -r pkg; do
+			{ grep -v '^npm$' || true; } | sort | while read -r pkg; do
 			echo "npm \"$pkg\"" >>brew/Brewfile
 		done
 	fi

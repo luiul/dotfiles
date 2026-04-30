@@ -149,7 +149,8 @@
     "[markdown]": {
         "editor.tabSize": 4,
         "editor.defaultFormatter": "yzhang.markdown-all-in-one",
-        "diffEditor.ignoreTrimWhitespace": false
+        "diffEditor.ignoreTrimWhitespace": false,
+        "editor.formatOnSave": false
     },
     "[javascript]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode"

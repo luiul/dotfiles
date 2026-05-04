@@ -231,6 +231,8 @@
     "python.testing.cwd": "${workspaceFolder}/tests",
     // === Miscellaneous ===
     "update.mode": "manual",
+    "extensions.autoUpdate": true,
+    "extensions.autoCheckUpdates": true,
     "telemetry.telemetryLevel": "off",
     "redhat.telemetry.enabled": false,
     "window.openFilesInNewWindow": "on",

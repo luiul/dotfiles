@@ -137,12 +137,36 @@ elif confirm "Stow all packages into \$HOME?"; then
 	# snowflake package uses --no-folding so runtime files (logs, cache) stay
 	# outside the repo — target dir must exist before stow creates per-file links
 	mkdir -p "$HOME/.snowflake"
+	# rectangle is not stowable — see rectangle/README.md
 	for pkg in */; do
+		[[ "${pkg%/}" == "rectangle" ]] && continue
 		stow --no-folding "${pkg%/}"
 	done
 	ok "All packages stowed"
 else
 	skip "Stow"
+fi
+
+# --- SSH key ---
+step "SSH key"
+if [[ -f "$HOME/.ssh/id_ed25519" ]]; then
+	ok "SSH key already exists"
+else
+	if confirm "Generate a new ed25519 SSH key?"; then
+		read -rp "  Email/comment for the key: " ssh_email
+		ssh-keygen -t ed25519 -C "$ssh_email" -f "$HOME/.ssh/id_ed25519"
+		ok "SSH key generated"
+	else
+		skip "SSH keygen"
+	fi
+fi
+
+if [[ -f "$HOME/.ssh/id_ed25519" ]] && confirm "Add SSH key to agent + Apple Keychain?"; then
+	ssh-add --apple-use-keychain "$HOME/.ssh/id_ed25519"
+	ok "SSH key added to Keychain"
+	echo "  Public key (add to GitHub at https://github.com/settings/keys):"
+	echo ""
+	cat "$HOME/.ssh/id_ed25519.pub" | sed 's/^/    /'
 fi
 
 # --- Cleanup ---

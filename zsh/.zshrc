@@ -17,11 +17,6 @@ else
 	done
 fi
 
-# Start ssh-agent (function lives in ~/.zsh_config/funcs.zsh)
-if typeset -f ssh_agent_init >/dev/null 2>&1; then
-	ssh_agent_init
-fi
-
 # Load environment variables from dotfiles/.env (gitignored)
 if [[ -f ~/dotfiles/.env ]]; then
 	set -a

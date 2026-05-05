@@ -10,3 +10,6 @@
 # Snowflake CLI runtime files
 snowflake/.snowflake/logs/
 snowflake/.snowflake/.cli_version.cache
+# SSH — only track config; never commit keys, known_hosts, or agent state
+ssh/.ssh/*
+!ssh/.ssh/config

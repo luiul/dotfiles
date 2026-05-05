@@ -127,30 +127,3 @@ cod() {
 	cd "$@" 2> >(grep -v "already in the only match" >&2) && code .
 }
 
-# Start or reuse ssh-agent (once per reboot)
-ssh_agent_init() {
-	local agent_env_file="$HOME/.ssh/agent_env"
-
-	if [[ -f "$agent_env_file" ]]; then
-		source "$agent_env_file" >/dev/null 2>&1
-
-		if ! ssh-add -l >/dev/null 2>&1; then
-			rm -f "$agent_env_file"
-			unset SSH_AUTH_SOCK SSH_AGENT_PID
-		fi
-	fi
-
-	if [[ -z "$SSH_AUTH_SOCK" ]]; then
-		eval "$(ssh-agent -s)" >/dev/null
-
-		local key_file
-		for key_file in "$HOME"/.ssh/id_{ed25519,ecdsa,rsa}; do
-			[[ -f "$key_file" ]] && ssh-add "$key_file" </dev/null && break
-		done
-
-		{
-			echo "export SSH_AUTH_SOCK=$SSH_AUTH_SOCK"
-			echo "export SSH_AGENT_PID=$SSH_AGENT_PID"
-		} >|"$agent_env_file"
-	fi
-}

@@ -14,14 +14,15 @@ The script is idempotent and prompts before each step. It will:
 2. Install global npm packages listed in the Brewfile
 3. Install Claude Code (native build), register plugin marketplaces, and install plugins
 4. Install `alerter` (notification helper) and `znap` (zsh plugin manager)
-5. Stow all dotfile packages into `$HOME`
-6. Clean stale `.zwc` files, configure git hooks, and create `.env` from `example.env`
+5. Stow all dotfile packages into `$HOME` (skips `rectangle` — see below)
+6. Generate an ed25519 SSH key (if missing) and add it to the macOS Keychain
+7. Clean stale `.zwc` files, configure git hooks, and create `.env` from `example.env`
 
 ## Stow Packages
 
 Each top-level directory is a stow package that mirrors `$HOME`:
 
-`borders`, `brew`, `claude`, `ghostty`, `git`, `hellofresh`, `karabiner`, `pip`, `rectangle`, `ruff`, `snowflake`, `sqlfluff`, `stow`, `streamlit`, `vscode`, `zsh`
+`borders`, `brew`, `claude`, `ghostty`, `git`, `hellofresh`, `karabiner`, `pip`, `rectangle`, `ruff`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `vscode`, `zsh`
 
 ### Apply or Update All
 
@@ -54,6 +55,14 @@ stow --adopt */
 mv ~/.config/<path>/<file> ~/.config/<path>/<file>.backup
 stow <package>
 ```
+
+## SSH
+
+The `ssh` package stows only `~/.ssh/config` (private keys never leave `~/.ssh/`). The config enables `UseKeychain yes` + `AddKeysToAgent yes` so the passphrase is cached in the macOS login Keychain — entered once, reused across reboots via the system launchd `ssh-agent`. `setup.sh` handles fresh-machine bootstrap (keygen + `ssh-add --apple-use-keychain`).
+
+## Rectangle
+
+Rectangle stores its config in macOS defaults, not in a home-directory file, so the `rectangle` package is not stowable. `RectangleConfig.json` is an exported snapshot — restore via Rectangle → Preferences → Import. See `rectangle/README.md`.
 
 ## Snowflake CLI
 
@@ -117,4 +126,4 @@ The `upgrade-tools` shell function (defined in `zsh/.zsh_config/funcs.zsh`) upgr
 
 ## Pre-commit Hook
 
-The pre-commit hook auto-generates `example.env` from `.env` (keys only), updates the Brewfile, Skillfile, Marketplacefile, and Pluginfile, blocks `.env` from being committed, and scans staged diffs for API keys, tokens, and private keys. Bypass with `--no-verify` for false positives.
+The pre-commit hook auto-generates `example.env` from `.env` (keys only), updates the Brewfile, Skillfile, Marketplacefile, and Pluginfile, blocks `.env` from being committed, and runs [gitleaks](https://github.com/gitleaks/gitleaks) (`gitleaks protect --staged`) to scan staged changes for secrets. Bypass with `--no-verify` for false positives.

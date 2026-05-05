@@ -4,7 +4,7 @@ alias k=kubectl
 # Basic Commands
 alias ls="ls --color=auto"
 alias la="ls -AthGl"
-alias lg="la | grep -i --color" # List all files and filter them using grep="ls -lA | grep"  # List all files and filter them using grep
+alias lg="la | grep -i --color" # List all files and filter them using grep
 alias copy='pbcopy'
 
 # File Management

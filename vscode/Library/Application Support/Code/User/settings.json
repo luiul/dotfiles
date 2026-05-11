@@ -238,6 +238,42 @@
     "window.openFilesInNewWindow": "on",
     // === Files/Housekeeping ===
     "files.autoSave": "onWindowChange",
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/.pytest_cache": true,
+        "**/.mypy_cache": true,
+        "**/.ruff_cache": true,
+        "**/.ipynb_checkpoints": true,
+        "**/*.egg-info": true,
+        "**/.DS_Store": true
+    },
+    "search.exclude": {
+        "**/__pycache__": true,
+        "**/.pytest_cache": true,
+        "**/.mypy_cache": true,
+        "**/.ruff_cache": true,
+        "**/.ipynb_checkpoints": true,
+        "**/*.egg-info": true,
+        "**/.venv": true,
+        "**/venv": true,
+        "**/node_modules": true,
+        "**/dist": true,
+        "**/build": true,
+        "**/.git": true
+    },
+    "files.watcherExclude": {
+        "**/__pycache__/**": true,
+        "**/.pytest_cache/**": true,
+        "**/.mypy_cache/**": true,
+        "**/.ruff_cache/**": true,
+        "**/.ipynb_checkpoints/**": true,
+        "**/.venv/**": true,
+        "**/venv/**": true,
+        "**/node_modules/**": true,
+        "**/dist/**": true,
+        "**/build/**": true,
+        "**/.git/objects/**": true
+    },
     // === Debug/Other ===
     "debug.toolBarLocation": "docked",
     "yaml.schemas": {
@@ -308,4 +344,5 @@
     "python.terminal.useEnvFile": false,
     "workbench.activityBar.location": "top",
     "window.commandCenter": false,
+    "markdown-preview-github-styles.colorTheme": "light",
 }

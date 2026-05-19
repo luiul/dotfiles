@@ -184,6 +184,16 @@ step "Git hooks"
 git config core.hooksPath .githooks
 ok "Hooks path set to .githooks"
 
+# --- Git clean/smudge filters ---
+step "Git filters"
+# strip-vscode-zoom: drops "window.zoomLevel" from VS Code settings.json on commit
+# (smudge is a no-op so local edits keep the line). Configured per-clone — must
+# run on every machine.
+git config filter.strip-vscode-zoom.clean "sed '/\"window\\.zoomLevel\"/d'"
+git config filter.strip-vscode-zoom.smudge cat
+git config filter.strip-vscode-zoom.required true
+ok "strip-vscode-zoom filter registered"
+
 # --- .env ---
 step "Environment file"
 if [[ -f "$DOTFILES_DIR/.env" ]]; then

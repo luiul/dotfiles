@@ -1,30 +1,22 @@
 # Kubernetes
 alias k=kubectl
 
-# Basic Commands
-alias ls="ls --color=auto"
-alias la="ls -AthGl"
-alias lg="la | grep -i --color" # List all files and filter them using grep
+# Listing (eza)
+alias ls="eza --group-directories-first --git"
+alias la="eza -lah --group-directories-first --git --time-style=relative --sort=modified --reverse"
+alias lt="eza --tree --level=2 --group-directories-first --git-ignore"
+
+# Clipboard
 alias copy='pbcopy'
+alias copywd='printf %s "$PWD" | pbcopy'
+alias copydirs='print -rn -- ${(F)$(print -l -- *(/N:t))} | pbcopy'
 
 # File Management
 alias rmf='rm -i'  # Interactive file removal
 alias rmd='rm -ri' # Interactive directory removal
 
-# AWS CLI
-alias s3="aws s3" # Shortcut for AWS S3 command
-
-alias pip-upgrade-all="pip freeze --local | grep -v '^\-e' | cut -d = -f 1  | xargs -n1 pip install -U" # Upgrade all pip packages
-alias pip-uninstall-all="pip uninstall -y -r <(pip freeze)"
-# alias pip-install-reqs="find . -name 'requirements.txt' -exec pip install -r {} \;"
+# Misc
+alias reload='source ~/.zshrc'
 
 # Homebrew Services for Borders
-alias borders-start='brew services start borders'
 alias borders-restart='brew services restart borders'
-
-# alias aws-sso-it="aws_sso sso-hf-it-developer"
-
-# Misc
-alias copydirs="ls -d */ | tr -d '/' | pbcopy"
-alias countfiles="ls -1 | wc -l"
-alias copywd="pwd | pbcopy"

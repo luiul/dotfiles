@@ -1,3 +1,9 @@
+countfiles() {
+	emulate -L zsh
+	local files=(*(.N)) dirs=(*(/N)) hidden=(.[^.]*(N))
+	print -- "${#files} files, ${#dirs} dirs, ${#hidden} hidden"
+}
+
 find-duplicate-filenames() {
 	# Default values
 	local root_dir="."

@@ -315,10 +315,6 @@ gac() {
 
 	git add -A
 
-	if [ -f ".pre-commit-config.yaml" ]; then
-		echo "prek config detected."
-	fi
-
 	local msg="$1"
 
 	if [[ -z "$msg" ]]; then

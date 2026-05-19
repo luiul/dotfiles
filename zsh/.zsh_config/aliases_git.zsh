@@ -29,15 +29,6 @@ alias glist="git stash list"     # List all stashes
 alias glastcommit="git show --stat"   # Show the last commit
 alias gundo="git reset --soft HEAD~1" # Undo last commit, keep changes staged
 
-# # Diff Viewing
-# alias gdiff="git diff"                # Show unstaged differences
-# alias gdiffstaged="git diff --staged" # Show differences in staged files
-
-# # Tag Management
-# alias gtag="git tag"             # List all tags
-# alias gtagnew="git tag -a"       # Create a new annotated tag, usage: gtagnew v1.0 -m 'Version 1.0'
-# alias gtagsync="git push --tags" # Push tags to remote
-
 # Log Filtering
 alias glog="git log --oneline --decorate" # Basic log
 
@@ -76,20 +67,8 @@ alias gaddgitignore="cp ~/.gitignore ."
 # Hard Resets
 alias grh="git reset --hard" # Usage: greset HEAD to discard all working directory changes
 
-# Soft reset – move HEAD, but keep index + working tree (useful for rewriting last commit)
-# alias gresetsoft='git reset --soft' # usage: gresetsoft <commit-ish>
-
-# Mixed reset – default mode; un-stage files but leave working tree untouched
-# alias gresetmixed='git reset --mixed' # usage: gresetmixed <commit-ish>
-
-# Keep reset – like --hard, **but** aborts if it would overwrite uncommitted work
-# alias gresetkeep='git reset --keep' # usage: gresetkeep <commit-ish>
-
 # Un-stage selected files quickly (leave them modified in the working tree)
 alias gunstage='git reset HEAD --' # usage: gunstage <file1> <file2> …
-
-# Undo last commit (leave its changes unstaged) – a friendlier name than gundo
-# alias gresetprev='git reset --mixed HEAD~1'
 
 # Force-sync current branch to its upstream tip
 alias gresetremote='git fetch --prune && git reset --hard "$(git rev-parse --abbrev-ref --symbolic-full-name @{u})" && git submodule update --init --recursive'

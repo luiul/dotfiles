@@ -25,7 +25,7 @@
     "workbench.sideBar.location": "right",
     "workbench.editor.alwaysShowEditorActions": true,
     // === Editor Settings ===
-    "editor.fontFamily": "Menlo, DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
+    "editor.fontFamily": "'MesloLGS Nerd Font Mono', Menlo, DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
     "editor.fontSize": 12,
     "editor.wordWrap": "on",
     "editor.smoothScrolling": true,
@@ -87,7 +87,7 @@
     // === Format on Save (global & per-language)
     "editor.formatOnSave": true,
     // === Terminal Settings ===
-    "terminal.integrated.fontFamily": "Menlo,DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
+    "terminal.integrated.fontFamily": "'MesloLGS Nerd Font Mono', Menlo, DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
     "terminal.integrated.fontSize": 12,
     "terminal.integrated.defaultProfile.osx": "zsh",
     "terminal.integrated.persistentSessionScrollback": 1000,

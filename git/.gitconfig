@@ -4,3 +4,12 @@
 [core]
 	excludesfile = /Users/luis.aceituno/.gitignore_global
 	editor = code --wait
+	pager = delta
+[interactive]
+	diffFilter = delta --color-only
+[delta]
+	navigate = true
+	line-numbers = true
+	side-by-side = true
+[merge]
+	conflictstyle = zdiff3

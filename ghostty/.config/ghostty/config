@@ -1,4 +1,5 @@
 # Font settings
+font-family = JetBrainsMono Nerd Font
 font-feature = -calt
 font-feature = -liga
 font-feature = -dlig

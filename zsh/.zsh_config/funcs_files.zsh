@@ -1,3 +1,4 @@
+unalias countfiles 2>/dev/null
 countfiles() {
 	emulate -L zsh
 	local files=(*(.N)) dirs=(*(/N)) hidden=(.[^.]*(N))

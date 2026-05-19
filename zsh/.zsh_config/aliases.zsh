@@ -15,8 +15,5 @@ alias copydirs='print -rn -- ${(F)$(print -l -- *(/N:t))} | pbcopy'
 alias rmf='rm -i'  # Interactive file removal
 alias rmd='rm -ri' # Interactive directory removal
 
-# Misc
-alias reload='source ~/.zshrc'
-
 # Homebrew Services for Borders
 alias borders-restart='brew services restart borders'

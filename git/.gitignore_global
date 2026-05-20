@@ -6,11 +6,6 @@
 .DS_Store
 ._*
 
-# Editors
-*.swp
-*.swo
-*~
-
 # Python
 __pycache__/
 *.pyc

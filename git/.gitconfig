@@ -17,8 +17,6 @@
 	defaultBranch = main
 [push]
 	autoSetupRemote = true
-[pull]
-	ff = only
 [fetch]
 	prune = true
 [rebase]

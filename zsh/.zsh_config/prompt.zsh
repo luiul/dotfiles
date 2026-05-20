@@ -13,12 +13,12 @@ my_prompt() {
     local prompt=""
     local venv_info=""
 
-    if [[ -n "$VIRTUAL_ENV" ]] && [[ "$PWD" = "$(dirname "$VIRTUAL_ENV")"* ]]; then
+    if [[ -n "$VIRTUAL_ENV" ]] && [[ "$PWD" = "${VIRTUAL_ENV:h}"* ]]; then
         local venv_name="${VIRTUAL_ENV_PROMPT//[()]/}"
         venv_name="${venv_name%% }"
         # Fall back to parent directory name if VIRTUAL_ENV_PROMPT is empty (e.g. uv venvs)
         if [[ -z "$venv_name" ]]; then
-            venv_name="${$(dirname "$VIRTUAL_ENV"):t}"
+            venv_name="${VIRTUAL_ENV:h:t}"
         fi
         venv_info=" %F{149}($venv_name)%f"
     fi
@@ -26,11 +26,29 @@ my_prompt() {
     # Base (time + cwd)
     prompt="%F{245}╭─%f %F{245}[%D{%H:%M:%S}]%f %F{183}%~%f"
 
-    # Single git status call replaces ~19 separate git commands
+    # Locate .git without forking: walk up from $PWD in pure zsh (~0.005ms vs ~8ms for git rev-parse).
+    local git_dir="" d="$PWD"
+    while [[ "$d" != "/" && -n "$d" ]]; do
+        if [[ -d "$d/.git" ]]; then
+            git_dir="$d/.git"
+            break
+        elif [[ -f "$d/.git" ]]; then
+            # Worktree or submodule: .git is a file containing "gitdir: <path>"
+            local gitfile_content
+            IFS= read -r gitfile_content < "$d/.git"
+            if [[ "$gitfile_content" == gitdir:* ]]; then
+                local rel="${gitfile_content#gitdir: }"
+                [[ "$rel" = /* ]] && git_dir="$rel" || git_dir="$d/$rel"
+            fi
+            break
+        fi
+        d="${d:h}"
+    done
+
     local git_status
-    local git_dir
-    if git_dir="$(git rev-parse --git-dir 2>/dev/null)" && \
-       git_status="$(git status --porcelain=v2 --branch 2>/dev/null)"; then
+    # --no-optional-locks avoids touching the index lock; --ignore-submodules=all skips submodule scans.
+    if [[ -n "$git_dir" ]] && \
+       git_status="$(git --no-optional-locks status --porcelain=v2 --branch --ignore-submodules=all 2>/dev/null)"; then
 
         # Parse branch headers
         local branch_head="" branch_oid="" branch_ab=""

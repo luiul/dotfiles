@@ -1,7 +1,12 @@
-# Symlink the new worktree's .venv to the primary worktree's so uv/dbt work immediately.
-# Tradeoff: all worktrees share one physical venv. For repos where dep changes are PRs, fine.
+# .venv is symlinked (below); skip it in copy-ignored so we don't try to reflink it too.
+[step.copy-ignored]
+exclude = [".venv/", ".DS_Store"]
+
+# Symlink .venv (shared, handled separately), copy other gitignored files (.vscode/settings.json,
+# .env, etc.) via reflink, and open the new worktree in VS Code.
 [post-start]
 venv = "ln -sfn {{ repo_path }}/.venv {{ worktree_path }}/.venv"
+copy = "wt step copy-ignored --force"
 vscode = "code -n {{ worktree_path }}"
 
 # Refuse to remove protected branches. pre-* hooks abort on non-zero exit.

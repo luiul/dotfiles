@@ -4,16 +4,23 @@
 
 # macOS
 .DS_Store
+._*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
 # Python
 __pycache__/
 *.pyc
 *.pyo
-
-# Editors
-*.swp
-*.swo
-*~
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
 
 # Compiled zsh
 *.zwc

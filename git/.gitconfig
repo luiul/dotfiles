@@ -13,3 +13,23 @@
 	side-by-side = true
 [merge]
 	conflictstyle = zdiff3
+[init]
+	defaultBranch = main
+[push]
+	autoSetupRemote = true
+[pull]
+	ff = only
+[fetch]
+	prune = true
+[rebase]
+	autosquash = true
+	autostash = true
+[rerere]
+	enabled = true
+[diff]
+	algorithm = histogram
+	colorMoved = default
+[branch]
+	sort = -committerdate
+[commit]
+	verbose = true

@@ -1,0 +1,13 @@
+# Symlink the new worktree's .venv to the primary worktree's so uv/dbt work immediately.
+# Tradeoff: all worktrees share one physical venv. For repos where dep changes are PRs, fine.
+[post-start]
+venv = "ln -sfn {{ repo_path }}/.venv {{ worktree_path }}/.venv"
+vscode = "code -n {{ worktree_path }}"
+
+# Refuse to remove protected branches. pre-* hooks abort on non-zero exit.
+[pre-remove]
+protect = '''
+case "{{ branch }}" in
+  main|master|live) echo "refusing to remove protected branch: {{ branch }}" >&2; exit 1 ;;
+esac
+'''

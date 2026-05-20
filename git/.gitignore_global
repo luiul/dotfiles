@@ -7,8 +7,6 @@
 ._*
 
 # Editors
-.vscode/
-.idea/
 *.swp
 *.swo
 *~

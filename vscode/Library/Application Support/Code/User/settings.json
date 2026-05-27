@@ -328,9 +328,6 @@
         "scminput": true
     },
     "github.copilot.nextEditSuggestions.enabled": true,
-    //
-    // Copilot and Chat - Experimental
-    //
     // === Extensions/Tools ===
     "docker.extension.enableComposeLanguageServer": false,
     "parquet-viewer.format": "csv",
@@ -340,6 +337,10 @@
     "git.blame.statusBarItem.enabled": true,
     "chat.viewSessions.orientation": "stacked",
     "terminal.external.osxExec": "Ghostty.app",
+    // Point dbt at the standard profiles location for any workspace that doesn't override it.
+    "terminal.integrated.env.osx": {
+        "DBT_PROFILES_DIR": "${env:HOME}/.dbt"
+    },
     "claudeCode.preferredLocation": "panel",
     "python.terminal.useEnvFile": false,
     "workbench.activityBar.location": "top",

@@ -1,0 +1,42 @@
+{
+	// Overrides merged on top of the built-in Mariana scheme.
+	// Color-codes Markdown headings H1–H6 with distinct, readable hues.
+	"rules": [
+		{
+			"name": "Markdown heading 1",
+			"scope": "markup.heading.1.markdown",
+			"foreground": "#ec5f67",
+			"font_style": "bold",
+		},
+		{
+			"name": "Markdown heading 2",
+			"scope": "markup.heading.2.markdown",
+			"foreground": "#f99157",
+			"font_style": "bold",
+		},
+		{
+			"name": "Markdown heading 3",
+			"scope": "markup.heading.3.markdown",
+			"foreground": "#fac863",
+			"font_style": "bold",
+		},
+		{
+			"name": "Markdown heading 4",
+			"scope": "markup.heading.4.markdown",
+			"foreground": "#99c794",
+			"font_style": "bold",
+		},
+		{
+			"name": "Markdown heading 5",
+			"scope": "markup.heading.5.markdown",
+			"foreground": "#5fb3b3",
+			"font_style": "bold",
+		},
+		{
+			"name": "Markdown heading 6",
+			"scope": "markup.heading.6.markdown",
+			"foreground": "#c594c5",
+			"font_style": "bold",
+		},
+	],
+}

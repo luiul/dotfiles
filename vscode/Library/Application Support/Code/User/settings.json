@@ -77,7 +77,7 @@
             }
         ]
     },
-    "editor.lineNumbers": "relative",
+    "editor.lineNumbers": "on",
     "editor.unicodeHighlight.ambiguousCharacters": false,
     // === Editor hygiene ===
     "files.trimTrailingWhitespace": true,
@@ -188,9 +188,7 @@
         "${env:HOME}/.local/bin/ty"
     ],
     "ty.importStrategy": "fromEnvironment",
-    "ty.interpreter": [
-        "${workspaceFolder}/.venv/bin/python"
-    ],
+    "ty.interpreter": "${workspaceFolder}/.venv/bin/python",
     // Jupyter Notebooks formatter
     "notebook.formatOnSave.enabled": true,
     "notebook.codeActionsOnSave": {

@@ -1,0 +1,44 @@
+{
+	// Overrides merged on top of the built-in Breakers (light) scheme.
+	// Color-codes Markdown headings H1–H6 with distinct hues tuned for a
+	// light background. Pairs with Mariana.sublime-color-scheme for dark mode;
+	// "color_scheme": "auto" picks the right one per OS appearance.
+	"rules": [
+		{
+			"name": "Markdown heading 1",
+			"scope": "markup.heading.1.markdown",
+			"foreground": "#d8290f",
+			"font_style": "bold",
+		},
+		{
+			"name": "Markdown heading 2",
+			"scope": "markup.heading.2.markdown",
+			"foreground": "#c75200",
+			"font_style": "bold",
+		},
+		{
+			"name": "Markdown heading 3",
+			"scope": "markup.heading.3.markdown",
+			"foreground": "#a67400",
+			"font_style": "bold",
+		},
+		{
+			"name": "Markdown heading 4",
+			"scope": "markup.heading.4.markdown",
+			"foreground": "#2e8b3d",
+			"font_style": "bold",
+		},
+		{
+			"name": "Markdown heading 5",
+			"scope": "markup.heading.5.markdown",
+			"foreground": "#0e7c7c",
+			"font_style": "bold",
+		},
+		{
+			"name": "Markdown heading 6",
+			"scope": "markup.heading.6.markdown",
+			"foreground": "#8e44ad",
+			"font_style": "bold",
+		},
+	],
+}

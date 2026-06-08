@@ -137,6 +137,8 @@ elif confirm "Stow all packages into \$HOME?"; then
 	# snowflake package uses --no-folding so runtime files (logs, cache) stay
 	# outside the repo — target dir must exist before stow creates per-file links
 	mkdir -p "$HOME/.snowflake"
+	# sublime: User dir only exists after first launch, but --no-folding needs it
+	mkdir -p "$HOME/Library/Application Support/Sublime Text/Packages/User"
 	# rectangle is not stowable — see rectangle/README.md
 	for pkg in */; do
 		[[ "${pkg%/}" == "rectangle" ]] && continue

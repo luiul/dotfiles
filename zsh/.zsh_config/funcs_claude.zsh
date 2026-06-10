@@ -14,7 +14,7 @@ ask() {
 	for arg in "$@"; do
 		case $arg in
 		--help | -h)
-			print "Usage: ask [--model=<haiku|sonnet|opus>] [--effort=<low|medium|high>] [--examples=N] [--no-bare] [--copy|-c] <question>"
+			print "Usage: ask [--model=<haiku|sonnet|opus|fable>] [--effort=<low|medium|high>] [--examples=N] [--no-bare] [--copy|-c] <question>"
 			print "Defaults: --model=haiku --effort=low --examples=5 (--bare on)"
 			print "Example:  ask how do I use fd recursively?"
 			return 0

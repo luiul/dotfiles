@@ -186,6 +186,11 @@ step "Git hooks"
 git config core.hooksPath .githooks
 ok "Hooks path set to .githooks"
 
+# --- Git filters ---
+step "Git filters"
+git config filter.strip-sublime-fontsize.clean "sed '/^[[:space:]]*\"font_size\"/d'"
+ok "Sublime font_size strip filter configured"
+
 # --- .env ---
 step "Environment file"
 if [[ -f "$DOTFILES_DIR/.env" ]]; then

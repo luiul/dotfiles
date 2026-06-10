@@ -1,0 +1,2 @@
+# Sublime rewrites font_size into User Preferences on zoom; strip it so it is never tracked
+Preferences.sublime-settings filter=strip-sublime-fontsize

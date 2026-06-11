@@ -130,34 +130,15 @@
       "mcp__mcp-atlassian__jira_add_issues_to_sprint"
     ]
   },
+  "model": "opus",
   "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "AskUserQuestion",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/notify.sh \"Claude has a question in $(basename $PWD)\""
-          }
-        ]
-      },
-      {
-        "matcher": "ExitPlanMode",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/notify.sh \"Plan ready for review in $(basename $PWD)\""
-          }
-        ]
-      }
-    ],
-    "PermissionRequest": [
+    "Notification": [
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/notify.sh \"Permission required in $(basename $PWD)\""
+            "command": "msg=$(jq -r '.message // empty'); ~/.claude/notify.sh \"${msg:-Claude needs your attention} in $(basename \\\"$PWD\\\")\""
           }
         ]
       }
@@ -185,6 +166,5 @@
         "repo": "jarrodwatts/claude-hud"
       }
     }
-  },
-  "model": "opus"
+  }
 }

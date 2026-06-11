@@ -3,44 +3,74 @@ tap "databricks/tap"
 tap "felixkratz/formulae"
 tap "oven-sh/bun"
 tap "snowflakedb/snowflake-cli"
+# Clone of cat(1) with syntax highlighting and Git integration
 brew "bat"
+# More intuitive version of du in rust
 brew "dust"
+# Modern, maintained replacement for ls
 brew "eza"
+# Like neofetch, but much faster because written mostly in C
 brew "fastfetch"
+# Simple, fast and user-friendly alternative to find
 brew "fd"
+# Command-line fuzzy finder written in Go
 brew "fzf"
+# GitHub command-line tool
 brew "gh"
+# Distributed revision control system
 brew "git"
+# Syntax-highlighting pager for git and diff output
 brew "git-delta"
+# Audit git repos for secrets
 brew "gitleaks"
+# Open source programming language to build simple/reliable/efficient software
 brew "go"
+# CLI for Drive, Gmail, Calendar, Sheets, Docs, Chat, Admin, and more
 brew "googleworkspace-cli"
+# Lightweight and flexible command-line JSON processor
 brew "jq"
+# Open-source, cross-platform JavaScript runtime environment
 brew "node"
+# PDF rendering library (based on the xpdf-3.0 code base)
 brew "poppler"
+# Utility that provides fast incremental file transfer
 brew "rsync"
+# Autoformat shell script source code
 brew "shfmt"
+# CLI for snowflake
 brew "snowflake-cli"
+# Organize software neatly under a single directory tree (e.g. /usr/local)
 brew "stow"
+# Very fast implementation of tldr in Rust
 brew "tealdeer"
+# Display directories as trees (with optional color/HTML output)
 brew "tree"
+# Extremely fast Python package installer and resolver, written in Rust
 brew "uv"
+# CLI for Git worktree management, designed for parallel AI agent workflows
 brew "worktrunk"
+# Blazing fast terminal file manager written in Rust, based on async I/O
 brew "yazi"
+# Process YAML, JSON, XML, CSV and properties documents from the CLI
 brew "yq"
+# Shell extension to navigate your filesystem faster
 brew "zoxide"
+# Fish shell like syntax highlighting for zsh
 brew "zsh-syntax-highlighting"
-brew "ankitpokhrel/jira-cli/jira-cli"
-brew "databricks/tap/databricks"
-brew "felixkratz/formulae/borders"
-brew "oven-sh/bun/bun"
+# OpenAI's coding agent that runs in your terminal
 cask "codex"
 cask "font-meslo-lg-nerd-font"
+# Set of tools to manage resources and applications hosted on Google Cloud
 cask "gcloud-cli"
+# Free and open-source media player
 cask "iina"
+# Menu bar manager
 cask "jordanbaird-ice"
+# Open-source keystroke visualiser
 cask "keycastr"
+# Knowledge base that works on top of a local folder of plain text Markdown files
 cask "obsidian"
+# Quick Look generator for Markdown files
 cask "qlmarkdown"
 vscode "adpyke.codesnap"
 vscode "altimateai.vscode-altimate-mcp-server"

@@ -1,6 +1,7 @@
 tap "ankitpokhrel/jira-cli"
 tap "databricks/tap"
 tap "felixkratz/formulae"
+tap "hashicorp/tap"
 tap "oven-sh/bun"
 tap "snowflakedb/snowflake-cli"
 # Clone of cat(1) with syntax highlighting and Git integration
@@ -57,6 +58,8 @@ brew "yq"
 brew "zoxide"
 # Fish shell like syntax highlighting for zsh
 brew "zsh-syntax-highlighting"
+# Vault
+brew "hashicorp/tap/vault", trusted: true
 # OpenAI's coding agent that runs in your terminal
 cask "codex"
 cask "font-meslo-lg-nerd-font"

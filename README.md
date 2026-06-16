@@ -14,15 +14,16 @@ The script is idempotent and prompts before each step. It will:
 2. Install global npm packages listed in the Brewfile
 3. Install Claude Code (native build), register plugin marketplaces, and install plugins
 4. Install `znap` (zsh plugin manager)
-5. Stow all dotfile packages into `$HOME` (skips `rectangle` — see below)
-6. Generate an ed25519 SSH key (if missing) and add it to the macOS Keychain
-7. Clean stale `.zwc` files, configure git hooks, and create `.env` from `example.env`
+5. Build `ClaudeNotifier.app` into `~/Applications` (click-to-focus notification helper — see `claudenotifier/`)
+6. Stow all dotfile packages into `$HOME` (skips `rectangle` and `claudenotifier` — see below)
+7. Generate an ed25519 SSH key (if missing) and add it to the macOS Keychain
+8. Clean stale `.zwc` files, configure git hooks, and create `.env` from `example.env`
 
 ## Stow Packages
 
 Each top-level directory is a stow package that mirrors `$HOME`:
 
-`borders`, `brew`, `claude`, `ghostty`, `git`, `hellofresh`, `karabiner`, `pip`, `rectangle`, `ruff`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `sublime`, `vscode`, `zsh`
+`borders`, `brew`, `claude`, `claudenotifier`, `ghostty`, `git`, `hellofresh`, `karabiner`, `pip`, `rectangle`, `ruff`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `sublime`, `vscode`, `zsh`
 
 ### Apply or Update All
 
@@ -63,6 +64,10 @@ The `ssh` package stows only `~/.ssh/config` (private keys never leave `~/.ssh/`
 ## Rectangle
 
 Rectangle stores its config in macOS defaults, not in a home-directory file, so the `rectangle` package is not stowable. `RectangleConfig.json` is an exported snapshot — restore via Rectangle → Preferences → Import. See `rectangle/README.md`.
+
+## ClaudeNotifier
+
+The `claudenotifier` package is build source, not a dotfile, so it is not stowable. `setup.sh` builds `ClaudeNotifier.applescript` into `~/Applications/ClaudeNotifier.app`, a tiny notification helper so that clicking a Claude Code notification focuses the originating terminal. On first run, enable it in System Settings → Notifications → Claude Code. See `claudenotifier/README.md`.
 
 ## Snowflake CLI
 

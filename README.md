@@ -13,7 +13,7 @@ The script is idempotent and prompts before each step. It will:
 1. Install Homebrew and Brewfile packages
 2. Install global npm packages listed in the Brewfile
 3. Install Claude Code (native build), register plugin marketplaces, and install plugins
-4. Install `alerter` (notification helper) and `znap` (zsh plugin manager)
+4. Install `znap` (zsh plugin manager)
 5. Stow all dotfile packages into `$HOME` (skips `rectangle` — see below)
 6. Generate an ed25519 SSH key (if missing) and add it to the macOS Keychain
 7. Clean stale `.zwc` files, configure git hooks, and create `.env` from `example.env`

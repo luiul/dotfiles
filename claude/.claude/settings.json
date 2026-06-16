@@ -138,7 +138,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "msg=$(jq -r '.message // empty'); ~/.claude/notify.sh \"${msg:-Claude needs your attention} in $(basename \\\"$PWD\\\")\""
+            "command": "msg=$(jq -r '.message // empty'); ~/.claude/notify.sh \"${msg:-Claude needs your attention}\""
           }
         ]
       }
@@ -149,7 +149,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/notify.sh \"Claude is done in $(basename \\\"$PWD\\\")\""
+            "command": "~/.claude/notify.sh \"Claude is done\""
           }
         ]
       }

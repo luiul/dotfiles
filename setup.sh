@@ -106,18 +106,6 @@ else
 	skip "Pluginfile empty or claude not available"
 fi
 
-# --- alerter ---
-step "alerter (notification helper)"
-if command -v alerter &>/dev/null; then
-	ok "alerter already installed"
-elif confirm "Install alerter?"; then
-	curl -sL https://github.com/vjeantet/alerter/releases/latest/download/alerter -o /opt/homebrew/bin/alerter
-	chmod +x /opt/homebrew/bin/alerter
-	ok "alerter installed"
-else
-	skip "alerter"
-fi
-
 # --- znap (zsh plugin manager) ---
 step "znap (zsh plugin manager)"
 if [[ -d "$HOME/repos/znap" ]]; then

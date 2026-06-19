@@ -2,6 +2,7 @@ tap "ankitpokhrel/jira-cli"
 tap "databricks/tap"
 tap "felixkratz/formulae"
 tap "hashicorp/tap"
+tap "mlz11/tap"
 tap "oven-sh/bun"
 tap "snowflakedb/snowflake-cli"
 # Clone of cat(1) with syntax highlighting and Git integration
@@ -60,6 +61,8 @@ brew "zoxide"
 brew "zsh-syntax-highlighting"
 # Vault
 brew "hashicorp/tap/vault", trusted: true
+# macOS notifications with Claude icon for Claude Code hooks
+cask "mlz11/tap/claude-notifier", trusted: true
 # OpenAI's coding agent that runs in your terminal
 cask "codex"
 cask "font-meslo-lg-nerd-font"
@@ -85,7 +88,6 @@ vscode "bierner.github-markdown-preview"
 vscode "bierner.markdown-checkbox"
 vscode "bierner.markdown-emoji"
 vscode "bierner.markdown-footnotes"
-vscode "bierner.markdown-mermaid"
 vscode "bierner.markdown-preview-github-styles"
 vscode "cardinal90.multi-cursor-case-preserve"
 vscode "charliermarsh.ruff"
@@ -158,6 +160,7 @@ vscode "thinker.sort-json"
 vscode "timonwong.shellcheck"
 vscode "tomaszbartoszewski.avro-tools"
 vscode "tomoki1207.pdf"
+vscode "vstirbu.vscode-mermaid-preview"
 vscode "wenbopan.vscode-terminal-osc-notifier"
 vscode "yutengjing.open-in-external-app"
 vscode "yzane.markdown-pdf"

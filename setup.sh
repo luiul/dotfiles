@@ -117,44 +117,6 @@ else
 	skip "znap"
 fi
 
-# --- ClaudeNotifier.app (click-to-focus notification helper) ---
-# Built from checked-in AppleScript source into ~/Applications. Not stowed: the
-# .app is a build artifact, not a symlinked dotfile (see claudenotifier/README.md).
-step "ClaudeNotifier.app"
-cn_src="$DOTFILES_DIR/claudenotifier/ClaudeNotifier.applescript"
-cn_icon="$DOTFILES_DIR/claudenotifier/icon.icns"
-cn_app="$HOME/Applications/ClaudeNotifier.app"
-if ! command -v osacompile &>/dev/null; then
-	skip "osacompile not available"
-elif [[ ! -f "$cn_src" ]]; then
-	skip "ClaudeNotifier source missing"
-elif [[ -d "$cn_app" && ! "$cn_src" -nt "$cn_app" && ! "$cn_icon" -nt "$cn_app" ]]; then
-	ok "ClaudeNotifier.app up to date"
-elif confirm "Build ClaudeNotifier.app into ~/Applications?"; then
-	mkdir -p "$HOME/Applications"
-	rm -rf "$cn_app"
-	osacompile -o "$cn_app" "$cn_src"
-	# Give it a proper identity so Notification Center shows "Claude Code" with
-	# a real icon (and so macOS can register it for notification permission).
-	plist="$cn_app/Contents/Info.plist"
-	/usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string com.luiul.claudenotifier" "$plist" 2>/dev/null \
-		|| /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.luiul.claudenotifier" "$plist"
-	/usr/libexec/PlistBuddy -c "Set :CFBundleName Claude Code" "$plist"
-	/usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string 'Claude Code'" "$plist" 2>/dev/null \
-		|| /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Claude Code" "$plist"
-	if [[ -f "$cn_icon" ]]; then
-		cp "$cn_icon" "$cn_app/Contents/Resources/applet.icns"
-		/usr/libexec/PlistBuddy -c "Set :CFBundleIconFile applet" "$plist" 2>/dev/null \
-			|| /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string applet" "$plist"
-	fi
-	codesign --force --deep -s - "$cn_app" 2>/dev/null || true
-	lsreg="/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister"
-	[[ -x "$lsreg" ]] && "$lsreg" -f "$cn_app"
-	ok "ClaudeNotifier.app built (enable it in System Settings > Notifications on first run)"
-else
-	skip "ClaudeNotifier.app"
-fi
-
 # --- Stow dotfiles ---
 step "Stow dotfiles"
 if ! command -v stow &>/dev/null; then
@@ -165,10 +127,10 @@ elif confirm "Stow all packages into \$HOME?"; then
 	mkdir -p "$HOME/.snowflake"
 	# sublime: User dir only exists after first launch, but --no-folding needs it
 	mkdir -p "$HOME/Library/Application Support/Sublime Text/Packages/User"
-	# rectangle and claudenotifier are not stowable (build/export packages).
+	# rectangle is not stowable (export package).
 	for pkg in */; do
 		case "${pkg%/}" in
-			rectangle | claudenotifier) continue ;;
+			rectangle) continue ;;
 		esac
 		stow --no-folding "${pkg%/}"
 	done

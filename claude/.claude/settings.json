@@ -138,7 +138,29 @@
         "hooks": [
           {
             "type": "command",
-            "command": "msg=$(jq -r '.message // empty'); ~/.claude/notify.sh \"${msg:-Claude needs your attention}\""
+            "command": "\"$HOME/Library/Application Support/ClaudeNotifier/notify.sh\" input_needed"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/Library/Application Support/ClaudeNotifier/notify.sh\" permission_request"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/Library/Application Support/ClaudeNotifier/notify.sh\" compact_complete"
           }
         ]
       }
@@ -149,7 +171,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/notify.sh \"Claude is done\""
+            "command": "\"$HOME/Library/Application Support/ClaudeNotifier/notify.sh\" task_complete"
           }
         ]
       }
@@ -177,5 +199,6 @@
         "repo": "jarrodwatts/claude-hud"
       }
     }
-  }
+  },
+  "skipWorkflowUsageWarning": true
 }

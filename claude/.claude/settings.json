@@ -132,6 +132,18 @@
   },
   "model": "opus",
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.claude/hooks/plan-to-html.sh\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
         "matcher": "",

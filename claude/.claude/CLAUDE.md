@@ -17,30 +17,16 @@
 
 ## 1.4. Scratch Files
 
-- When asked to proofread, draft Jira tickets, or produce any text output for review, write results to `~/.claude/scratch/<descriptive-name>.md`
+- When asked to proofread or produce any text output for review, write results to `~/.claude/scratch/<descriptive-name>.md`
 - After writing a scratch file, print its full absolute path so the user can click to open it
 - For follow-up edits, update the same file rather than creating a new one
-- Use descriptive filenames (e.g. `proofread-team-update.md`, `jira-auth-migration.md`)
+- Use descriptive filenames (e.g. `proofread-team-update.md`)
 
-## 1.5. Jira Tickets
-
-- Project key: `ISA` (INT SCM Analytics)
-- Board: Global Ops DE Scrum (board ID 11974)
-- Use the `mcp-atlassian` MCP tools for all Jira interactions
-- Required fields when creating issues:
-  - `project_key`: `ISA`
-  - `issue_type`: usually `Task`
-  - `components`: `Data Integration`
-  - `additional_fields`: must include `fixVersions: [{"id": "30557"}]` (Engineering) — the board filters on this, tickets won't appear without it
-  - `labels`: `["dbt", "xps"]` for data engineering work
-- Assignee: `luis.aceituno@hellofresh.com`
-- Always draft tickets in a scratch file first, let the user review, then create in Jira
-
-## 1.6. Large Files
+## 1.5. Large Files
 
 - When reading files over 2,000 lines, use the `offset` and `limit` parameters on the Read tool to read in chunks rather than attempting to read the entire file at once
 
-## 1.7. Writing Style
+## 1.6. Writing Style
 
 - Do not use hyphens (`-`) or em dashes (`—`) as punctuation in prose. Rewrite sentences using commas, periods, parentheses, or colons instead
 - This applies to written output (responses, scratch files, commit messages, tickets, docs). Hyphens are still fine in compound words (e.g. `well-formatted`), command flags (e.g. `--no-verify`), and markdown list markers

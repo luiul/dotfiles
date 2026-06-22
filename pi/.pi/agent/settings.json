@@ -1,10 +1,6 @@
 {
   "defaultProvider": "amazon-bedrock",
   "defaultModel": "eu.anthropic.claude-opus-4-8",
-  "skills": [
-    "~/.claude/skills"
-  ],
-  "enableSkillCommands": true,
   "enableInstallTelemetry": false,
   "enableAnalytics": false,
   "lastChangelogVersion": "0.79.10",

@@ -92,46 +92,6 @@ upgrade-tools() {
 		return
 	fi
 
-	# Skills are instructions/code Claude executes, so they are NOT part of the
-	# routine sweep. Update them deliberately with `upgrade-tools --skills`, which
-	# snapshots current content and prints a diff of what changed afterwards.
-	if [[ $1 == --skills || $1 == -s ]]; then
-		print -P "\n%F{blue}==>%f Claude skills"
-		if ! command -v npx &>/dev/null; then
-			print -P "  %F{yellow}⊘%f npx not installed (skipped)"
-			unfunction _run _report _preview TRAPINT
-			return
-		fi
-
-		# Snapshot current skill content (dereference symlinks with -L so we
-		# capture real files from both ~/.claude/skills and ~/.agents/skills).
-		# Key the snapshot by the parent dir name (.claude/.agents) since both
-		# source dirs share the basename "skills" and would otherwise collide.
-		local snap d
-		snap=$(mktemp -d)
-		for d in "$HOME/.claude/skills" "$HOME/.agents/skills"; do
-			[[ -d $d ]] && cp -RL "$d" "$snap/${d:h:t}" 2>/dev/null
-		done
-
-		npx --yes skills@latest update -g -y
-		local rc=$?
-
-		# Diff snapshot vs live content; summarize changed paths.
-		print -P "\n%F{blue}==>%f Changes"
-		local changed=0 out
-		for d in "$HOME/.claude/skills" "$HOME/.agents/skills"; do
-			[[ -d $d && -d "$snap/${d:h:t}" ]] || continue
-			out=$(diff -rq "$snap/${d:h:t}" "$d" 2>/dev/null)
-			[[ -n $out ]] && { print "$out" | sed 's/^/  /'; changed=1; }
-		done
-		((changed == 0)) && print -P "  %F{green}✓%f no skill content changed"
-
-		rm -rf "$snap"
-		_report "Claude skills" $rc
-		unfunction _run _report _preview TRAPINT
-		return
-	fi
-
 	_run "Homebrew" brew sh -c 'brew update && brew upgrade && brew cleanup'
 	_run "uv tools" uv uv tool upgrade --all
 	_run "npm global packages" npm npm update -g

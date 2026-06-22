@@ -102,18 +102,6 @@ brew bundle --file=brew/Brewfile
 grep '^npm ' brew/Brewfile | sed 's/^npm "\(.*\)"/\1/' | xargs -I{} npm install -g {}
 ```
 
-## Claude Code Skills
-
-Skills are installed globally via [`npx skills`](https://github.com/mattpocock/skills):
-
-```sh
-npx skills@latest add -g <source>
-```
-
-The `Skillfile` tracks installed skills and is automatically updated on every commit via the pre-commit hook.
-
-Skills are instructions and code that Claude reads and executes, so they are deliberately excluded from the routine `upgrade-tools` sweep. Update them on demand with `upgrade-tools --skills` (or `-s`), which snapshots the current skill content, runs `npx skills@latest update`, and prints a diff of what changed so the update is auditable.
-
 ## Claude Code Plugins
 
 Claude Code itself is installed via the native installer (`curl -fsSL https://claude.ai/install.sh | bash`) and self-updates with `claude update`. Plugins are managed through `claude plugin install|update|list` and live inside registered marketplaces.
@@ -129,8 +117,8 @@ On a fresh machine, `setup.sh` first registers marketplaces, then installs plugi
 
 ## `upgrade-tools`
 
-The `upgrade-tools` shell function (defined in `zsh/.zsh_config/funcs.zsh`) upgrades everything in one go: Homebrew, `uv` tools, npm globals, Claude Code, and Claude plugins. Missing tools are skipped rather than failing. Pass `--check` (or `-c`) for a dry-run preview of what is outdated. Claude skills are intentionally not part of this sweep; update them separately with `upgrade-tools --skills` (see above).
+The `upgrade-tools` shell function (defined in `zsh/.zsh_config/funcs.zsh`) upgrades everything in one go: Homebrew, `uv` tools, npm globals, Claude Code, and Claude plugins. Missing tools are skipped rather than failing. Pass `--check` (or `-c`) for a dry-run preview of what is outdated.
 
 ## Pre-commit Hook
 
-The pre-commit hook auto-generates `example.env` from `.env` (keys only), updates the Brewfile, Skillfile, Marketplacefile, and Pluginfile, blocks `.env` from being committed, and runs [gitleaks](https://github.com/gitleaks/gitleaks) (`gitleaks protect --staged`) to scan staged changes for secrets. Bypass with `--no-verify` for false positives.
+The pre-commit hook auto-generates `example.env` from `.env` (keys only), updates the Brewfile, Marketplacefile, and Pluginfile, blocks `.env` from being committed, and runs [gitleaks](https://github.com/gitleaks/gitleaks) (`gitleaks protect --staged`) to scan staged changes for secrets. Bypass with `--no-verify` for false positives.

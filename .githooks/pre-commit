@@ -23,15 +23,6 @@ if command -v brew &>/dev/null; then
 	git add brew/Brewfile
 fi
 
-# Update Skillfile with installed skills (union of ~/.agents/skills and ~/.claude/skills)
-if [[ -d "$HOME/.agents/skills" || -d "$HOME/.claude/skills" ]]; then
-	{
-		[[ -d "$HOME/.agents/skills" ]] && ls -1 "$HOME/.agents/skills"
-		[[ -d "$HOME/.claude/skills" ]] && ls -1 "$HOME/.claude/skills"
-	} | sort -u >|Skillfile
-	git add Skillfile
-fi
-
 # Update Claude plugin tracking: Marketplacefile + Pluginfile
 if command -v claude &>/dev/null && command -v jq &>/dev/null; then
 	# Marketplacefile: "<name> <owner/repo>" per line (source type is always github today)

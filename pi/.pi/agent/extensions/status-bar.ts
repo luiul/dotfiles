@@ -3,8 +3,11 @@
  *
  * Replaces the default footer with a two-line status bar:
  *
- *   <project>  ⎇ <branch> ●<dirty> ↑<ahead> ↓<behind>          <model> <thinking>
- *   <session>  ↑<in> ↓<out> ⊕<cache>  $<cost>        [██████░░░░] <pct>%  <tok>/<win>
+ *   <project>  ⎇ <branch> ●<dirty> ↑<ahead> ↓<behind>     <model> <thinking>
+ *   <session>  ↑<in> ↓<out> ⊕<cache>  $<cost>     [██████░░░░] <pct>%  <tok>/<win>
+ *
+ * On narrow terminals it collapses to a single compact line. Toggle the bar on
+ * and off with the /statusbar command.
  *
  * Git working-tree state (dirty count, ahead/behind) is polled on a timer and
  * cached, since the footer render path must stay synchronous.
@@ -19,6 +22,7 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 const execFileAsync = promisify(execFile);
 
 const GIT_POLL_MS = 4000;
+const NARROW_WIDTH = 80;
 
 interface GitState {
 	dirty: number;
@@ -26,9 +30,19 @@ interface GitState {
 	behind: number;
 }
 
+const THINKING_LABEL: Record<string, string> = {
+	off: "",
+	minimal: "min",
+	low: "low",
+	medium: "med",
+	high: "high",
+	xhigh: "xhigh",
+};
+
 export default function (pi: ExtensionAPI) {
 	let git: GitState = { dirty: 0, ahead: 0, behind: 0 };
 	let timer: ReturnType<typeof setInterval> | undefined;
+	let enabled = true;
 
 	const fmtTokens = (n: number): string => {
 		if (n < 1000) return `${n}`;
@@ -60,11 +74,10 @@ export default function (pi: ExtensionAPI) {
 				cwd: ctx.cwd,
 				timeout: 2000,
 			});
-			const res = { stdout };
 			let dirty = 0,
 				ahead = 0,
 				behind = 0;
-			for (const line of res.stdout.split("\n")) {
+			for (const line of stdout.split("\n")) {
 				if (!line) continue;
 				if (line.startsWith("# branch.ab ")) {
 					const m = line.match(/\+(\d+)\s+-(\d+)/);
@@ -82,21 +95,16 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
-	pi.on("session_start", async (_event, ctx) => {
-		const startGitPoll = () => {
-			void refreshGit(ctx);
-			timer = setInterval(() => {
-				void refreshGit(ctx);
-			}, GIT_POLL_MS);
-			timer.unref?.();
-		};
-		startGitPoll();
+	const applyFooter = (ctx: ExtensionContext) => {
+		if (!enabled) {
+			ctx.ui.setFooter(undefined);
+			return;
+		}
 
 		ctx.ui.setFooter((tui, theme, footerData) => {
 			const unsub = footerData.onBranchChange(() => {
 				void refreshGit(ctx).then(() => tui.requestRender());
 			});
-
 			// Re-render whenever git state refreshes on the timer.
 			const tick = setInterval(() => tui.requestRender(), GIT_POLL_MS);
 
@@ -105,12 +113,27 @@ export default function (pi: ExtensionAPI) {
 				return truncateToWidth(left + " ".repeat(gap) + right, width);
 			};
 
-			const contextBar = (pct: number): string => {
-				const slots = 10;
+			const contextBar = (pct: number, slots: number): string => {
 				const filled = Math.min(slots, Math.max(0, Math.round((pct / 100) * slots)));
 				const color = pct >= 80 ? "error" : pct >= 50 ? "warning" : "success";
-				const bar = theme.fg(color, "█".repeat(filled)) + theme.fg("dim", "░".repeat(slots - filled));
-				return `[${bar}]`;
+				return `[${theme.fg(color, "█".repeat(filled))}${theme.fg("dim", "░".repeat(slots - filled))}]`;
+			};
+
+			const thinkingTag = (): string => {
+				const level = pi.getThinkingLevel();
+				const label = THINKING_LABEL[level] ?? "";
+				if (!label) return "";
+				return theme.getThinkingBorderColor(level)(`✦${label}`);
+			};
+
+			const gitTag = (compact: boolean): string => {
+				const branch = footerData.getGitBranch();
+				if (!branch) return "";
+				let s = theme.fg("dim", compact ? "⎇ " : "  ⎇ ") + theme.fg("muted", branch);
+				if (git.dirty > 0) s += " " + theme.fg("warning", `●${git.dirty}`);
+				if (git.ahead > 0) s += " " + theme.fg("dim", `↑${git.ahead}`);
+				if (git.behind > 0) s += " " + theme.fg("dim", `↓${git.behind}`);
+				return s;
 			};
 
 			return {
@@ -122,21 +145,29 @@ export default function (pi: ExtensionAPI) {
 				render(width: number): string[] {
 					const sm = ctx.sessionManager;
 					const project = (ctx.cwd.split("/").pop() || ctx.cwd) ?? "";
-					const branch = footerData.getGitBranch();
 					const name = sm.getSessionName();
 					const { input, output, cache, cost } = tally(ctx);
 					const usage = ctx.getContextUsage();
 					const model = ctx.model?.id ?? "no-model";
+					const think = thinkingTag();
+					const pct = usage?.percent ?? null;
 
-					// --- Line 1: project + git  |  model ---
-					let l1 = theme.fg("accent", theme.bold(project));
-					if (branch) {
-						l1 += theme.fg("dim", "  ⎇ ") + theme.fg("muted", branch);
-						if (git.dirty > 0) l1 += " " + theme.fg("warning", `●${git.dirty}`);
-						if (git.ahead > 0) l1 += " " + theme.fg("dim", `↑${git.ahead}`);
-						if (git.behind > 0) l1 += " " + theme.fg("dim", `↓${git.behind}`);
+					// --- Narrow terminals: single compact line ---
+					if (width < NARROW_WIDTH) {
+						const left = [theme.fg("accent", theme.bold(project)), gitTag(true)]
+							.filter(Boolean)
+							.join(" ");
+						const rightBits = [
+							pct != null ? theme.fg("muted", `${pct}%`) : "",
+							theme.fg("success", `$${cost.toFixed(2)}`),
+							theme.fg("dim", model),
+						].filter(Boolean);
+						return [join(left, rightBits.join(theme.fg("dim", " · ")), width)];
 					}
-					const r1 = theme.fg("dim", model);
+
+					// --- Line 1: project + git  |  model + thinking ---
+					const l1 = theme.fg("accent", theme.bold(project)) + gitTag(false);
+					const r1 = [theme.fg("dim", model), think].filter(Boolean).join(" ");
 
 					// --- Line 2: session + tokens + cost  |  context ---
 					const parts2: string[] = [];
@@ -155,7 +186,7 @@ export default function (pi: ExtensionAPI) {
 					let r2: string;
 					if (usage && usage.tokens != null && usage.percent != null) {
 						r2 =
-							contextBar(usage.percent) +
+							contextBar(usage.percent, 10) +
 							" " +
 							theme.fg("muted", `${usage.percent}%`) +
 							theme.fg("dim", `  ${fmtTokens(usage.tokens)}/${fmtTokens(usage.contextWindow)}`);
@@ -167,13 +198,30 @@ export default function (pi: ExtensionAPI) {
 				},
 			};
 		});
+	};
+
+	pi.on("session_start", async (_event, ctx) => {
+		void refreshGit(ctx);
+		timer = setInterval(() => {
+			void refreshGit(ctx);
+		}, GIT_POLL_MS);
+		timer.unref?.();
+		applyFooter(ctx);
 	});
 
-	const stop = () => {
+	pi.registerCommand("statusbar", {
+		description: "Toggle the enhanced status bar on/off",
+		handler: async (_args, ctx) => {
+			enabled = !enabled;
+			applyFooter(ctx);
+			ctx.ui.notify(enabled ? "Enhanced status bar enabled" : "Default footer restored", "info");
+		},
+	});
+
+	pi.on("session_shutdown", async () => {
 		if (timer) {
 			clearInterval(timer);
 			timer = undefined;
 		}
-	};
-	pi.on("session_shutdown", async () => stop());
+	});
 }

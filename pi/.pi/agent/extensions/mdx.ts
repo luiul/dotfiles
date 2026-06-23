@@ -66,12 +66,8 @@ export default function (pi: ExtensionAPI) {
       "Render my last answer as a rich HTML doc (--enrich to restructure first)",
     handler: async (args: string, ctx: ExtensionCommandContext) => {
       const tokens = args.trim().split(/\s+/).filter(Boolean);
-      const enrich = tokens.some((t) =>
-        ["--enrich", "-e", "enrich"].includes(t),
-      );
-      const slugArg = tokens.find(
-        (t) => !t.startsWith("-") && t !== "enrich",
-      );
+      const enrich = tokens.some((t) => t === "--enrich" || t === "-e");
+      const slugArg = tokens.find((t) => !t.startsWith("-"));
 
       const text = lastAssistantText(ctx);
       if (!text) {

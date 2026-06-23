@@ -109,14 +109,18 @@ export default function (pi: ExtensionAPI) {
 
       const title = titleOf(text);
       const slug = slugArg ? slugify(slugArg) : slugify(title);
-      const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "");
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const stamp =
+        `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
+        `-${pad(now.getHours())}${pad(now.getMinutes())}`;
       const mdPath = join(SCRATCH, `mdx-${slug}-${stamp}.md`);
       mkdirSync(SCRATCH, { recursive: true });
 
       if (enrich) {
         // Delegate to the agent: it restructures the answer, then renders.
         const prompt = [
-          "Turn your previous answer into a rich, scannable review document, then render it.",
+          "Turn the source answer below into a rich, scannable review document, then render it.",
           "",
           "Do this:",
           `1. Restructure the content below into Markdown optimized for human scanning. Start with a single concise \`# Title\` H1 that summarizes the content, then a short **TL;DR**, then a **Decisions needed** task-list (\`- [ ] ...\`) when there are choices to make. Use \`##\`/\`###\` headings, tables for comparisons, \`>\` blockquotes for callouts, and backticks for files/identifiers/commands. Use \`\`\`mermaid\`\`\` diagrams for anything structural (architecture, flow, sequence, schema). Keep every substantive fact from the source; reorganize and visualize, do not invent or drop information.`,
@@ -139,7 +143,7 @@ export default function (pi: ExtensionAPI) {
           { customType: "mdx-enrich", content: prompt, display: false },
           { triggerTurn: true },
         );
-        ctx.ui.notify(`Enriching last answer into ${mdPath} ...`, "info");
+        ctx.ui.notify(`Enriching answer into ${mdPath} ...`, "info");
         return;
       }
 
@@ -159,7 +163,7 @@ export default function (pi: ExtensionAPI) {
       child.unref();
 
       const htmlPath = mdPath.replace(/\.md$/, ".html");
-      ctx.ui.notify(`Rendering last answer -> ${htmlPath}`, "info");
+      ctx.ui.notify(`Rendering answer -> ${htmlPath}`, "info");
     },
   });
 }

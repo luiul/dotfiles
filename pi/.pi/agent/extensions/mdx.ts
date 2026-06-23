@@ -34,30 +34,44 @@ function lastAssistantText(ctx: ExtensionCommandContext): string | null {
   return text || null;
 }
 
-function slugify(s: string): string {
-  return (
-    s
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 48) || "answer"
-  );
+function slugify(s: string, max = 48): string {
+  const base = s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!base) return "answer";
+  if (base.length <= max) return base;
+  // Trim to the last whole word so slugs do not end mid-token.
+  return base.slice(0, max).replace(/-[^-]*$/, "").replace(/-+$/, "") || base.slice(0, max);
+}
+
+/** Strip leading markdown markers and inline formatting, keeping the text. */
+function cleanLine(line: string): string {
+  return line
+    .replace(/^#{1,6}\s+/, "")
+    .replace(/^[>\-*+]\s+/, "")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[*_~`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function truncateWords(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max).replace(/\s+\S*$/, "").trim() || s.slice(0, max);
 }
 
 function titleOf(text: string): string {
   for (const line of text.split("\n")) {
-    const m = line.match(/^#\s+(.+)/);
-    if (m) return m[1].trim();
+    const m = line.match(/^#{1,3}\s+(.+)/);
+    if (m) return cleanLine(m[1]) || "Answer";
   }
-  return (
-    text
-      .split("\n")
-      .map((l) => l.trim())
-      .find((l) => l.length > 0)
-      ?.replace(/[#*`>_-]/g, "")
-      .trim()
-      .slice(0, 60) ?? "Answer"
-  );
+  const first = text
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  if (!first) return "Answer";
+  return truncateWords(cleanLine(first), 70) || "Answer";
 }
 
 export default function (pi: ExtensionAPI) {
@@ -87,7 +101,7 @@ export default function (pi: ExtensionAPI) {
           "Turn your previous answer into a rich, scannable review document, then render it.",
           "",
           "Do this:",
-          `1. Restructure the content below into Markdown optimized for human scanning. Start with a single \`# ${title}\` H1, then a short **TL;DR**, then a **Decisions needed** task-list (\`- [ ] ...\`) when there are choices to make. Use \`##\`/\`###\` headings, tables for comparisons, \`>\` blockquotes for callouts, and backticks for files/identifiers/commands. Use \`\`\`mermaid\`\`\` diagrams for anything structural (architecture, flow, sequence, schema). Keep every substantive fact from the source; reorganize and visualize, do not invent or drop information.`,
+          `1. Restructure the content below into Markdown optimized for human scanning. Start with a single concise \`# Title\` H1 that summarizes the content, then a short **TL;DR**, then a **Decisions needed** task-list (\`- [ ] ...\`) when there are choices to make. Use \`##\`/\`###\` headings, tables for comparisons, \`>\` blockquotes for callouts, and backticks for files/identifiers/commands. Use \`\`\`mermaid\`\`\` diagrams for anything structural (architecture, flow, sequence, schema). Keep every substantive fact from the source; reorganize and visualize, do not invent or drop information.`,
           `2. Write the result to \`${mdPath}\`.`,
           `3. Run: \`uv run ${RENDER} ${mdPath}\``,
           "4. Print the absolute paths of the .md and .html files.",

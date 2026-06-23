@@ -132,7 +132,13 @@ export default function (pi: ExtensionAPI) {
           "~~~",
         ].join("\n");
 
-        pi.sendUserMessage(prompt, { triggerTurn: true });
+        // Hidden message: the model receives the instruction in context, but it
+        // is not shown in the transcript so the enrich prompt does not clutter
+        // the conversation history.
+        pi.sendMessage(
+          { customType: "mdx-enrich", content: prompt, display: false },
+          { triggerTurn: true },
+        );
         ctx.ui.notify(`Enriching last answer into ${mdPath} ...`, "info");
         return;
       }

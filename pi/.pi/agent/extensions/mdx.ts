@@ -85,7 +85,6 @@ export default function (pi: ExtensionAPI) {
       const simple = tokens.some((t) => t === "--simple" || t === "-s");
       const tree = tokens.some((t) => t === "--tree" || t === "-t");
       const enrich = !simple;
-      const slugArg = tokens.find((t) => !t.startsWith("-"));
 
       const messages = assistantMessages(ctx);
       if (!messages.length) {
@@ -107,25 +106,24 @@ export default function (pi: ExtensionAPI) {
         text = recent[idx].text;
       }
 
-      const title = titleOf(text);
-      const slug = slugArg ? slugify(slugArg) : slugify(title);
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");
       const stamp =
         `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
         `-${pad(now.getHours())}${pad(now.getMinutes())}`;
-      const mdPath = join(SCRATCH, `mdx-${slug}-${stamp}.md`);
       mkdirSync(SCRATCH, { recursive: true });
 
       if (enrich) {
-        // Delegate to the agent: it restructures the answer, then renders.
+        // Delegate to the agent: it restructures the answer, picks a filename,
+        // and renders.
+        const pattern = join(SCRATCH, `mdx-<slug>-${stamp}.md`);
         const prompt = [
           "Turn the source answer below into a rich, scannable review document, then render it.",
           "",
           "Do this:",
           `1. Restructure the content below into Markdown optimized for human scanning. Start with a single concise \`# Title\` H1 that summarizes the content, then a short **TL;DR**, then a **Decisions needed** task-list (\`- [ ] ...\`) when there are choices to make. Use \`##\`/\`###\` headings, tables for comparisons, \`>\` blockquotes for callouts, and backticks for files/identifiers/commands. Use \`\`\`mermaid\`\`\` diagrams for anything structural (architecture, flow, sequence, schema). Keep every substantive fact from the source; reorganize and visualize, do not invent or drop information.`,
-          `2. Write the result to \`${mdPath}\`.`,
-          `3. Run: \`uv run ${RENDER} ${mdPath}\``,
+          `2. Choose a short kebab-case slug (3 to 6 words) summarizing the content. Write the Markdown to \`${pattern}\`, replacing \`<slug>\` with your chosen slug.`,
+          `3. Run: \`uv run ${RENDER} <the-file-you-wrote>\``,
           "4. Print the absolute paths of the .md and .html files.",
           "",
           "Follow my writing style: no hyphens or em dashes as prose punctuation.",
@@ -143,11 +141,16 @@ export default function (pi: ExtensionAPI) {
           { customType: "mdx-enrich", content: prompt, display: false },
           { triggerTurn: true },
         );
-        ctx.ui.notify(`Enriching answer into ${mdPath} ...`, "info");
+        ctx.ui.notify(
+          `Enriching answer; the model will write to ${pattern} ...`,
+          "info",
+        );
         return;
       }
 
       // Deterministic capture: write the answer verbatim and render it.
+      const title = titleOf(text);
+      const mdPath = join(SCRATCH, `mdx-${slugify(title)}-${stamp}.md`);
       const body = /^#\s+/.test(text.trimStart())
         ? text
         : `# ${title}\n\n${text}`;

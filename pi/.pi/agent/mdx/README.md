@@ -19,14 +19,13 @@ The extension lives in `extensions/` (auto-discovered) and the renderer in `mdx/
 /mdx -s           Simple: render the latest answer verbatim
 /mdx -t           Pick which answer in the session to render
 /mdx -s -t        Pick an answer, render it verbatim
-/mdx my-slug      Optional filename slug (any non-flag token)
 ```
 
-Flags: `-s`/`--simple`, `-t`/`--tree`. Output files land in `~/.pi/scratch/mdx-<slug>-<YYYYMMDD-HHMM>.{md,html}`.
+Flags: `-s`/`--simple`, `-t`/`--tree`. Output files land in `~/.pi/scratch/mdx-<slug>-<YYYYMMDD-HHMM>.{md,html}`. In enrich mode the model chooses the `<slug>`; in simple mode it is derived from the answer's title.
 
 ## Modes
 
-- **Enrich (default)**: the extension hands the source answer to the model with authoring instructions (TL;DR, decisions checklist, headings, tables, Mermaid diagrams, callouts). The model writes the Markdown and runs the renderer. The instruction is sent as a hidden message (`display: false`) so it does not clutter the transcript.
+- **Enrich (default)**: the extension hands the source answer to the model with authoring instructions (TL;DR, decisions checklist, headings, tables, Mermaid diagrams, callouts). The model writes the Markdown, chooses the filename slug, and runs the renderer. The instruction is sent as a hidden message (`display: false`) so it does not clutter the transcript.
 - **Simple (`-s`)**: the extension writes the answer verbatim and runs the renderer directly. Deterministic, no model call.
 
 ## The closed loop

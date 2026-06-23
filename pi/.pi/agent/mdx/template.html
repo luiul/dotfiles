@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{TITLE}}</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #161922; --panel-2: #1c202b; --border: #2a2f3a;
+    --fg: #e6e9ef; --muted: #9aa3b2; --accent: #6ea8fe; --accent-2: #7ee2b8;
+    --warn: #f5b971; --danger: #f08b8b; --radius: 10px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  /* Light palette: applied automatically when the OS prefers light (unless the
+     reader forced dark), and always when the reader forces light. */
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) { --bg:#f6f7f9; --panel:#fff; --panel-2:#f0f2f5; --border:#dfe3ea;
+            --fg:#1b1f27; --muted:#5b6472; --accent:#2f6fed; --accent-2:#1a9e6a; }
+  }
+  :root[data-theme="light"] { --bg:#f6f7f9; --panel:#fff; --panel-2:#f0f2f5; --border:#dfe3ea;
+          --fg:#1b1f27; --muted:#5b6472; --accent:#2f6fed; --accent-2:#1a9e6a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); }
+  body { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+  nav { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+        border-right: 1px solid var(--border); padding: 20px 14px; background: var(--panel); }
+  nav .brand { font-weight: 700; font-size: 13px; letter-spacing: .08em; text-transform: uppercase;
+               color: var(--muted); margin-bottom: 14px; display: flex;
+               align-items: center; justify-content: space-between; gap: 8px; }
+  #theme-btn { background: var(--panel-2); color: var(--fg); border: 1px solid var(--border);
+               border-radius: 999px; padding: 4px 10px; font-size: 11px; cursor: pointer;
+               font-family: var(--sans); letter-spacing: .02em; text-transform: none; }
+  #theme-btn:hover { border-color: var(--accent); color: var(--accent); }
+  nav a { display: block; color: var(--muted); text-decoration: none; font-size: 13px;
+          padding: 4px 8px; border-radius: 6px; line-height: 1.4; }
+  nav a:hover { color: var(--fg); background: var(--panel-2); }
+  nav a.h3 { padding-left: 20px; font-size: 12px; }
+  nav a.active { color: var(--accent); background: var(--panel-2); }
+  main { max-width: 900px; padding: 40px 48px 120px; }
+  h1, h2, h3 { line-height: 1.25; scroll-margin-top: 20px; }
+  h1 { font-size: 30px; margin: 0 0 6px; }
+  h2 { font-size: 22px; margin: 38px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 17px; margin: 24px 0 8px; }
+  p, li { line-height: 1.65; }
+  a { color: var(--accent); }
+  code { font-family: var(--mono); font-size: 0.88em; background: var(--panel-2);
+         padding: 2px 6px; border-radius: 5px; }
+  pre { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+        padding: 16px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  blockquote { margin: 16px 0; padding: 12px 16px; border-left: 3px solid var(--accent);
+               background: var(--panel); border-radius: 0 var(--radius) var(--radius) 0; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--panel-2); }
+  .mermaid { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+             padding: 18px; margin: 18px 0; text-align: center; }
+  ul.contains-task-list { list-style: none; padding-left: 4px; }
+  li.task-list-item { display: flex; align-items: flex-start; gap: 10px; padding: 4px 0; }
+  li.task-list-item input { margin-top: 5px; width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+
+  /* Feedback panel */
+  #fb-toggle { position: fixed; right: 24px; bottom: 24px; z-index: 30;
+    background: var(--accent); color: #08111f; border: none; border-radius: 999px;
+    padding: 12px 18px; font-weight: 600; font-size: 14px; cursor: pointer;
+    box-shadow: 0 6px 22px rgba(0,0,0,.35); }
+  #fb-panel { position: fixed; right: 0; top: 0; height: 100vh; width: 380px; z-index: 40;
+    background: var(--panel); border-left: 1px solid var(--border); transform: translateX(100%);
+    transition: transform .22s ease; display: flex; flex-direction: column; }
+  #fb-panel.open { transform: translateX(0); box-shadow: -12px 0 40px rgba(0,0,0,.4); }
+  #fb-panel header { padding: 18px 20px; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center; }
+  #fb-panel header h3 { margin: 0; }
+  #fb-body { padding: 18px 20px; overflow-y: auto; flex: 1; }
+  #fb-body label { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); margin: 14px 0 6px; }
+  #fb-notes { width: 100%; min-height: 160px; background: var(--panel-2); color: var(--fg);
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 12px;
+    font-family: var(--sans); font-size: 14px; resize: vertical; }
+  .fb-decisions { font-size: 13px; color: var(--muted); }
+  .fb-decisions div { padding: 3px 0; }
+  .fb-decisions .on { color: var(--accent-2); }
+  #fb-panel footer { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; }
+  #fb-copy { flex: 1; background: var(--accent-2); color: #07120d; border: none; border-radius: 8px;
+    padding: 11px; font-weight: 600; cursor: pointer; font-size: 14px; }
+  #fb-close { background: var(--panel-2); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 11px 14px; cursor: pointer; }
+  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--fg); color: var(--bg); padding: 10px 18px; border-radius: 8px; font-size: 14px;
+    opacity: 0; transition: all .2s; z-index: 50; pointer-events: none; }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  @media (max-width: 820px) { body { grid-template-columns: 1fr; } nav { display: none; } main { padding: 24px; } }
+</style>
+</head>
+<body>
+  <nav><div class="brand"><span>Contents</span><button id="theme-btn" title="Toggle theme">◑ Auto</button></div><div id="toc"></div></nav>
+  <main>
+    <div class="meta" id="meta"></div>
+    <article id="content"></article>
+  </main>
+
+  <button id="fb-toggle">Feedback &amp; decisions</button>
+  <aside id="fb-panel">
+    <header><h3>Feedback for pi</h3><button id="fb-close">esc</button></header>
+    <div id="fb-body">
+      <label>Decisions (tick checkboxes in the doc)</label>
+      <div class="fb-decisions" id="fb-decisions"><div>No checkboxes in this document.</div></div>
+      <label>Notes / answers to open questions</label>
+      <textarea id="fb-notes" placeholder="Type decisions, answers, corrections..."></textarea>
+    </div>
+    <footer>
+      <button id="fb-copy">Copy feedback for pi</button>
+      <button id="fb-close-2" hidden></button>
+    </footer>
+  </aside>
+  <div id="toast"></div>
+
+<script>
+(function () {
+  // Embedded source markdown (base64 / UTF-8 safe)
+  const B64 = "{{CONTENT_B64}}";
+  const md = new TextDecoder().decode(Uint8Array.from(atob(B64), c => c.charCodeAt(0)));
+  const title = {{TITLE_JSON}};
+  const generated = {{GENERATED_JSON}};
+
+  marked.setOptions({ gfm: true, breaks: false });
+  const content = document.getElementById("content");
+  content.innerHTML = marked.parse(md);
+  document.getElementById("meta").textContent = "Generated " + generated + " \u00b7 " + title;
+
+  // Convert ```mermaid code blocks into mermaid divs (keep source for re-render)
+  const diagrams = [];
+  content.querySelectorAll("pre code.language-mermaid").forEach(code => {
+    const div = document.createElement("div");
+    div.className = "mermaid";
+    div.dataset.src = code.textContent;
+    div.textContent = code.textContent;
+    code.closest("pre").replaceWith(div);
+    diagrams.push(div);
+  });
+  function renderMermaid(theme) {
+    if (!diagrams.length) return;
+    try {
+      mermaid.initialize({ startOnLoad: false, theme: theme === "dark" ? "dark" : "default" });
+      diagrams.forEach(d => { d.removeAttribute("data-processed"); d.textContent = d.dataset.src; });
+      mermaid.run({ nodes: diagrams });
+    } catch (e) {}
+  }
+
+  // Theme toggle: Auto -> Light -> Dark, persisted; re-renders diagrams.
+  const root = document.documentElement;
+  const themeBtn = document.getElementById("theme-btn");
+  const THEME_KEY = "mdx-theme";
+  const mql = matchMedia("(prefers-color-scheme: dark)");
+  let themeMode = localStorage.getItem(THEME_KEY) || "auto";
+  const effectiveTheme = () =>
+    themeMode === "auto" ? (mql.matches ? "dark" : "light") : themeMode;
+  function applyTheme() {
+    if (themeMode === "auto") root.removeAttribute("data-theme");
+    else root.setAttribute("data-theme", themeMode);
+    themeBtn.textContent =
+      themeMode === "auto" ? "\u25d1 Auto" : themeMode === "dark" ? "\u263e Dark" : "\u2600 Light";
+    renderMermaid(effectiveTheme());
+    try { localStorage.setItem(THEME_KEY, themeMode); } catch (e) {}
+  }
+  themeBtn.onclick = () => {
+    themeMode = themeMode === "auto" ? "light" : themeMode === "light" ? "dark" : "auto";
+    applyTheme();
+  };
+  mql.addEventListener("change", () => { if (themeMode === "auto") applyTheme(); });
+  applyTheme();
+
+  // Enable task-list checkboxes and tag list items
+  content.querySelectorAll("li > input[type=checkbox]").forEach(cb => {
+    cb.disabled = false;
+    cb.closest("li").classList.add("task-list-item");
+    cb.closest("ul")?.classList.add("contains-task-list");
+    cb.addEventListener("change", renderDecisions);
+  });
+
+  // Build TOC + heading ids
+  const toc = document.getElementById("toc");
+  const heads = content.querySelectorAll("h2, h3");
+  heads.forEach((h, i) => {
+    const id = "s" + i + "-" + h.textContent.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
+    h.id = id;
+    const a = document.createElement("a");
+    a.href = "#" + id; a.textContent = h.textContent;
+    a.className = h.tagName === "H3" ? "h3" : "h2";
+    toc.appendChild(a);
+  });
+  const links = [...toc.querySelectorAll("a")];
+  const byId = Object.fromEntries(links.map(a => [a.getAttribute("href").slice(1), a]));
+  const obs = new IntersectionObserver(es => {
+    es.forEach(e => { if (e.isIntersecting) {
+      links.forEach(l => l.classList.remove("active"));
+      byId[e.target.id]?.classList.add("active");
+    }});
+  }, { rootMargin: "0px 0px -75% 0px" });
+  heads.forEach(h => obs.observe(h));
+
+  // Decisions summary
+  function decisionItems() {
+    return [...content.querySelectorAll("li.task-list-item")].map(li => {
+      const cb = li.querySelector("input");
+      return { checked: cb.checked, text: li.textContent.trim() };
+    });
+  }
+  function renderDecisions() {
+    const items = decisionItems();
+    const box = document.getElementById("fb-decisions");
+    if (!items.length) { box.innerHTML = "<div>No checkboxes in this document.</div>"; return; }
+    box.innerHTML = items.map(i =>
+      `<div class="${i.checked ? "on" : ""}">${i.checked ? "\u2713" : "\u25cb"} ${escapeHtml(i.text)}</div>`
+    ).join("");
+  }
+  function escapeHtml(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+  renderDecisions();
+
+  // Panel open/close
+  const panel = document.getElementById("fb-panel");
+  const open = () => panel.classList.add("open");
+  const close = () => panel.classList.remove("open");
+  document.getElementById("fb-toggle").onclick = open;
+  document.getElementById("fb-close").onclick = close;
+  document.addEventListener("keydown", e => { if (e.key === "Escape") close(); });
+
+  // Copy feedback for pi
+  document.getElementById("fb-copy").onclick = () => {
+    const items = decisionItems();
+    const notes = document.getElementById("fb-notes").value.trim();
+    let out = "Feedback on **" + title + "**:\n\n";
+    if (items.length) {
+      out += "Decisions:\n" + items.map(i => `- [${i.checked ? "x" : " "}] ${i.text}`).join("\n") + "\n\n";
+    }
+    out += notes ? ("Notes:\n" + notes + "\n") : "(no additional notes)\n";
+    navigator.clipboard.writeText(out).then(() => toast("Copied. Paste into pi."),
+      () => toast("Copy failed; select the notes manually."));
+  };
+  function toast(msg) {
+    const t = document.getElementById("toast");
+    t.textContent = msg; t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 2200);
+  }
+})();
+</script>
+</body>
+</html>

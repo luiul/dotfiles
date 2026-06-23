@@ -35,8 +35,15 @@ def main() -> int:
     title = None
     if "--title" in args:
         i = args.index("--title")
+        if i + 1 >= len(args):
+            print("error: --title requires a value", file=sys.stderr)
+            return 1
         title = args[i + 1]
         del args[i : i + 2]
+
+    if not args:
+        print("error: no markdown file given", file=sys.stderr)
+        return 1
 
     md_path = pathlib.Path(args[0]).expanduser().resolve()
     if not md_path.is_file():

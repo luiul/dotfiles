@@ -119,6 +119,9 @@ export default function (pi: ExtensionAPI) {
 				return `[${theme.fg(color, "█".repeat(filled))}${theme.fg("dim", "░".repeat(slots - filled))}]`;
 			};
 
+			// Format a percentage with at most 4 decimal places, no trailing zeros.
+			const fmtPct = (n: number): string => `${Number(n.toFixed(4))}`;
+
 			const thinkingTag = (): string => {
 				const level = pi.getThinkingLevel();
 				const label = THINKING_LABEL[level] ?? "";
@@ -158,7 +161,7 @@ export default function (pi: ExtensionAPI) {
 							.filter(Boolean)
 							.join(" ");
 						const rightBits = [
-							pct != null ? theme.fg("muted", `${pct}%`) : "",
+							pct != null ? theme.fg("muted", `${fmtPct(pct)}%`) : "",
 							theme.fg("success", `$${cost.toFixed(2)}`),
 							theme.fg("dim", model),
 						].filter(Boolean);
@@ -188,7 +191,7 @@ export default function (pi: ExtensionAPI) {
 						r2 =
 							contextBar(usage.percent, 10) +
 							" " +
-							theme.fg("muted", `${usage.percent}%`) +
+							theme.fg("muted", `${fmtPct(usage.percent)}%`) +
 							theme.fg("dim", `  ${fmtTokens(usage.tokens)}/${fmtTokens(usage.contextWindow)}`);
 					} else {
 						r2 = theme.fg("dim", "context n/a");

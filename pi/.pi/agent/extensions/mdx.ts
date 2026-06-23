@@ -44,46 +44,75 @@ function slugify(s: string): string {
   );
 }
 
+function titleOf(text: string): string {
+  for (const line of text.split("\n")) {
+    const m = line.match(/^#\s+(.+)/);
+    if (m) return m[1].trim();
+  }
+  return (
+    text
+      .split("\n")
+      .map((l) => l.trim())
+      .find((l) => l.length > 0)
+      ?.replace(/[#*`>_-]/g, "")
+      .trim()
+      .slice(0, 60) ?? "Answer"
+  );
+}
+
 export default function (pi: ExtensionAPI) {
   pi.registerCommand("mdx", {
-    description: "Render my last answer as a rich interactive HTML doc",
+    description:
+      "Render my last answer as a rich HTML doc (--enrich to restructure first)",
     handler: async (args: string, ctx: ExtensionCommandContext) => {
+      const tokens = args.trim().split(/\s+/).filter(Boolean);
+      const enrich = tokens.some((t) =>
+        ["--enrich", "-e", "enrich"].includes(t),
+      );
+      const slugArg = tokens.find(
+        (t) => !t.startsWith("-") && t !== "enrich",
+      );
+
       const text = lastAssistantText(ctx);
       if (!text) {
         ctx.ui.notify("No previous answer to render.", "warn");
         return;
       }
 
-      // Title from first H1, else first non-empty line.
-      let title = "";
-      for (const line of text.split("\n")) {
-        const m = line.match(/^#\s+(.+)/);
-        if (m) {
-          title = m[1].trim();
-          break;
-        }
-      }
-      if (!title) {
-        title =
-          text
-            .split("\n")
-            .map((l) => l.trim())
-            .find((l) => l.length > 0)
-            ?.replace(/[#*`>_-]/g, "")
-            .trim()
-            .slice(0, 60) ?? "Answer";
-      }
-
-      const slug = args.trim() ? slugify(args) : slugify(title);
+      const title = titleOf(text);
+      const slug = slugArg ? slugify(slugArg) : slugify(title);
       const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "");
       const mdPath = join(SCRATCH, `mdx-${slug}-${stamp}.md`);
+      mkdirSync(SCRATCH, { recursive: true });
 
-      // Ensure the doc opens with an H1 so the viewer has a title block.
+      if (enrich) {
+        // Delegate to the agent: it restructures the answer, then renders.
+        const prompt = [
+          "Turn your previous answer into a rich, scannable review document, then render it.",
+          "",
+          "Do this:",
+          `1. Restructure the content below into Markdown optimized for human scanning. Start with a single \`# ${title}\` H1, then a short **TL;DR**, then a **Decisions needed** task-list (\`- [ ] ...\`) when there are choices to make. Use \`##\`/\`###\` headings, tables for comparisons, \`>\` blockquotes for callouts, and backticks for files/identifiers/commands. Use \`\`\`mermaid\`\`\` diagrams for anything structural (architecture, flow, sequence, schema). Keep every substantive fact from the source; reorganize and visualize, do not invent or drop information.`,
+          `2. Write the result to \`${mdPath}\`.`,
+          `3. Run: \`uv run ${RENDER} ${mdPath}\``,
+          "4. Print the absolute paths of the .md and .html files.",
+          "",
+          "Follow my writing style: no hyphens or em dashes as prose punctuation.",
+          "",
+          "Source answer to enrich:",
+          "~~~markdown",
+          text,
+          "~~~",
+        ].join("\n");
+
+        pi.sendUserMessage(prompt, { triggerTurn: true });
+        ctx.ui.notify(`Enriching last answer into ${mdPath} ...`, "info");
+        return;
+      }
+
+      // Deterministic capture: write the answer verbatim and render it.
       const body = /^#\s+/.test(text.trimStart())
         ? text
         : `# ${title}\n\n${text}`;
-
-      mkdirSync(SCRATCH, { recursive: true });
       writeFileSync(mdPath, body, "utf8");
 
       const child = spawn("uv", ["run", RENDER, mdPath], {

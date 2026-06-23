@@ -31,16 +31,16 @@ Follow conventional commit style:
   ## Test Plan
   - [ ] How the changes were tested
 
-  ## Contribution & Business Impact
+  ## Business Impact
   - **Category:** `cost_reduction` | `risk_mitigation` | `increased_revenue`
   - **Estimated Annual Impact:** $X,XXX
   - **Notes:** Short justification for the category and the dollar estimate
   ```
 
-- The **Contribution & Business Impact** section is required on every PR (see the canonical spec below). It is the one section that is never omitted, even when impact is small or indirect.
+- The **Business Impact** section is required on every PR (see the canonical spec below). It is the one section that is never omitted, even when impact is small or indirect.
 - **Open as draft**: always create PRs as drafts first (`gh pr create --draft`); leave it to me to mark them ready for review.
 - **Assignee**: always assign to me
-- **Labels**: always add `squad: scm-analytics-engineers` and `tribe: intl-scm-analytics`
+- **Labels**: always add `squad: scm-analytics-engineers` and `tribe: intl-scm-analytics`, plus the impact-category label matching the **Category** field of the Business Impact block: exactly one of `impact: cost_reduction`, `impact: risk_mitigation`, `impact: increased_revenue` (prefixed form, no backticks in labels). Create the label in the repo first if it does not exist (`gh label create "impact: cost_reduction" --description "Year-end review: cost reduction" --color BFD4F2`). This lets the year-end review filter by label as well as by heading (`gh pr list --label "impact: cost_reduction" --state all`).
 - No emoji prefixes in title or body
 - No agent attribution, tool footers, or generated-by links (no Claude Code or pi credits)
 - Omit empty sections rather than writing "N/A"
@@ -52,16 +52,16 @@ Follow conventional commit style:
 - PR cannot have a "WIP" label
 - Requires developer review approval
 
-## Contribution & Business Impact (required on all PRs and Jira tickets)
+## Business Impact (required on all PRs and Jira tickets)
 
-Every PR I open and every Jira ticket I create or update across all repos in the subfolders of this directory must carry a Contribution & Business Impact block. This feeds the end-of-year review, so the format is fixed and must stay machine-parseable.
+Every PR I open and every Jira ticket I create or update across all repos in the subfolders of this directory must carry a Business Impact block. This feeds the end-of-year review, so the format is fixed and must stay machine-parseable.
 
 ### Canonical block
 
 Use exactly these three fields, in this order, with these labels:
 
 ```markdown
-## Contribution & Business Impact
+## Business Impact
 - **Category:** `cost_reduction`
 - **Estimated Annual Impact:** $120,000
 - **Notes:** Removed duplicate DQ coverage, cutting Soda scan compute and on-call triage time.
@@ -72,15 +72,18 @@ Use exactly these three fields, in this order, with these labels:
 - **Category** must be exactly one of: `cost_reduction`, `risk_mitigation`, `increased_revenue`. Always wrap it in backticks. Pick the single best-fit category, do not list multiple.
 - **Estimated Annual Impact** is a dollar estimate of annualized business impact, formatted `$` + number with thousands separators (e.g. `$0`, `$12,500`, `$1,200,000`). Use `$0` only for genuinely zero-dollar work (e.g. pure refactors) and explain why in Notes. Never leave it blank or write "N/A" / "TBD".
 - **Notes** is one or two sentences justifying both the category and the dollar figure (what drives the number, what assumptions).
+- Do not use the tilde `~` for "approximately" anywhere in the block (or in PR/ticket Markdown generally). GitHub and Jira parse `~text~` as strikethrough, which silently strikes through everything between two tildes. Write "about", "approx", or "roughly" instead.
 - This section is never omitted, even though other sections are omitted when empty.
+- **Apply the matching label** on the PR and the Jira ticket using the prefixed form: `impact: cost_reduction`, `impact: risk_mitigation`, or `impact: increased_revenue` (no backticks). The label must agree with the **Category** field in the block. Create the label first if it is missing. This gives the year-end review a second, label-based way to filter (independent of parsing the body).
 - Always ask me for the category and dollar estimate if you cannot infer them confidently from the change. Do not silently guess a large number.
 
 ### Parseability (for year-end review)
 
-- Keep the heading text exactly `## Contribution & Business Impact` so it can be grepped across PRs and tickets.
+- Keep the heading text exactly `## Business Impact` so it can be grepped across PRs and tickets.
 - Keep the field labels exactly `**Category:**`, `**Estimated Annual Impact:**`, `**Notes:**`.
 - One field per line, in the fixed order above.
-- Example harvest: `gh pr list --author @me --state all --json title,body,url` then extract the block by the heading and field labels.
+- Example harvest by body: `gh pr list --author @me --state all --json title,body,url` then extract the block by the heading and field labels.
+- Example harvest by label: `gh pr list --author @me --state all --label "impact: cost_reduction" --json title,url` (repeat per category).
 
 ## Commits
 
@@ -203,7 +206,8 @@ databricks jobs get-run <run_id> --output json
 - Wrap every file path, SQL identifier, column name, and code token in backticks. Bare underscores inside Markdown get interpreted as emphasis and rendered as `*` (e.g. `supplier_sku` must be `` `supplier_sku` ``).
 - Do not use Markdown link syntax `[text](path)` for local file references, list the path in a code span instead.
 - After creating a ticket, fetch it back with `jira_get_issue` (fields=description) and verify the first lines render as intended. If you see literal `\n` text, re-submit.
-- Every ticket description must end with the **Contribution & Business Impact** block defined in the canonical spec above (same heading, same three fields, same allowed categories). Apply it when creating tickets and add it on updates if it is missing.
+- Every ticket description must end with the **Business Impact** block defined in the canonical spec above (same heading, same three fields, same allowed categories). Apply it when creating tickets and add it on updates if it is missing.
+- Also add the matching impact-category label to the ticket using the prefixed form: `impact: cost_reduction`, `impact: risk_mitigation`, or `impact: increased_revenue` (must agree with the **Category** field). Pass it via the `labels` field on `jira_create_issue` / `jira_update_issue`. Note: Jira labels cannot contain spaces, so the prefixed value must be written without the space (e.g. `impact:cost_reduction`).
 
 ## Confluence
 

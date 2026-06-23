@@ -10,28 +10,30 @@ import { join } from "node:path";
 const SCRATCH = join(homedir(), ".pi", "scratch");
 const RENDER = join(homedir(), ".pi", "agent", "mdx", "render.py");
 
-/** Pull the text of the most recent assistant message on the current branch. */
-function lastAssistantText(ctx: ExtensionCommandContext): string | null {
+/** All assistant messages on the current branch, oldest first, text only. */
+function assistantMessages(
+  ctx: ExtensionCommandContext,
+): { text: string; timestamp: string }[] {
   const branch = ctx.sessionManager.getBranch();
-  const assistant = branch
-    .filter(
-      (e: any) => e.type === "message" && e.message?.role === "assistant",
-    )
+  return branch
+    .filter((e: any) => e.type === "message" && e.message?.role === "assistant")
     .sort(
       (a: any, b: any) =>
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-    );
-  const last = assistant.at(-1);
-  if (!last) return null;
-
-  const content = (last as any).message.content;
-  if (typeof content === "string") return content.trim() || null;
-  const text = content
-    .filter((c: any) => c.type === "text")
-    .map((c: any) => c.text)
-    .join("\n")
-    .trim();
-  return text || null;
+    )
+    .map((e: any) => {
+      const content = e.message.content;
+      const text =
+        typeof content === "string"
+          ? content.trim()
+          : content
+              .filter((c: any) => c.type === "text")
+              .map((c: any) => c.text)
+              .join("\n")
+              .trim();
+      return { text, timestamp: e.timestamp as string };
+    })
+    .filter((m: { text: string }) => m.text.length > 0);
 }
 
 function slugify(s: string, max = 48): string {
@@ -77,16 +79,31 @@ function titleOf(text: string): string {
 export default function (pi: ExtensionAPI) {
   pi.registerCommand("mdx", {
     description:
-      "Render my last answer as a rich HTML doc (--enrich to restructure first)",
+      "Render an answer as a rich HTML doc (-e enrich, -t pick from history)",
     handler: async (args: string, ctx: ExtensionCommandContext) => {
       const tokens = args.trim().split(/\s+/).filter(Boolean);
       const enrich = tokens.some((t) => t === "--enrich" || t === "-e");
+      const tree = tokens.some((t) => t === "--tree" || t === "-t");
       const slugArg = tokens.find((t) => !t.startsWith("-"));
 
-      const text = lastAssistantText(ctx);
-      if (!text) {
+      const messages = assistantMessages(ctx);
+      if (!messages.length) {
         ctx.ui.notify("No previous answer to render.", "warn");
         return;
+      }
+
+      let text = messages[messages.length - 1].text;
+      if (tree && ctx.hasUI && messages.length > 1) {
+        const recent = [...messages].reverse();
+        const choices = recent.map(
+          (m, i) =>
+            `${i + 1}. ${i === 0 ? "(latest) " : ""}${truncateWords(titleOf(m.text), 60)}`,
+        );
+        const choice = await ctx.ui.select("Render which answer?", choices);
+        if (!choice) return;
+        const idx = parseInt(choice, 10) - 1;
+        if (Number.isNaN(idx) || !recent[idx]) return;
+        text = recent[idx].text;
       }
 
       const title = titleOf(text);

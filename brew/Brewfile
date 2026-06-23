@@ -1,6 +1,6 @@
 tap "ankitpokhrel/jira-cli"
 tap "databricks/tap"
-tap "felixkratz/formulae"
+tap "felixkratz/formulae", "https://github.com/FelixKratz/homebrew-formulae"
 tap "hashicorp/tap"
 tap "mlz11/tap"
 tap "oven-sh/bun"

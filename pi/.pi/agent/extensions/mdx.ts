@@ -79,11 +79,12 @@ function titleOf(text: string): string {
 export default function (pi: ExtensionAPI) {
   pi.registerCommand("mdx", {
     description:
-      "Render an answer as a rich HTML doc (-e enrich, -t pick from history)",
+      "Render an answer as a rich HTML doc (-s simple/verbatim, -t pick from history)",
     handler: async (args: string, ctx: ExtensionCommandContext) => {
       const tokens = args.trim().split(/\s+/).filter(Boolean);
-      const enrich = tokens.some((t) => t === "--enrich" || t === "-e");
+      const simple = tokens.some((t) => t === "--simple" || t === "-s");
       const tree = tokens.some((t) => t === "--tree" || t === "-t");
+      const enrich = !simple;
       const slugArg = tokens.find((t) => !t.startsWith("-"));
 
       const messages = assistantMessages(ctx);

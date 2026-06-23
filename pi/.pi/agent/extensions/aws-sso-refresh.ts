@@ -8,9 +8,16 @@
  *   The SSO session associated with this profile has expired. To refresh this
  *   SSO session run aws sso login with the corresponding profile.
  *
- * This extension checks the SSO session on startup and refreshes it by running
- * `aws sso login --profile <profile>` (which opens the browser) before the
- * session is used. It also exposes a manual `/sso` command to refresh on demand.
+ * This extension validates the SSO session on startup AND before every agent
+ * turn (`before_agent_start`, which pi awaits before the model is called), so a
+ * session that expires mid-session is refreshed before the next prompt rather
+ * than failing the model call. When invalid it runs `aws sso login --profile
+ * <profile>` (which opens the browser). It also exposes a manual `/sso`
+ * command to refresh on demand.
+ *
+ * The pre-turn validation is throttled (see VALIDATE_TTL_MS) so it does not add
+ * an `sts` round-trip to every single prompt, and concurrent refreshes share a
+ * single in-flight login.
  */
 
 import { execFile } from "node:child_process";
@@ -25,6 +32,16 @@ const PROFILE = process.env.AWS_PROFILE || "sso-bedrock";
 
 // How long to wait for the interactive browser login to complete.
 const LOGIN_TIMEOUT_MS = 120_000;
+
+// Re-validate the session at most this often on the pre-turn check. SSO
+// sessions last hours, so a short TTL catches expiry without probing AWS on
+// every prompt.
+const VALIDATE_TTL_MS = 5 * 60_000;
+
+// Timestamp (ms) of the last confirmed-valid session, and a shared promise so
+// overlapping ensureSession calls do not trigger duplicate logins.
+let lastValidAt = 0;
+let inFlight: Promise<void> | undefined;
 
 // Returns true when the current SSO credentials can call AWS, false otherwise.
 async function sessionValid(): Promise<boolean> {
@@ -57,15 +74,36 @@ async function login(ctx: ExtensionContext): Promise<boolean> {
 	}
 }
 
-async function ensureSession(ctx: ExtensionContext): Promise<void> {
-	if (await sessionValid()) return;
-	await login(ctx);
+// Ensure a usable SSO session. `force` bypasses the TTL throttle (used at
+// startup and by the manual /sso command).
+async function ensureSession(ctx: ExtensionContext, force = false): Promise<void> {
+	if (!force && Date.now() - lastValidAt < VALIDATE_TTL_MS) return;
+	if (inFlight) return inFlight;
+	inFlight = (async () => {
+		try {
+			if (await sessionValid()) {
+				lastValidAt = Date.now();
+				return;
+			}
+			if (await login(ctx)) lastValidAt = Date.now();
+		} finally {
+			inFlight = undefined;
+		}
+	})();
+	return inFlight;
 }
 
 export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (event, ctx) => {
 		// Only check on a fresh process start, not on every /new or /resume.
 		if (event.reason !== "startup") return;
+		await ensureSession(ctx, true);
+	});
+
+	// Validate before each agent turn so a session that expired mid-session is
+	// refreshed before the model call that would otherwise fail. Throttled by
+	// VALIDATE_TTL_MS inside ensureSession.
+	pi.on("before_agent_start", async (_event, ctx) => {
 		await ensureSession(ctx);
 	});
 
@@ -73,10 +111,11 @@ export default function (pi: ExtensionAPI) {
 		description: "Refresh the AWS SSO session for Bedrock",
 		handler: async (_args, ctx) => {
 			if (await sessionValid()) {
+				lastValidAt = Date.now();
 				ctx.ui.notify(`AWS SSO session already valid (${PROFILE})`, "info");
 				return;
 			}
-			await login(ctx);
+			await ensureSession(ctx, true);
 		},
 	});
 }

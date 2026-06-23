@@ -38,6 +38,7 @@ Follow conventional commit style:
   ```
 
 - The **Contribution & Business Impact** section is required on every PR (see the canonical spec below). It is the one section that is never omitted, even when impact is small or indirect.
+- **Open as draft**: always create PRs as drafts first (`gh pr create --draft`); leave it to me to mark them ready for review.
 - **Assignee**: always assign to me
 - **Labels**: always add `squad: scm-analytics-engineers` and `tribe: intl-scm-analytics`
 - No emoji prefixes in title or body

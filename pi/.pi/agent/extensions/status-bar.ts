@@ -119,8 +119,8 @@ export default function (pi: ExtensionAPI) {
 				return `[${theme.fg(color, "█".repeat(filled))}${theme.fg("dim", "░".repeat(slots - filled))}]`;
 			};
 
-			// Format a percentage with at most 4 decimal places, no trailing zeros.
-			const fmtPct = (n: number): string => `${Number(n.toFixed(4))}`;
+			// Format a percentage with exactly two decimal places.
+			const fmtPct = (n: number): string => n.toFixed(2);
 
 			const thinkingTag = (): string => {
 				const level = pi.getThinkingLevel();

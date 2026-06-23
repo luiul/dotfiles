@@ -21,6 +21,7 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 TEMPLATE = HERE / "template.html"
+VENDOR = HERE / "vendor"
 
 
 def main() -> int:
@@ -69,6 +70,8 @@ def main() -> int:
         .replace("{{TITLE_JSON}}", json.dumps(title))
         .replace("{{GENERATED_JSON}}", json.dumps(generated))
         .replace("{{TITLE}}", title.replace("<", "&lt;"))
+        .replace("{{MARKED_SRC}}", (VENDOR / "marked.min.js").as_uri())
+        .replace("{{MERMAID_SRC}}", (VENDOR / "mermaid.min.js").as_uri())
     )
 
     out = md_path.with_suffix(".html")

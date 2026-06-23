@@ -21,11 +21,11 @@ The extension lives in `extensions/` (auto-discovered) and the renderer in `mdx/
 /mdx -s -t        Pick an answer, render it verbatim
 ```
 
-Flags: `-s`/`--simple`, `-t`/`--tree`. Output files land in `~/.pi/scratch/mdx-<slug>-<YYYYMMDD-HHMM>.{md,html}`. In enrich mode the model chooses the `<slug>`; in simple mode it is derived from the answer's title.
+Flags: `-s`/`--simple`, `-t`/`--tree`. Output files land in `~/.pi/scratch/mdx-<slug>-<YYYYMMDD-HHMM>.{md,html}`. The extension names the file (the slug is derived from the answer's title) in both modes.
 
 ## Modes
 
-- **Enrich (default)**: the extension hands the source answer to the model with authoring instructions (TL;DR, decisions checklist, headings, tables, Mermaid diagrams, callouts). The model writes the Markdown, chooses the filename slug, and runs the renderer. The instruction is sent as a hidden message (`display: false`) so it does not clutter the transcript.
+- **Enrich (default)**: the extension writes the target path, then hands the source answer to the model with authoring instructions (TL;DR, decisions checklist, headings, tables, Mermaid diagrams, callouts). The model writes the Markdown to that path and runs the renderer. The instruction is sent as a hidden message (`display: false`) so it does not clutter the transcript.
 - **Simple (`-s`)**: the extension writes the answer verbatim and runs the renderer directly. Deterministic, no model call.
 
 ## The closed loop
@@ -34,5 +34,15 @@ The viewer's feedback panel turns live checkboxes and a notes box into a Markdow
 
 ## Notes
 
-- The viewer loads `marked` and `mermaid` from a CDN, so viewing needs network access. Vendoring them for offline use is a possible future change.
+- The viewer loads `marked` and `mermaid` from vendored copies in `mdx/vendor/` (referenced as local `file://` URIs), so rendered docs work fully offline. No CDN or network access needed.
 - `render.py` is standalone: `uv run render.py <file.md> [--title "..."] [--no-open]`.
+
+## Updating the vendored libraries
+
+```sh
+cd ~/.pi/agent/mdx/vendor
+curl -fsSL https://cdn.jsdelivr.net/npm/marked/marked.min.js -o marked.min.js
+curl -fsSL https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js -o mermaid.min.js
+```
+
+Currently pinned: `marked` v15, `mermaid` v11.

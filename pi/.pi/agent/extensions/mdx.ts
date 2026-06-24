@@ -58,7 +58,7 @@ function locationBlock(loc: SessionLocation): string {
   return lines.join("\n");
 }
 
-const SCRATCH = join(homedir(), ".pi", "scratch");
+const SCRATCH = join(homedir(), "scratch");
 const RENDER = join(homedir(), ".pi", "agent", "mdx", "render.py");
 
 /** All assistant messages on the current branch, oldest first, text only. */

@@ -1,20 +1,181 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "awsAuthRefresh": "aws sso login --profile sso-bedrock",
-  "env": {
-    "AWS_PROFILE": "sso-bedrock",
-    "AWS_REGION": "eu-west-1",
-    "CLAUDE_CODE_USE_BEDROCK": "1",
-    "BASH_MAX_OUTPUT_LENGTH": "100000",
-    "CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS": "100000",
-    "DISABLE_FEEDBACK_COMMAND": "1",
-    "DISABLE_ERROR_REPORTING": "1",
-    "DISABLE_TELEMETRY": "1"
-  },
   "attribution": {
     "commit": "",
     "pr": ""
   },
+  "awsAuthRefresh": "aws sso login --profile sso-bedrock",
+  "enabledPlugins": {
+    "claude-hud@claude-hud": true,
+    "claude-mem@thedotmack": true,
+    "slack@claude-plugins-official": true
+  },
+  "env": {
+    "AWS_PROFILE": "sso-bedrock",
+    "AWS_REGION": "eu-west-1",
+    "BASH_MAX_OUTPUT_LENGTH": "100000",
+    "CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS": "100000",
+    "CLAUDE_CODE_USE_BEDROCK": "1",
+    "DISABLE_ERROR_REPORTING": "1",
+    "DISABLE_FEEDBACK_COMMAND": "1",
+    "DISABLE_TELEMETRY": "1"
+  },
+  "extraKnownMarketplaces": {
+    "claude-hud": {
+      "source": {
+        "repo": "jarrodwatts/claude-hud",
+        "source": "github"
+      }
+    },
+    "thedotmack": {
+      "source": {
+        "repo": "thedotmack/claude-mem",
+        "source": "github"
+      }
+    }
+  },
+  "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "command": "\"$HOME/Library/Application Support/ClaudeNotifier/notify.sh\" input_needed",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      },
+      {
+        "hooks": [
+          {
+            "command": "[ -n \"${SUPACODE_SOCKET_PATH:-}\" ] && [ -n \"${SUPACODE_WORKTREE_ID:-}\" ] && [ -n \"${SUPACODE_TAB_ID:-}\" ] && [ -n \"${SUPACODE_SURFACE_ID:-}\" ] && { payload=$(cat); printf '%s' \"{\\\"event\\\":\\\"awaiting_input\\\",\\\"v\\\":1,\\\"agent\\\":\\\"claude\\\",\\\"surface_id\\\":\\\"$SUPACODE_SURFACE_ID\\\",\\\"pid\\\":$PPID}\" | /usr/bin/nc -U -w1 \"$SUPACODE_SOCKET_PATH\"; { printf '%s claude\\n' \"$SUPACODE_WORKTREE_ID $SUPACODE_TAB_ID $SUPACODE_SURFACE_ID\"; printf '%s' \"$payload\"; } | /usr/bin/nc -U -w1 \"$SUPACODE_SOCKET_PATH\"; } >/dev/null 2>&1 || true # supacode-managed-hook",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "command": "\"$HOME/Library/Application Support/ClaudeNotifier/notify.sh\" permission_request",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "[ -n \"${SUPACODE_SOCKET_PATH:-}\" ] && [ -n \"${SUPACODE_WORKTREE_ID:-}\" ] && [ -n \"${SUPACODE_TAB_ID:-}\" ] && [ -n \"${SUPACODE_SURFACE_ID:-}\" ] && printf '%s' \"{\\\"event\\\":\\\"idle\\\",\\\"v\\\":1,\\\"agent\\\":\\\"claude\\\",\\\"surface_id\\\":\\\"$SUPACODE_SURFACE_ID\\\",\\\"pid\\\":$PPID}\" | /usr/bin/nc -U -w1 \"$SUPACODE_SOCKET_PATH\" >/dev/null 2>&1 || true # supacode-managed-hook",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "\"$HOME/.claude/hooks/plan-to-html.sh\"",
+            "timeout": 15,
+            "type": "command"
+          }
+        ],
+        "matcher": "ExitPlanMode"
+      },
+      {
+        "hooks": [
+          {
+            "command": "[ -n \"${SUPACODE_SOCKET_PATH:-}\" ] && [ -n \"${SUPACODE_WORKTREE_ID:-}\" ] && [ -n \"${SUPACODE_TAB_ID:-}\" ] && [ -n \"${SUPACODE_SURFACE_ID:-}\" ] && printf '%s' \"{\\\"event\\\":\\\"busy\\\",\\\"v\\\":1,\\\"agent\\\":\\\"claude\\\",\\\"surface_id\\\":\\\"$SUPACODE_SURFACE_ID\\\",\\\"pid\\\":$PPID}\" | /usr/bin/nc -U -w1 \"$SUPACODE_SOCKET_PATH\" >/dev/null 2>&1 || true # supacode-managed-hook",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      },
+      {
+        "hooks": [
+          {
+            "command": "[ -n \"${SUPACODE_SOCKET_PATH:-}\" ] && [ -n \"${SUPACODE_WORKTREE_ID:-}\" ] && [ -n \"${SUPACODE_TAB_ID:-}\" ] && [ -n \"${SUPACODE_SURFACE_ID:-}\" ] && printf '%s' \"{\\\"event\\\":\\\"awaiting_input\\\",\\\"v\\\":1,\\\"agent\\\":\\\"claude\\\",\\\"surface_id\\\":\\\"$SUPACODE_SURFACE_ID\\\",\\\"pid\\\":$PPID}\" | /usr/bin/nc -U -w1 \"$SUPACODE_SOCKET_PATH\" >/dev/null 2>&1 || true # supacode-managed-hook",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "AskUserQuestion|ExitPlanMode"
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "command": "[ -n \"${SUPACODE_SOCKET_PATH:-}\" ] && [ -n \"${SUPACODE_WORKTREE_ID:-}\" ] && [ -n \"${SUPACODE_TAB_ID:-}\" ] && [ -n \"${SUPACODE_SURFACE_ID:-}\" ] && { printf '%s' \"{\\\"event\\\":\\\"session_end\\\",\\\"v\\\":1,\\\"agent\\\":\\\"claude\\\",\\\"surface_id\\\":\\\"$SUPACODE_SURFACE_ID\\\",\\\"pid\\\":$PPID}\" | /usr/bin/nc -U -w1 \"$SUPACODE_SOCKET_PATH\"; printf '%s' \"{\\\"event\\\":\\\"idle\\\",\\\"v\\\":1,\\\"agent\\\":\\\"claude\\\",\\\"surface_id\\\":\\\"$SUPACODE_SURFACE_ID\\\",\\\"pid\\\":$PPID}\" | /usr/bin/nc -U -w1 \"$SUPACODE_SOCKET_PATH\"; } >/dev/null 2>&1 || true # supacode-managed-hook",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "\"$HOME/Library/Application Support/ClaudeNotifier/notify.sh\" compact_complete",
+            "type": "command"
+          }
+        ],
+        "matcher": "compact"
+      },
+      {
+        "hooks": [
+          {
+            "command": "[ -n \"${SUPACODE_SOCKET_PATH:-}\" ] && [ -n \"${SUPACODE_WORKTREE_ID:-}\" ] && [ -n \"${SUPACODE_TAB_ID:-}\" ] && [ -n \"${SUPACODE_SURFACE_ID:-}\" ] && printf '%s' \"{\\\"event\\\":\\\"session_start\\\",\\\"v\\\":1,\\\"agent\\\":\\\"claude\\\",\\\"surface_id\\\":\\\"$SUPACODE_SURFACE_ID\\\",\\\"pid\\\":$PPID}\" | /usr/bin/nc -U -w1 \"$SUPACODE_SOCKET_PATH\" >/dev/null 2>&1 || true # supacode-managed-hook",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "\"$HOME/Library/Application Support/ClaudeNotifier/notify.sh\" task_complete",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      },
+      {
+        "hooks": [
+          {
+            "command": "[ -n \"${SUPACODE_SOCKET_PATH:-}\" ] && [ -n \"${SUPACODE_WORKTREE_ID:-}\" ] && [ -n \"${SUPACODE_TAB_ID:-}\" ] && [ -n \"${SUPACODE_SURFACE_ID:-}\" ] && { payload=$(cat); printf '%s' \"{\\\"event\\\":\\\"idle\\\",\\\"v\\\":1,\\\"agent\\\":\\\"claude\\\",\\\"surface_id\\\":\\\"$SUPACODE_SURFACE_ID\\\",\\\"pid\\\":$PPID}\" | /usr/bin/nc -U -w1 \"$SUPACODE_SOCKET_PATH\"; { printf '%s claude\\n' \"$SUPACODE_WORKTREE_ID $SUPACODE_TAB_ID $SUPACODE_SURFACE_ID\"; printf '%s' \"$payload\"; } | /usr/bin/nc -U -w1 \"$SUPACODE_SOCKET_PATH\"; } >/dev/null 2>&1 || true # supacode-managed-hook",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "[ -n \"${SUPACODE_SOCKET_PATH:-}\" ] && [ -n \"${SUPACODE_WORKTREE_ID:-}\" ] && [ -n \"${SUPACODE_TAB_ID:-}\" ] && [ -n \"${SUPACODE_SURFACE_ID:-}\" ] && printf '%s' \"{\\\"event\\\":\\\"busy\\\",\\\"v\\\":1,\\\"agent\\\":\\\"claude\\\",\\\"surface_id\\\":\\\"$SUPACODE_SURFACE_ID\\\",\\\"pid\\\":$PPID}\" | /usr/bin/nc -U -w1 \"$SUPACODE_SOCKET_PATH\" >/dev/null 2>&1 || true # supacode-managed-hook",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  },
+  "model": "opus",
   "permissions": {
     "allow": [
       "Read",
@@ -76,141 +237,12 @@
       "Bash(gcloud storage:*)",
       "Bash(gcloud logging:*)",
       "Bash(cd:*)",
-      "WebFetch",
-      "mcp__mcp-atlassian__confluence_search",
-      "mcp__mcp-atlassian__confluence_get_page",
-      "mcp__mcp-atlassian__confluence_get_page_children",
-      "mcp__mcp-atlassian__confluence_get_space_page_tree",
-      "mcp__mcp-atlassian__confluence_get_comments",
-      "mcp__mcp-atlassian__confluence_get_labels",
-      "mcp__mcp-atlassian__confluence_get_attachments",
-      "mcp__mcp-atlassian__confluence_get_page_history",
-      "mcp__mcp-atlassian__confluence_get_page_diff",
-      "mcp__mcp-atlassian__confluence_get_page_images",
-      "mcp__mcp-atlassian__confluence_get_page_views",
-      "mcp__mcp-atlassian__confluence_download_attachment",
-      "mcp__mcp-atlassian__confluence_download_content_attachments",
-      "mcp__mcp-atlassian__confluence_search_user",
-      "mcp__mcp-atlassian__jira_search",
-      "mcp__mcp-atlassian__jira_get_issue",
-      "mcp__mcp-atlassian__jira_get_issue_dates",
-      "mcp__mcp-atlassian__jira_get_issue_development_info",
-      "mcp__mcp-atlassian__jira_get_issue_images",
-      "mcp__mcp-atlassian__jira_get_issue_sla",
-      "mcp__mcp-atlassian__jira_get_issue_watchers",
-      "mcp__mcp-atlassian__jira_get_issue_proforma_forms",
-      "mcp__mcp-atlassian__jira_get_issues_development_info",
-      "mcp__mcp-atlassian__jira_get_transitions",
-      "mcp__mcp-atlassian__jira_get_link_types",
-      "mcp__mcp-atlassian__jira_get_user_profile",
-      "mcp__mcp-atlassian__jira_get_worklog",
-      "mcp__mcp-atlassian__jira_get_agile_boards",
-      "mcp__mcp-atlassian__jira_get_board_issues",
-      "mcp__mcp-atlassian__jira_get_sprints_from_board",
-      "mcp__mcp-atlassian__jira_get_sprint_issues",
-      "mcp__mcp-atlassian__jira_get_all_projects",
-      "mcp__mcp-atlassian__jira_get_project_issues",
-      "mcp__mcp-atlassian__jira_get_project_versions",
-      "mcp__mcp-atlassian__jira_get_project_components",
-      "mcp__mcp-atlassian__jira_get_field_options",
-      "mcp__mcp-atlassian__jira_get_queue_issues",
-      "mcp__mcp-atlassian__jira_get_service_desk_for_project",
-      "mcp__mcp-atlassian__jira_get_service_desk_queues",
-      "mcp__mcp-atlassian__jira_get_proforma_form_details",
-      "mcp__mcp-atlassian__jira_search_fields",
-      "mcp__mcp-atlassian__jira_download_attachments",
-      "mcp__mcp-atlassian__jira_create_issue",
-      "mcp__mcp-atlassian__jira_update_issue",
-      "mcp__mcp-atlassian__jira_add_comment",
-      "mcp__mcp-atlassian__jira_transition_issue",
-      "mcp__mcp-atlassian__jira_add_worklog",
-      "mcp__mcp-atlassian__jira_link_to_epic",
-      "mcp__mcp-atlassian__jira_create_issue_link",
-      "mcp__mcp-atlassian__jira_add_watcher",
-      "mcp__mcp-atlassian__jira_add_issues_to_sprint"
+      "WebFetch"
     ]
   },
-  "model": "opus",
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "ExitPlanMode",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$HOME/.claude/hooks/plan-to-html.sh\"",
-            "timeout": 15
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$HOME/Library/Application Support/ClaudeNotifier/notify.sh\" input_needed"
-          }
-        ]
-      }
-    ],
-    "PermissionRequest": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$HOME/Library/Application Support/ClaudeNotifier/notify.sh\" permission_request"
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "matcher": "compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$HOME/Library/Application Support/ClaudeNotifier/notify.sh\" compact_complete"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$HOME/Library/Application Support/ClaudeNotifier/notify.sh\" task_complete"
-          }
-        ]
-      }
-    ]
-  },
+  "skipWorkflowUsageWarning": true,
   "statusLine": {
-    "type": "command",
-    "command": "bash -c 'COLUMNS=$(tput cols 2>/dev/null || echo 120); export COLUMNS; plugin_dir=$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | awk -F/ '\"'\"'{ print $(NF-1) \"\\t\" $(0) }'\"'\"' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); exec \"/opt/homebrew/bin/bun\" --env-file /dev/null \"${plugin_dir}src/index.ts\"'"
-  },
-  "enabledPlugins": {
-    "slack@claude-plugins-official": true,
-    "claude-mem@thedotmack": true,
-    "claude-hud@claude-hud": true
-  },
-  "extraKnownMarketplaces": {
-    "thedotmack": {
-      "source": {
-        "source": "github",
-        "repo": "thedotmack/claude-mem"
-      }
-    },
-    "claude-hud": {
-      "source": {
-        "source": "github",
-        "repo": "jarrodwatts/claude-hud"
-      }
-    }
-  },
-  "skipWorkflowUsageWarning": true
+    "command": "bash -c 'COLUMNS=$(tput cols 2>/dev/null || echo 120); export COLUMNS; plugin_dir=$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | awk -F/ '\"'\"'{ print $(NF-1) \"\\t\" $(0) }'\"'\"' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); exec \"/opt/homebrew/bin/bun\" --env-file /dev/null \"${plugin_dir}src/index.ts\"'",
+    "type": "command"
+  }
 }

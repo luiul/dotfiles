@@ -4,5 +4,8 @@
   "enableInstallTelemetry": false,
   "enableAnalytics": false,
   "lastChangelogVersion": "0.80.2",
-  "theme": "dark"
+  "theme": "dark",
+  "packages": [
+    "npm:pi-hermes-memory"
+  ]
 }

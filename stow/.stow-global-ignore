@@ -30,3 +30,6 @@ _darcs
 # --- Custom ignores ---
 
 \.DS_Store
+
+# Template files are tracked for reference but must not be symlinked into $HOME
+.+\.example

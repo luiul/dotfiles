@@ -23,7 +23,9 @@ The script is idempotent and prompts before each step. It will:
 
 Each top-level directory is a stow package that mirrors `$HOME`:
 
-`borders`, `brew`, `claude`, `claudenotifier`, `ghostty`, `git`, `hellofresh`, `karabiner`, `pip`, `rectangle`, `ruff`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `sublime`, `vscode`, `zsh`
+`aws`, `borders`, `brew`, `claude`, `claudenotifier`, `ghostty`, `git`, `hellofresh`, `pip`, `rectangle`, `ruff`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `sublime`, `vscode`, `zsh`
+
+Two packages are tracked but **not stowed** (export-only, see below): `karabiner` and `rectangle`.
 
 ### Apply or Update All
 
@@ -64,6 +66,14 @@ The `ssh` package stows only `~/.ssh/config` (private keys never leave `~/.ssh/`
 ## Rectangle
 
 Rectangle stores its config in macOS defaults, not in a home-directory file, so the `rectangle` package is not stowable. `RectangleConfig.json` is an exported snapshot — restore via Rectangle → Preferences → Import. See `rectangle/README.md`.
+
+## Karabiner
+
+Karabiner-Elements rewrites `~/.config/karabiner/karabiner.json` in place whenever its settings change, which silently replaces a stow symlink with a real file. The `karabiner` package is therefore not stowable — `karabiner.json` is kept as a versioned export and `setup.sh` skips it. Restore by copying it into `~/.config/karabiner/`. See `karabiner/README.md`.
+
+## AWS
+
+The `aws` package stows `~/.aws/config` (used by the `aws-sso-refresh` pi extension via `AWS_PROFILE=sso-bedrock`). The real `aws/.aws/config` is gitignored because it contains an AWS account ID and the corporate SSO portal URL; only `aws/.aws/config.example` (placeholders) is tracked. On a fresh machine, copy the example to `aws/.aws/config`, fill in real values, then stow. See `aws/README.md`.
 
 ## ClaudeNotifier
 

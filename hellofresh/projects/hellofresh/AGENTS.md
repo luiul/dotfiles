@@ -267,7 +267,7 @@ curl -s -u "$AUTH" -G "$BASE/rest/api/content/search" \
 curl -s -u "$AUTH" "$BASE/rest/api/content/<parent_id>/child/page?limit=50" | jq '.results[] | {id, title}'
 ```
 
-Reads via curl are straightforward. Writes are harder: the REST API takes Confluence **storage format** (XHTML), not Markdown (the MCP used to convert for us). For Markdown push, build the `confl` tool (Phase 3); until then write only simple pages hand-authored in storage format.
+Reads via curl are straightforward. Writes are harder: the REST API takes Confluence **storage format** (XHTML), not Markdown (the MCP used to convert for us). For Markdown push, build the `confl` tool (tracked in the integration issue); until then write only simple pages hand-authored in storage format.
 
 ### Repos that mirror Confluence
 
@@ -295,7 +295,7 @@ Treat the page ID in frontmatter as authoritative. Don't look it up by title.
     "version":{"number":<current+1>},
     "body":{"storage":{"value":"<xhtml>","representation":"storage"}}}
    ```
-5. GET again and confirm the body rendered; some constructs (nested tables, raw HTML, certain emoji) don't survive conversion. Markdown-to-storage conversion is why the `confl` tool (Phase 3) is the long-term answer for mirror-repo pushes.
+5. GET again and confirm the body rendered; some constructs (nested tables, raw HTML, certain emoji) don't survive conversion. Markdown-to-storage conversion is why a dedicated `confl` tool is the long-term answer for mirror-repo pushes.
 
 ### Rendering notes (verify after upload)
 

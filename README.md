@@ -71,6 +71,10 @@ Rectangle stores its config in macOS defaults, not in a home-directory file, so 
 
 Karabiner-Elements rewrites `~/.config/karabiner/karabiner.json` in place whenever its settings change, which silently replaces a stow symlink with a real file. The `karabiner` package is therefore not stowable — `karabiner.json` is kept as a versioned export and `setup.sh` skips it. Restore by copying it into `~/.config/karabiner/`. See `karabiner/README.md`.
 
+## Claude Code settings
+
+Claude Code (and Supacode) rewrite `~/.claude/settings.json` in place at runtime (managed hooks), like Karabiner. So `claude/.claude/settings.json` is a tracked snapshot, not stowed: a `.stow-local-ignore` in the `claude` package keeps stow from linking it, while `CLAUDE.md` in the same package is still symlinked. Refresh the snapshot with `cp ~/.claude/settings.json claude/.claude/settings.json`.
+
 ## AWS
 
 The `aws` package stows `~/.aws/config` (used by the `aws-sso-refresh` pi extension via `AWS_PROFILE=sso-bedrock`). The real `aws/.aws/config` is gitignored because it contains an AWS account ID and the corporate SSO portal URL; only `aws/.aws/config.example` (placeholders) is tracked. On a fresh machine, copy the example to `aws/.aws/config`, fill in real values, then stow. See `aws/README.md`.

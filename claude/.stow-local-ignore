@@ -1,0 +1,7 @@
+# Files in this package that stow must NOT symlink into $HOME.
+# settings.json is a tracked snapshot, not stowed: Claude Code / Supacode
+# rewrite ~/.claude/settings.json in place at runtime (managed hooks), which
+# would clobber a symlink. Refresh with:
+#   cp ~/.claude/settings.json claude/.claude/settings.json
+settings.json
+\.stow-local-ignore

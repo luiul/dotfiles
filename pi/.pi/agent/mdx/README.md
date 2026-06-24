@@ -6,7 +6,7 @@ Render a pi answer into a rich, scannable, interactive HTML review surface and o
 
 | File | Role |
 | --- | --- |
-| `extensions/mdx.ts` | Registers the `/mdx` command. Picks the source answer, decides the mode, writes Markdown to `~/.pi/scratch/`, and renders. |
+| `extensions/mdx.ts` | Registers the `/mdx` command. Picks the source answer, decides the mode, writes Markdown to `~/scratch/`, and renders. |
 | `mdx/render.py` | `uv run` script. Embeds a Markdown file (base64, UTF-8 safe) into `template.html` and opens the result. Pure stdlib. |
 | `mdx/template.html` | The viewer shell: Markdown via `marked`, diagrams via `mermaid`, sticky table of contents, theme toggle, and a feedback panel. |
 
@@ -21,7 +21,7 @@ The extension lives in `extensions/` (auto-discovered) and the renderer in `mdx/
 /mdx -s -t        Pick an answer, render it verbatim
 ```
 
-Flags: `-s`/`--simple`, `-t`/`--tree`. Output files land in `~/.pi/scratch/mdx-<slug>-<YYYYMMDD-HHMM>.{md,html}`. The extension names the file (the slug is derived from the answer's title) in both modes.
+Flags: `-s`/`--simple`, `-t`/`--tree`. Output files land in `~/scratch/mdx-<slug>-<YYYYMMDD-HHMM>.{md,html}`. The extension names the file (the slug is derived from the answer's title) in both modes.
 
 ## Modes
 

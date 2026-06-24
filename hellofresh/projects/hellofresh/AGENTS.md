@@ -143,7 +143,7 @@ CLI-first. Reach every system through its CLI, or a documented `curl` REST recip
 | Snowflake | `snow` CLI | browser SSO |
 | Databricks | `databricks` CLI | OAuth |
 | Google Docs | `md2gdoc` | service account |
-| Slack | `curl` Web API | `SLACK_TOKEN` (env, not yet configured) |
+| Slack | `curl` Web API (directory reads) + MCP plugin (messaging) | `SLACK_TOKEN` (env, directory scopes only) |
 | HelloDev KB | MCP (Claude only) | no pi path yet |
 
 Do not use the Atlassian MCP for Jira or Confluence; the CLI and REST recipes below replace it.
@@ -333,25 +333,37 @@ JSON
 
 ## Slack (`curl` Web API)
 
-Reach Slack through the Web API with `curl`, using `SLACK_TOKEN` from `.env`. The token is not configured yet (Phase 3): add a bot or user token with scopes `chat:write`, `channels:history`, `groups:history`, `search:read`, then these work from pi.
+Reach Slack through the Web API with `curl`, using `SLACK_TOKEN` from `.env`. The configured token is a HelloFresh **user token** that authenticates (`auth.test` ok) but only carries **directory-read** scopes (`channels:read`, `groups:read`, `users:read`, `team:read`). It works for:
 
 ```bash
-# Post a message
+curl -s -H "Authorization: Bearer $SLACK_TOKEN" -G --data-urlencode 'types=public_channel' --data-urlencode 'limit=20' \
+  https://slack.com/api/conversations.list | jq '.channels[] | {id, name}'   # list channels
+curl -s -H "Authorization: Bearer $SLACK_TOKEN" -G --data-urlencode 'limit=20' \
+  https://slack.com/api/users.list | jq '.members[] | {id, name}'             # list users
+curl -s -H "Authorization: Bearer $SLACK_TOKEN" https://slack.com/api/auth.test | jq .  # identity
+```
+
+It **cannot** post, read message history, or search: `chat.postMessage`, `conversations.history`, and `search.messages` all return `missing_scope`. Messaging needs a token with `chat:write` (post), `channels:history` + `groups:history` (read history), and `search:read` (search) — a bot token covers post/history, a user token is required for search. Until such a token is configured, the **`slack` MCP plugin remains the messaging path** for Claude; pi has channel/user lookups only.
+
+When a properly scoped token is set, the messaging recipes are:
+
+```bash
+# Post a message (needs chat:write)
 curl -s -H "Authorization: Bearer $SLACK_TOKEN" -H 'Content-type: application/json' \
   -d '{"channel":"#tribe-us-ops-analytics","text":"hello"}' \
   https://slack.com/api/chat.postMessage | jq '.ok'
 
-# Read recent channel history (channel ID, e.g. C0123456789)
+# Read recent channel history (needs channels:history; channel ID, e.g. C0123456789)
 curl -s -H "Authorization: Bearer $SLACK_TOKEN" -G \
   --data-urlencode 'channel=<channel_id>' --data-urlencode 'limit=20' \
   https://slack.com/api/conversations.history | jq '.messages[].text'
 
-# Search messages (requires a user token)
+# Search messages (needs search:read, user token)
 curl -s -H "Authorization: Bearer $SLACK_TOKEN" -G --data-urlencode 'query=deploy failed' \
   https://slack.com/api/search.messages | jq '.messages.matches[].text'
 ```
 
-Build a thin `slackcli` uv tool (md2gdoc-style) if usage justifies it.
+Build a thin `slackcli` uv tool (md2gdoc-style) once a messaging-scoped token is in place and usage justifies it.
 
 ## HelloDev Knowledge Base
 

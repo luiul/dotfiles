@@ -182,6 +182,9 @@ ok "Hooks path set to .githooks"
 step "Git filters"
 git config filter.strip-sublime-fontsize.clean "sed '/^[[:space:]]*\"font_size\"/d'"
 ok "Sublime font_size strip filter configured"
+git config filter.strip-pi-thinkinglevel.clean "jq 'del(.defaultThinkingLevel)'"
+git config filter.strip-pi-thinkinglevel.required true
+ok "pi defaultThinkingLevel strip filter configured"
 
 # --- .env ---
 step "Environment file"

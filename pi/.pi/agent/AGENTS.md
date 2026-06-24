@@ -11,6 +11,12 @@
 - Always use `gh` CLI for GitHub interactions (PRs, issues, checks, releases, etc.)
 - The `gh` account `luiul` is used intentionally for both work and personal repos. Do not flag it as a misconfiguration.
 
+## Planning & Tracking
+
+- Track bigger projects, multi-step plans, and design docs as GitHub issues (`gh issue create`; update with `gh issue comment` or by editing the body), not as markdown files committed to the repo root. Keep the repo root clean.
+- Reserve in-repo markdown for code-adjacent docs (READMEs, setup notes). Anything that reads like a project plan, roadmap, or tracker belongs in an issue.
+- Exception: repos without GitHub Issues enabled. Use that platform's tracker instead (e.g. HelloFresh repos track plans in Jira, see the HelloFresh context).
+
 ## Commits
 
 - Complete all file changes before staging or committing — let the user review first

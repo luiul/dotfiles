@@ -2,6 +2,10 @@
 
 These instructions apply to every repo under the subfolders of `~/projects/hellofresh` (`01-generation/`, `02-ingestion/`, `03-transformation/`, `04-serving/`, `05-orchestration/`, `06-governance-infra/`, `misc/`). When a repo has its own context file, the repo-specific guidance wins on conflicts.
 
+## Planning & Tracking
+
+HelloFresh repos do not have GitHub Issues enabled, so the global rule (track plans in GitHub issues) does not apply here. Track bigger projects and multi-step plans as Jira tickets in project ISA, following the Business Impact conventions below. Use an in-repo markdown doc only for working notes that are not ticket-worthy.
+
 ## Branch Naming
 
 Enforced org-wide by Mergeable (validated against Jira API).

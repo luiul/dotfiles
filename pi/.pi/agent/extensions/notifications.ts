@@ -2,7 +2,9 @@
  * System notifications for pi (mirrors the Claude Code notifier setup).
  *
  * Fires a macOS notification via the `claude-notifier` binary when pi finishes
- * a turn and hands control back to you, or after a context compaction. The
+ * a turn and hands control back to you, after a context compaction, or when a
+ * single agent run has been working for too long without returning control
+ * (default 300s, configurable via PI_LONG_RUN_SECONDS or /notify-timeout). The
  * notification is suppressed when you are already looking at pi's terminal tab,
  * replicating the focus-detection logic from the Claude `notify.sh` hook.
  *
@@ -109,14 +111,29 @@ async function repoName(cwd: string): Promise<string> {
 	}
 }
 
+// Seconds an agent run may work before we alert. <= 0 disables the watcher.
+function parseThreshold(): number {
+	const raw = Number(process.env.PI_LONG_RUN_SECONDS);
+	return Number.isFinite(raw) && raw > 0 ? raw : 300;
+}
+
 export default function (pi: ExtensionAPI) {
 	let enabled = process.platform === "darwin";
+	let longRunThreshold = parseThreshold();
+	let longRunTimer: ReturnType<typeof setInterval> | undefined;
 
-	const maybeNotify = async (ctx: ExtensionContext, message: string) => {
+	const stopLongRunWatch = () => {
+		if (longRunTimer) {
+			clearInterval(longRunTimer);
+			longRunTimer = undefined;
+		}
+	};
+
+	const maybeNotify = async (ctx: ExtensionContext, message: string, force = false) => {
 		if (!enabled) return;
 		try {
 			const term = detectTerminal();
-			if (!(await shouldNotify(term))) return;
+			if (!force && !(await shouldNotify(term))) return;
 			const repo = await repoName(ctx.cwd);
 			const title = term.label ? `pi · ${term.label}` : "pi";
 			await execFileAsync(NOTIFIER, [
@@ -132,8 +149,25 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
+	// Start a repeating watcher per agent run; alert at each threshold boundary
+	// while pi keeps working, reporting cumulative elapsed time.
+	pi.on("agent_start", async (_event, ctx) => {
+		stopLongRunWatch();
+		if (!enabled || longRunThreshold <= 0) return;
+		const startedAt = Date.now();
+		longRunTimer = setInterval(() => {
+			const elapsed = Math.round((Date.now() - startedAt) / 1000);
+			void maybeNotify(ctx, `Still working after ${elapsed}s without a result`, true);
+		}, longRunThreshold * 1000);
+	});
+
 	pi.on("agent_end", async (_event, ctx) => {
+		stopLongRunWatch();
 		await maybeNotify(ctx, "Awaiting your input");
+	});
+
+	pi.on("session_shutdown", async () => {
+		stopLongRunWatch();
 	});
 
 	pi.on("session_compact", async (_event, ctx) => {
@@ -148,7 +182,37 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			enabled = !enabled;
+			if (!enabled) stopLongRunWatch();
 			ctx.ui.notify(enabled ? "Notifications enabled" : "Notifications disabled", "info");
+		},
+	});
+
+	pi.registerCommand("notify-timeout", {
+		description: "Set/show the long-running alert threshold in seconds (0 disables)",
+		handler: async (args, ctx) => {
+			const trimmed = args.trim();
+			if (!trimmed) {
+				ctx.ui.notify(
+					longRunThreshold > 0
+						? `Long-running alert fires every ${longRunThreshold}s`
+						: "Long-running alert disabled",
+					"info",
+				);
+				return;
+			}
+			const next = Number(trimmed);
+			if (!Number.isFinite(next) || next < 0) {
+				ctx.ui.notify("Usage: /notify-timeout <seconds> (>= 0)", "warning");
+				return;
+			}
+			longRunThreshold = Math.round(next);
+			stopLongRunWatch();
+			ctx.ui.notify(
+				longRunThreshold > 0
+					? `Long-running alert set to ${longRunThreshold}s (applies to next run)`
+					: "Long-running alert disabled",
+				"info",
+			);
 		},
 	});
 }

@@ -3,6 +3,6 @@
   "defaultModel": "eu.anthropic.claude-opus-4-8",
   "enableInstallTelemetry": false,
   "enableAnalytics": false,
-  "lastChangelogVersion": "0.79.10",
+  "lastChangelogVersion": "0.80.2",
   "theme": "dark"
 }

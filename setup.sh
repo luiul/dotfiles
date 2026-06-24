@@ -125,12 +125,14 @@ elif confirm "Stow all packages into \$HOME?"; then
 	# snowflake package uses --no-folding so runtime files (logs, cache) stay
 	# outside the repo — target dir must exist before stow creates per-file links
 	mkdir -p "$HOME/.snowflake"
+	# aws: --no-folding symlinks only ~/.aws/config; target dir must exist first
+	mkdir -p "$HOME/.aws"
 	# sublime: User dir only exists after first launch, but --no-folding needs it
 	mkdir -p "$HOME/Library/Application Support/Sublime Text/Packages/User"
-	# rectangle is not stowable (export package).
+	# rectangle and karabiner are not stowable (export packages).
 	for pkg in */; do
 		case "${pkg%/}" in
-			rectangle) continue ;;
+			rectangle | karabiner) continue ;;
 		esac
 		stow --no-folding "${pkg%/}"
 	done

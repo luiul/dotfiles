@@ -13,3 +13,5 @@ snowflake/.snowflake/.cli_version.cache
 # SSH — only track config; never commit keys, known_hosts, or agent state
 ssh/.ssh/*
 !ssh/.ssh/config
+# AWS — config has an account ID + SSO portal URL; only the example is tracked
+aws/.aws/config

@@ -44,7 +44,7 @@ Follow conventional commit style:
 - The **Business Impact** section is required on every PR (see the canonical spec below). It is the one section that is never omitted, even when impact is small or indirect.
 - **Open as draft**: always create PRs as drafts first (`gh pr create --draft`); leave it to me to mark them ready for review.
 - **Assignee**: always assign to me
-- **Labels**: always add `squad: scm-analytics-engineers` and `tribe: intl-scm-analytics`, plus the impact-category label matching the **Category** field of the Business Impact block: exactly one of `impact: cost_reduction`, `impact: risk_mitigation`, `impact: increased_revenue` (prefixed form, no backticks in labels). Create the label in the repo first if it does not exist (`gh label create "impact: cost_reduction" --description "Year-end review: cost reduction" --color BFD4F2`). This lets the year-end review filter by label as well as by heading (`gh pr list --label "impact: cost_reduction" --state all`).
+- **Labels**: always add the squad and tribe labels `squad: scm-analytics-engineers` and `tribe: intl-scm-analytics` (these keep their spaces, they are an org-wide convention), plus the review-taxonomy labels defined in **Review labels (taxonomy)** below. At minimum apply the matching `impact:<category>` label. Create any missing label in the repo first (e.g. `gh label create "impact:cost_reduction" --description "Year-end review: cost reduction" --color 0E8A16`). This lets the year-end review filter by label as well as by heading (`gh pr list --label "impact:cost_reduction" --state all`).
 - No emoji prefixes in title or body
 - No agent attribution, tool footers, or generated-by links (no Claude Code or pi credits)
 - Omit empty sections rather than writing "N/A"
@@ -78,8 +78,19 @@ Use exactly these three fields, in this order, with these labels:
 - **Notes** is one or two sentences justifying both the category and the dollar figure (what drives the number, what assumptions).
 - Do not use the tilde `~` for "approximately" anywhere in the block (or in PR/ticket Markdown generally). GitHub and Jira parse `~text~` as strikethrough, which silently strikes through everything between two tildes. Write "about", "approx", or "roughly" instead.
 - This section is never omitted, even though other sections are omitted when empty.
-- **Apply the matching label** on the PR and the Jira ticket using the prefixed form: `impact: cost_reduction`, `impact: risk_mitigation`, or `impact: increased_revenue` (no backticks). The label must agree with the **Category** field in the block. Create the label first if it is missing. This gives the year-end review a second, label-based way to filter (independent of parsing the body).
+- **Apply the matching label** on the PR and the Jira ticket using the colon, no-space form: `impact:cost_reduction`, `impact:risk_mitigation`, or `impact:increased_revenue` (no backticks). The label must agree with the **Category** field in the block. Create the label first if it is missing. This gives the year-end review a second, label-based way to filter (independent of parsing the body). See **Review labels (taxonomy)** below for the optional `scope:`, `estimate:`, and `type:` dimensions.
 - Always ask me for the category and dollar estimate if you cannot infer them confidently from the change. Do not silently guess a large number.
+
+### Review labels (taxonomy)
+
+All review-taxonomy labels use the `dimension:value` form with a colon and **no space**, identical on GitHub and Jira (Jira labels cannot contain spaces, so one label string serves both platforms and keeps the harvest trivial). This is distinct from the org-wide `squad: ` / `tribe: ` labels, which keep their space and are not part of this taxonomy.
+
+- `impact:` (required, exactly one): `impact:cost_reduction`, `impact:risk_mitigation`, `impact:increased_revenue`. Must match the **Category** field.
+- `scope:` (recommended, one): `scope:squad`, `scope:tribe`, `scope:org`. Blast radius / reach of the change. Maps to leveling rubrics (scope of influence), so reviewers weigh it alongside dollars.
+- `estimate:` (recommended, one): `estimate:validated` (confirmed against real billing/metrics), `estimate:modeled` (computed from a stated model and assumptions), `estimate:speculative` (rough judgment, no model). Protects credibility: a validated figure defends itself, a speculative one is flagged as such.
+- `type:` (recommended, one): `type:delivery`, `type:reliability`, `type:enablement`, `type:mentoring`. Coarse work-type for grouping into competency stories. Independent of the conventional-commit type used in commit and PR titles.
+
+Apply at most one label per dimension. Create any missing label in the repo first (`gh label create "<label>" --description "..." --color <hex>`). When an `estimate:speculative` or `estimate:modeled` figure is later confirmed, update the Notes with the actual and flip the label to `estimate:validated`.
 
 ### Parseability (for year-end review)
 
@@ -87,7 +98,7 @@ Use exactly these three fields, in this order, with these labels:
 - Keep the field labels exactly `**Category:**`, `**Estimated Annual Impact:**`, `**Notes:**`.
 - One field per line, in the fixed order above.
 - Example harvest by body: `gh pr list --author @me --state all --json title,body,url` then extract the block by the heading and field labels.
-- Example harvest by label: `gh pr list --author @me --state all --label "impact: cost_reduction" --json title,url` (repeat per category).
+- Example harvest by label: `gh pr list --author @me --state all --label "impact:cost_reduction" --json title,url` (repeat per category, and per `scope:` / `estimate:` / `type:` dimension).
 
 ## Commits
 
@@ -242,7 +253,7 @@ Conventions:
 
 - Put the description (and long comments) in a markdown file and pass it with `-T file.md`. jira-cli converts Markdown to Jira markup, so the old MCP `\n`-escaping quirk no longer applies.
 - Every ticket description must end with the **Business Impact** block defined in the canonical spec above (same heading, same three fields, same allowed categories). Add it on updates if missing.
-- Add the matching impact-category label with `-l` using the no-space prefixed form: `impact:cost_reduction`, `impact:risk_mitigation`, or `impact:increased_revenue` (must agree with the **Category** field; Jira labels cannot contain spaces).
+- Add the review-taxonomy labels with `-l` (repeat the flag per label). They are identical to the GitHub ones (colon, no space): the required `impact:<category>` (must agree with the **Category** field) plus the recommended `scope:`, `estimate:`, and `type:` labels from **Review labels (taxonomy)** above. Jira labels cannot contain spaces, which is why the whole taxonomy is colon-no-space.
 - Wrap every file path, SQL identifier, column name, and code token in backticks (bare underscores render as emphasis otherwise). Do not use Markdown link syntax `[text](path)` for local file references; list the path in a code span.
 - JQL ordering: jira-cli rejects inline `ORDER BY`; use `--order-by <field> [--reverse]`.
 - After create/update, fetch back with `jira issue view <KEY>` and confirm the body and Business Impact block render as intended.

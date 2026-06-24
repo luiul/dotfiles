@@ -3,18 +3,27 @@
  * pi-hermes-memory.
  *
  * What it does when you run `/forget-session`:
- *   1. Blocks all further memory + skill writes for the rest of THIS session
- *      (both the agent's own `memory` / `skill_manage` tool calls and the
- *      writes made by pi-hermes-memory's own child `pi -p` subprocesses:
- *      background review, correction detection, and the shutdown/compact flush).
+ *   1. Blocks all further memory + skill writes made by THIS pi process for the
+ *      rest of the session (the agent's own `memory` / `skill_manage` tool
+ *      calls).
  *   2. Deletes anything this session already wrote: restores the memory
  *      markdown files (MEMORY.md, USER.md, project MEMORY.md, SKILL.md files)
  *      to their session-start snapshot, and removes this session's rows from
  *      the SQLite store (extended memories + session-search index).
  *
+ * Note on subprocesses: pi-hermes-memory runs background review, correction
+ * detection, and the shutdown/compact flush in child `pi -p` processes spawned
+ * with `--no-extensions`, so this extension is NOT loaded there and cannot
+ * block their writes directly. Instead those writes are undone by cleanup: at
+ * the command and at session_shutdown, and — for fire-and-forget subprocesses
+ * that land writes AFTER shutdown — at the start of the next session, which
+ * restores the forgotten session's persisted snapshot before taking its own
+ * baseline.
+ *
  * It is NOT persistent. Nothing in the on-disk hermes config is changed; a
- * marker file is used only to coordinate with subprocesses and is cleared at
- * the start of the next session, so new sessions revert to default behavior.
+ * marker file is used only to remember that a session is being forgotten and
+ * is cleared at the start of the next session, so new sessions revert to
+ * default behavior.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -109,18 +118,27 @@ function withDb<T>(fn: (db: any) => T): T | undefined {
   }
 }
 
-function getMaxMemoryId(): number {
-  return (
-    withDb((db) => {
-      const row = db.prepare("SELECT COALESCE(MAX(id), 0) AS m FROM memories").get();
-      return Number(row?.m ?? 0);
-    }) ?? 0
-  );
+function getMaxMemoryId(): number | null {
+  // Returns the current MAX(memories.id), or null if the DB is unavailable.
+  // Distinguishing null (read failed) from 0 (empty table) is critical: the
+  // `memories` table has no session column, so cleanup scopes deletes by an
+  // `id > baseline` threshold. A transient read failure must NOT collapse the
+  // baseline to 0, or cleanup would delete the entire memory store.
+  const result = withDb((db) => {
+    const row = db.prepare("SELECT COALESCE(MAX(id), 0) AS m FROM memories").get();
+    return Number(row?.m ?? 0);
+  });
+  return result === undefined ? null : result;
 }
 
-function dbCleanup(sessionId: string | null, maxMemoryId: number): void {
+function dbCleanup(sessionId: string | null, maxMemoryId: number | null): void {
   withDb((db) => {
-    db.prepare("DELETE FROM memories WHERE id > ?").run(maxMemoryId);
+    // Only id-threshold-delete extended memories when we have a trusted
+    // baseline. If the baseline read failed (null) we under-delete rather than
+    // risk wiping unrelated memories.
+    if (typeof maxMemoryId === "number") {
+      db.prepare("DELETE FROM memories WHERE id > ?").run(maxMemoryId);
+    }
     if (sessionId) {
       db.prepare("DELETE FROM session_files WHERE session_id = ?").run(sessionId);
       db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
@@ -157,7 +175,7 @@ function markerExists(): boolean {
 }
 
 // ─── Persisted baseline snapshot (survives /reload, keyed by session id) ─────
-interface Snapshot { sessionId: string; files: Record<string, string>; maxMemoryId: number }
+interface Snapshot { sessionId: string; files: Record<string, string>; maxMemoryId: number | null }
 
 function sanitize(id: string): string {
   return id.replace(/[^A-Za-z0-9_.-]/g, "_");
@@ -205,13 +223,17 @@ function pruneStaleSnapshots(): void {
 export default function (pi: ExtensionAPI) {
   let forgetActive = false;
   let snapshot = new Map<string, string>();
-  let snapshotMaxMemoryId = 0;
+  let snapshotMaxMemoryId: number | null = null;
   let sessionId: string | null = null;
 
   function currentSessionId(ctx: any): string | null {
     try {
-      const header = ctx?.sessionManager?.getHeader?.();
-      return header?.id ?? null;
+      const sm = ctx?.sessionManager;
+      // getSessionId() always returns the session UUID (even before the session
+      // is persisted); getHeader().id is the same value and is what hermes keys
+      // its rows by. Prefer getSessionId() so we never key on a null id.
+      const id = sm?.getSessionId?.() ?? sm?.getHeader?.()?.id ?? null;
+      return id || null;
     } catch {
       return null;
     }
@@ -281,8 +303,9 @@ export default function (pi: ExtensionAPI) {
     dbCleanup(sessionId, snapshotMaxMemoryId);
   }
 
-  // Block writes while forget is active (this process) OR a marker is present
-  // (child pi -p subprocesses inherit this extension and see the marker).
+  // Block writes while forget is active in this process. Hermes subprocesses
+  // run with --no-extensions so they never load this handler; their writes are
+  // undone by cleanup (command, shutdown, and next-session leftover restore).
   pi.on("tool_call", async (event) => {
     if (!WRITE_TOOLS.has(event.toolName)) return;
     if (forgetActive || markerExists()) {
@@ -294,12 +317,22 @@ export default function (pi: ExtensionAPI) {
     sessionId = currentSessionId(ctx);
     pruneStaleSnapshots();
 
-    // Clear any leftover marker from a previously forgotten session, and tidy
-    // up its rows. This makes the behavior non-persistent: new sessions revert
-    // to the default config behavior.
+    // Clean up a leftover marker from a previously forgotten session. Restore
+    // that session's persisted snapshot first: fire-and-forget subprocesses
+    // (shutdown/compact flush, background review) can land writes AFTER the
+    // forgotten session's own cleanup ran, and this is the only place left to
+    // undo them. Falls back to a best-effort db cleanup if no snapshot exists.
     const leftover = readMarker();
     if (leftover && leftover.sessionId !== sessionId) {
-      dbCleanup(leftover.sessionId, getMaxMemoryId());
+      const prevSnap = leftover.sessionId ? loadSnapshot(leftover.sessionId) : null;
+      if (prevSnap) {
+        snapshot = new Map(Object.entries(prevSnap.files));
+        snapshotMaxMemoryId = prevSnap.maxMemoryId;
+        restoreFiles();
+        dbCleanup(leftover.sessionId, prevSnap.maxMemoryId);
+      } else {
+        dbCleanup(leftover.sessionId, getMaxMemoryId());
+      }
       removeSnapshot(leftover.sessionId);
       removeMarker();
     }

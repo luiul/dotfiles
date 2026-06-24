@@ -7,6 +7,57 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+/** Where this plan was created and which session produced it, so the work can be
+ *  resumed after an accidental terminal close. */
+interface SessionLocation {
+  cwd: string;
+  sessionId: string;
+  sessionFile?: string;
+  sessionName?: string;
+}
+
+function sessionLocation(ctx: ExtensionCommandContext): SessionLocation {
+  const sm: any = ctx.sessionManager;
+  const cwd =
+    (typeof sm.getCwd === "function" ? sm.getCwd() : "") || process.cwd();
+  return {
+    cwd,
+    sessionId: typeof sm.getSessionId === "function" ? sm.getSessionId() : "",
+    sessionFile:
+      typeof sm.getSessionFile === "function"
+        ? sm.getSessionFile()
+        : undefined,
+    sessionName:
+      typeof sm.getSessionName === "function"
+        ? sm.getSessionName()
+        : undefined,
+  };
+}
+
+/** Markdown block that records where/how to resume this plan. */
+function locationBlock(loc: SessionLocation): string {
+  const lines = [
+    "## Resume",
+    "",
+    "> Where this plan was created, so you can return after closing the terminal.",
+    "",
+    `- **Path:** \`${loc.cwd}\``,
+  ];
+  if (loc.sessionName) lines.push(`- **Session name:** ${loc.sessionName}`);
+  if (loc.sessionId) lines.push(`- **Session id:** \`${loc.sessionId}\``);
+  if (loc.sessionFile) lines.push(`- **Session file:** \`${loc.sessionFile}\``);
+  lines.push("");
+  lines.push("Resume with:");
+  lines.push("");
+  lines.push("```sh");
+  lines.push(`cd ${JSON.stringify(loc.cwd)}`);
+  lines.push(
+    loc.sessionFile ? `pi --resume ${JSON.stringify(loc.sessionFile)}` : "pi",
+  );
+  lines.push("```");
+  return lines.join("\n");
+}
+
 const SCRATCH = join(homedir(), ".pi", "scratch");
 const RENDER = join(homedir(), ".pi", "agent", "mdx", "render.py");
 
@@ -115,6 +166,9 @@ export default function (pi: ExtensionAPI) {
       const mdPath = join(SCRATCH, `mdx-${slugify(title)}-${stamp}.md`);
       mkdirSync(SCRATCH, { recursive: true });
 
+      const loc = sessionLocation(ctx);
+      const resume = locationBlock(loc);
+
       if (enrich) {
         // Delegate to the agent: it restructures the answer, then renders.
         const prompt = [
@@ -122,6 +176,10 @@ export default function (pi: ExtensionAPI) {
           "",
           "Do this:",
           `1. Restructure the content below into Markdown optimized for human scanning. Start with a single concise \`# Title\` H1 that summarizes the content, then a short **TL;DR**, then a **Decisions needed** task-list (\`- [ ] ...\`) when there are choices to make. Use \`##\`/\`###\` headings, tables for comparisons, \`>\` blockquotes for callouts, and backticks for files/identifiers/commands. Use \`\`\`mermaid\`\`\` diagrams for anything structural (architecture, flow, sequence, schema). Keep every substantive fact from the source; reorganize and visualize, do not invent or drop information.`,
+          `1b. Append the following "Resume" block verbatim as the last section of the document, after all other content. Do not alter it:`,
+          "~~~markdown",
+          resume,
+          "~~~",
           `2. Write the result to \`${mdPath}\`.`,
           `3. Run: \`uv run ${RENDER} ${mdPath}\``,
           "4. Print the absolute paths of the .md and .html files.",
@@ -146,9 +204,10 @@ export default function (pi: ExtensionAPI) {
       }
 
       // Deterministic capture: write the answer verbatim and render it.
-      const body = /^#\s+/.test(text.trimStart())
+      const main = /^#\s+/.test(text.trimStart())
         ? text
         : `# ${title}\n\n${text}`;
+      const body = `${main}\n\n${resume}\n`;
       writeFileSync(mdPath, body, "utf8");
 
       const child = spawn("uv", ["run", RENDER, mdPath], {

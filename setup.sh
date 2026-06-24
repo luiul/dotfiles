@@ -141,6 +141,12 @@ else
 	skip "Stow"
 fi
 
+# --- Shared agent scratch dir ---
+step "Agent scratch dir"
+# pi and Claude write review/proofread output to ~/scratch (canonical AGENTS.md)
+mkdir -p "$HOME/scratch"
+ok "~/scratch ready"
+
 # --- SSH key ---
 step "SSH key"
 if [[ -f "$HOME/.ssh/id_ed25519" ]]; then

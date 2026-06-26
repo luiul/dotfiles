@@ -436,4 +436,9 @@ Build a thin `slackcli` uv tool (md2gdoc-style) once a messaging-scoped token is
 
 ## HelloDev Knowledge Base
 
-The internal KB is exposed only as an HTTP MCP endpoint (`hellofresh-kb`, `.../mcp/v2`) with no REST or CLI equivalent. It is reachable from Claude (MCP) only; pi has no path to it yet. This is the one sanctioned MCP under the CLI-first rule. If pi needs it, wrap it later via a pi MCP-bridge extension.
+The internal KB is exposed only as an HTTP MCP endpoint (`hellofresh-kb`, `.../mcp/v2`) with no REST or CLI equivalent. This is the one sanctioned MCP under the CLI-first rule.
+
+- Claude reaches it via the `hellofresh-kb` server in `~/.claude.json`.
+- pi reaches it via the `mcp-bridge` extension (`~/dotfiles/pi/.pi/agent/extensions/mcp-bridge.ts`), which discovers the MCP tools and registers each as a native pi tool prefixed `kb_` (e.g. `kb_search_internal_knowledge_base`). Run `/mcp-tools` in pi to list them. The endpoint is reachable on the corporate network without a token (set `MCP_BRIDGE_TOKEN` if that changes).
+
+Note: this MCP serves the KB content, not the Backstage docs portal at `hellodev.hellofresh.io`. That portal is a JS SPA behind OAuth; `curl` only returns the app shell, and `/api/techdocs/*` is auth-gated. For docs that exist in a local repo checkout, read the repo copy instead.

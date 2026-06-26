@@ -31,6 +31,10 @@
 - For follow-up edits, update the same file rather than creating a new one
 - Use descriptive filenames (e.g. `proofread-team-update.md`)
 
+## Dotfiles
+
+- Dotfiles live at `~/dotfiles` (a git repo). Read from there directly when relevant; no symlink needed. Treat `~/dotfiles/.env` as containing real secrets and do not surface its values unless asked.
+
 ## Large Files
 
 - When reading files over 2,000 lines, use the `offset` and `limit` parameters on the read tool to read in chunks rather than attempting to read the entire file at once

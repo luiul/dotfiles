@@ -80,8 +80,6 @@ cask "keycastr"
 cask "obsidian"
 # Quick Look generator for Markdown files
 cask "qlmarkdown"
-# Native terminal coding agents command center
-cask "supacode"
 vscode "adpyke.codesnap"
 vscode "altimateai.vscode-altimate-mcp-server"
 vscode "amazonwebservices.aws-toolkit-vscode"

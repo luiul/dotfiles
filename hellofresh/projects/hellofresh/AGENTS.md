@@ -144,7 +144,7 @@ This repo uses the schemachange tool to manage Snowflake objects.
 
 ## Connecting to HelloFresh Systems
 
-CLI-first. Reach every system through its CLI, or a documented `curl` REST recipe where no CLI exists. Use MCP only for capabilities that are MCP-native with no CLI/REST path (the HelloDev knowledge base). All tokens live in `~/dotfiles/.env` and are exported into the shell by `.zshrc` (`set -a; source ~/dotfiles/.env`), so any command run here already sees them, including from pi.
+CLI-first. Reach every system through its CLI, or a documented `curl` REST recipe where no CLI exists. Use MCP only for capabilities that are MCP-native with no CLI/REST path (the HelloDev knowledge base), and only when I explicitly ask for it (see **HelloDev Knowledge Base** below). Never consult the HelloDev KB MCP eagerly or on your own initiative. All tokens live in `~/dotfiles/.env` and are exported into the shell by `.zshrc` (`set -a; source ~/dotfiles/.env`), so any command run here already sees them, including from pi.
 
 | System | Tool | Auth |
 | --- | --- | --- |
@@ -437,6 +437,8 @@ Build a thin `slackcli` uv tool (md2gdoc-style) once a messaging-scoped token is
 ## HelloDev Knowledge Base
 
 The internal KB is exposed only as an HTTP MCP endpoint (`hellofresh-kb`, `.../mcp/v2`) with no REST or CLI equivalent. This is the one sanctioned MCP under the CLI-first rule.
+
+**Do not consult the HelloDev KB / `kb_*` MCP tools eagerly.** Only query it when I explicitly ask you to (e.g. "check HelloDev", "ask the KB", "search the knowledge base"). For everything else, prefer the repo checkout, the CLIs/REST recipes above, and what is already in context. Do not reach for these tools on your own initiative just because a question is HelloFresh-related.
 
 - Claude reaches it via the `hellofresh-kb` server in `~/.claude.json`.
 - pi reaches it via the `mcp-bridge` extension (`~/dotfiles/pi/.pi/agent/extensions/mcp-bridge.ts`), which discovers the MCP tools and registers each as a native pi tool prefixed `kb_` (e.g. `kb_search_internal_knowledge_base`). Run `/mcp-tools` in pi to list them. The endpoint is reachable on the corporate network without a token (set `MCP_BRIDGE_TOKEN` if that changes).

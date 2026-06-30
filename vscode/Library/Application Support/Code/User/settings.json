@@ -11,15 +11,13 @@
     "workbench.colorCustomizations": {
         "tab.activeBorderTop": "#ff00ee",
         "notebook.focusedCellBackground": "#0099ff30",
-        "editor.lineHighlightBackground": "#008cff28",
-        "editor.lineHighlightBorder": "#9fced11f",
         "editor.findMatchBackground": "#8ffa876b",
         "editor.findMatchHighlightBackground": "#ff7dbe75",
         "sqltools.currentQueryBg": "#7b798a03",
         "tree.indentGuidesStroke": "#51bdd8",
         "tree.inactiveIndentGuidesStroke": "#232a35",
-        "editorLineNumber.foreground": "#3a3f4b",
-        "editorLineNumber.activeForeground": "#6b717d"
+        "editor.lineHighlightBackground": "#008cff28",
+        "editor.lineHighlightBorder": "#9fced11f",
     },
     "workbench.tree.enableStickyScroll": true,
     "workbench.sideBar.location": "right",
@@ -198,6 +196,23 @@
         "editor.defaultFormatter": "redhat.vscode-yaml",
         "editor.formatOnSave": true
     },
+    // === Terraform / OpenTofu ===
+    // HashiCorp extension provides the language server (fmt, validate, completion,
+    // hover, go-to-definition). We use OpenTofu (`tofu`) rather than the `terraform`
+    // binary, so point the language server at it; fmt-on-save runs `tofu fmt`.
+    "[terraform]": {
+        "editor.defaultFormatter": "hashicorp.terraform",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 2
+    },
+    "[terraform-vars]": {
+        "editor.defaultFormatter": "hashicorp.terraform",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 2
+    },
+    "terraform.languageServer.enable": true,
+    "terraform.languageServer.path": "/opt/homebrew/bin/tofu",
+    "terraform.codelens.referenceCount": true,
     "[jinja-yaml]": {
         "editor.formatOnSave": true
     },
@@ -300,6 +315,11 @@
                 "notMatch": ".*/dbt/.*",
                 "isAsync": false,
                 "cmd": "echo 'Running sqlfmt on: ${file}' && $HOME/.local/bin/sqlfmt --line-length 120 '${file}'"
+            },
+            {
+                "match": ".*\\.tf$",
+                "isAsync": true,
+                "cmd": "d=$(dirname '${file}'); cfg=$(cd \"$d\" && git rev-parse --show-toplevel 2>/dev/null); if [ -n \"$cfg\" ] && [ -f \"$cfg/.github/linters/.tflint.hcl\" ]; then /opt/homebrew/bin/tflint --chdir=\"$d\" --config=\"$cfg/.github/linters/.tflint.hcl\"; else /opt/homebrew/bin/tflint --chdir=\"$d\"; fi"
             }
         ]
     },

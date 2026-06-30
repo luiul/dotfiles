@@ -44,7 +44,7 @@ Follow conventional commit style:
 - The **Business Impact** section is required on every PR (see the canonical spec below). It is the one section that is never omitted, even when impact is small or indirect.
 - **Open as draft**: always create PRs as drafts first (`gh pr create --draft`); leave it to me to mark them ready for review.
 - **Assignee**: always assign to me
-- **Labels**: always add the squad and tribe labels `squad: scm-analytics-engineers` and `tribe: intl-scm-analytics` (these keep their spaces, they are an org-wide convention), plus the review-taxonomy labels defined in **Review labels (taxonomy)** below. At minimum apply the required `impact:<category>` label(s) (one per category in the Business Impact block) and the `scope:<reach>` label; add the recommended `estimate:` and `work_type:` labels where they apply. Create any missing label in the repo first (e.g. `gh label create "impact:cost_reduction" --description "Year-end review: cost reduction" --color 0E8A16`). This lets the year-end review filter by label as well as by heading (`gh pr list --label "impact:cost_reduction" --state all`).
+- **Labels**: always add the squad and tribe labels `squad: scm-analytics-engineers` and `tribe: intl-scm-analytics` (these keep their spaces, they are an org-wide convention), plus the review-taxonomy labels defined in **Review taxonomy** below. At minimum apply the required `impact:<category>` label(s) (one per category in the Business Impact block) and the `scope:<reach>` label; add the recommended `estimate:` and `work_type:` labels where they apply. Create any missing label in the repo first (e.g. `gh label create "impact:cost_reduction" --description "Year-end review: cost reduction" --color 0E8A16`). This lets the year-end review filter by label as well as by heading (`gh pr list --label "impact:cost_reduction" --state all`). (These labels are for GitHub PRs only; on Jira the same taxonomy lives in the Business Impact body block instead, since a Jira automation strips custom labels off tickets.)
 - No emoji prefixes in title or body
 - No agent attribution, tool footers, or generated-by links (no Claude Code or pi credits)
 - Omit empty sections rather than writing "N/A"
@@ -58,17 +58,20 @@ Follow conventional commit style:
 
 ## Business Impact (required on all PRs and Jira tickets)
 
-Every PR I open and every Jira ticket I create or update across all repos in the subfolders of this directory must carry a Business Impact block. This feeds the end-of-year review, so the format is fixed and must stay machine-parseable.
+Every PR I open and every Jira ticket I create or update across all repos in the subfolders of this directory must carry a Business Impact block. This feeds the end-of-year review, so the format is fixed and must stay machine-parseable. The block lives in the body/description and includes the review taxonomy (scope, estimate basis, work type) as body fields. On GitHub PRs the taxonomy is also applied as labels; on Jira the body fields are the only record, because a Jira automation strips custom labels off tickets.
 
 ### Canonical block
 
-Use exactly these three fields, in this order, with these labels:
+Use exactly these fields, in this order, with these field labels. The first three are the core block; the last three carry the review taxonomy (defined under **Review taxonomy** below):
 
 ```markdown
 ## Business Impact
 - **Category:** `cost_reduction`, `risk_mitigation`
 - **Estimated Annual Impact:** $120,000
 - **Notes:** Removed duplicate DQ coverage, cutting Soda scan compute (cost) and reducing on-call triage / false-alert risk (risk).
+- **Scope:** `tribe`
+- **Estimate Basis:** `modeled`
+- **Work Type:** `reliability`
 ```
 
 ### Rules
@@ -78,27 +81,28 @@ Use exactly these three fields, in this order, with these labels:
 - **Notes** is one or two sentences justifying the category (or each category, when more than one) and the dollar figure (what drives the number, what assumptions).
 - Do not use the tilde `~` for "approximately" anywhere in the block (or in PR/ticket Markdown generally). GitHub and Jira parse `~text~` as strikethrough, which silently strikes through everything between two tildes. Write "about", "approx", or "roughly" instead.
 - This section is never omitted, even though other sections are omitted when empty.
-- **Apply the matching label(s)** on the PR and the Jira ticket using the colon, no-space form: `impact:cost_reduction`, `impact:risk_mitigation`, and/or `impact:increased_revenue` (no backticks). Apply one `impact:` label per category listed in the **Category** field, and the set of labels must agree with that field exactly (no extra, no missing). Create any label first if it is missing. This gives the year-end review a second, label-based way to filter (independent of parsing the body). See **Review labels (taxonomy)** below for the required `scope:` and the recommended `estimate:` and `work_type:` dimensions.
+- **Scope**, **Estimate Basis**, and **Work Type** are the review-taxonomy fields, defined under **Review taxonomy** below. Always fill them in (each value wrapped in backticks); they are part of the block on every PR and ticket.
 - Always ask me for the category and dollar estimate if you cannot infer them confidently from the change. Do not silently guess a large number.
 
-### Review labels (taxonomy)
+### Review taxonomy
 
-All review-taxonomy labels use the `dimension:value` form with a colon and **no space**, identical on GitHub and Jira (Jira labels cannot contain spaces, so one label string serves both platforms and keeps the harvest trivial). This is distinct from the org-wide `squad: ` / `tribe: ` labels, which keep their space and are not part of this taxonomy.
+The review taxonomy (impact category, scope, estimate basis, work type) is recorded as **GitHub PR labels** in the `dimension:value` colon-no-space form (`impact:cost_reduction`, `scope:tribe`, `estimate:modeled`, `work_type:reliability`) and, in parallel, as **body fields** in the Business Impact block (`**Category:**`, `**Scope:**`, `**Estimate Basis:**`, `**Work Type:**`), each value wrapped in backticks. On GitHub both forms are present; on Jira only the body fields survive (a Jira automation strips custom labels off tickets), so do not apply taxonomy labels there and rely on the body fields. The org-wide `squad: ` / `tribe: ` labels (with their space) are a separate convention and are not part of this taxonomy.
 
-- `impact:` (required, one or more): `impact:cost_reduction`, `impact:risk_mitigation`, `impact:increased_revenue`. The set of `impact:` labels must match the **Category** field exactly: one label per listed category. Most changes carry a single `impact:` label; apply multiple only when the change genuinely delivers on more than one axis.
-- `scope:` (required, exactly one): `scope:squad`, `scope:tribe`, `scope:alliance`, `scope:org`, in increasing order of reach (`squad` < `tribe` < `alliance` < `org`). Blast radius / reach of the change. Maps to leveling rubrics (scope of influence), so reviewers weigh it alongside dollars. My current org hierarchy maps these levels as: `scope:org` = HelloFresh (Organization), `scope:alliance` = No Alliance Operations Technology (Alliance), `scope:tribe` = Operations Data and Decisions (Tribe), `scope:squad` = Data Engineering (Squad). Pick the widest level the change actually affects.
-- `estimate:` (recommended, one): `estimate:validated` (confirmed against real billing/metrics), `estimate:modeled` (computed from a stated model and assumptions), `estimate:speculative` (rough judgment, no model). Protects credibility: a validated figure defends itself, a speculative one is flagged as such.
-- `work_type:` (recommended, exactly one): `work_type:delivery`, `work_type:enablement`, `work_type:reliability`, `work_type:maintenance`. The *type* of work, orthogonal to its dollar impact (which is what `impact:` captures). `work_type:delivery` ships a feature, dataset, or pipeline that directly serves a business need; `work_type:enablement` is platform/tooling/framework work that unlocks other teams or engineers (the force-multiplier axis leveling rubrics reward, even when its own dollar line is indirect); `work_type:reliability` hardens an existing system (DQ, monitoring, incident fixes, resilience); `work_type:maintenance` keeps the lights on with no new capability (dependency bumps, refactors, migrations, cleanup). Pick the single best-fit work type. This dimension stays separate from `impact:` on purpose: a change can be `impact:cost_reduction` + `work_type:enablement` at the same time.
+- **Category** (`**Category:**` field, required, one or more): `cost_reduction`, `risk_mitigation`, `increased_revenue` (defined above). GitHub label form: `impact:<category>`, one per listed category.
+- **Scope** (`**Scope:**` field, required, exactly one): `squad`, `tribe`, `alliance`, `org`, in increasing order of reach (`squad` < `tribe` < `alliance` < `org`). Blast radius / reach of the change. Maps to leveling rubrics (scope of influence), so reviewers weigh it alongside dollars. My current org hierarchy maps these levels as: `org` = HelloFresh (Organization), `alliance` = No Alliance Operations Technology (Alliance), `tribe` = Operations Data and Decisions (Tribe), `squad` = Data Engineering (Squad). Pick the widest level the change actually affects. GitHub label form: `scope:<reach>`.
+- **Estimate Basis** (`**Estimate Basis:**` field, recommended, one): `validated` (confirmed against real billing/metrics), `modeled` (computed from a stated model and assumptions), `speculative` (rough judgment, no model). Protects credibility: a validated figure defends itself, a speculative one is flagged as such. GitHub label form: `estimate:<basis>`.
+- **Work Type** (`**Work Type:**` field, recommended, exactly one): `delivery`, `enablement`, `reliability`, `maintenance`. The *type* of work, orthogonal to its dollar impact (which is what **Category** captures). `delivery` ships a feature, dataset, or pipeline that directly serves a business need; `enablement` is platform/tooling/framework work that unlocks other teams or engineers (the force-multiplier axis leveling rubrics reward, even when its own dollar line is indirect); `reliability` hardens an existing system (DQ, monitoring, incident fixes, resilience); `maintenance` keeps the lights on with no new capability (dependency bumps, refactors, migrations, cleanup). Pick the single best-fit work type. This stays separate from **Category** on purpose: a change can be `cost_reduction` + `enablement` at the same time. GitHub label form: `work_type:<type>`.
 
-Apply one `impact:` label per category in the **Category** field (usually one, occasionally more), exactly one `scope:` label, at most one `estimate:` label, and at most one `work_type:` label. Create any missing label in the repo first (`gh label create "<label>" --description "..." --color <hex>`). When an `estimate:speculative` or `estimate:modeled` figure is later confirmed, update the Notes with the actual and flip the label to `estimate:validated`.
+Record one **Category** value per category (usually one, occasionally more), exactly one **Scope** value, at most one **Estimate Basis** value, and at most one **Work Type** value in the body. On GitHub PRs, mirror these as labels and create any missing label in the repo first (`gh label create "<label>" --description "..." --color <hex>`). When a `speculative` or `modeled` figure is later confirmed, update the Notes with the actual, flip the **Estimate Basis** field to `validated`, and (on GitHub) flip the `estimate:` label.
 
-### Parseability (for year-end review)
+### Keep it parseable
 
-- Keep the heading text exactly `## Business Impact` so it can be grepped across PRs and tickets.
-- Keep the field labels exactly `**Category:**`, `**Estimated Annual Impact:**`, `**Notes:**`.
+The year-end review harvests these blocks programmatically (the harvest and reporting tooling lives in the `promo-tracker` repo, not here). All that matters on the authoring side is that the block stays machine-readable:
+
+- Keep the heading text exactly `## Business Impact`.
+- Keep the field labels exactly `**Category:**`, `**Estimated Annual Impact:**`, `**Notes:**`, `**Scope:**`, `**Estimate Basis:**`, `**Work Type:**`.
 - One field per line, in the fixed order above.
-- Example harvest by body: `gh pr list --author @me --state all --json title,body,url` then extract the block by the heading and field labels.
-- Example harvest by label: `gh pr list --author @me --state all --label "impact:cost_reduction" --json title,url` (repeat per category, and per `scope:` / `estimate:` / `work_type:` dimension).
+- Wrap every taxonomy value in backticks.
 
 ## Commits
 
@@ -300,7 +304,7 @@ jira issue list -q "project = ISA AND status = 'In Progress' AND assignee = curr
   --order-by created --reverse --plain     # filter via JQL; order via flags, never inline ORDER BY
 jira issue list -q "project = ISA" --raw   # JSON for parsing / summarizing
 jira issue view ISA-123 --comments 5
-jira issue create -tTask -s "Summary" -T body.md -a luis.aceituno@hellofresh.com -l "impact:cost_reduction"
+jira issue create -tTask -s "Summary" -T body.md -a luis.aceituno@hellofresh.com
 jira issue comment add ISA-123 -T comment.md
 jira issue move ISA-123 "In Progress"      # transition
 jira issue assign ISA-123 luis.aceituno@hellofresh.com
@@ -310,8 +314,8 @@ jira issue link ISA-1 ISA-2 Blocks
 Conventions:
 
 - Put the description (and long comments) in a markdown file and pass it with `-T file.md`. jira-cli converts Markdown to Jira markup, so the old MCP `\n`-escaping quirk no longer applies.
-- Every ticket description must end with the **Business Impact** block defined in the canonical spec above (same heading, same three fields, same allowed categories). Add it on updates if missing.
-- Add the review-taxonomy labels with `-l` (repeat the flag per label). They are identical to the GitHub ones (colon, no space): the required `impact:<category>` labels (one per category in the **Category** field, usually one) and the required `scope:` label, plus the recommended `estimate:` and `work_type:` labels from **Review labels (taxonomy)** above. Jira labels cannot contain spaces, which is why the whole taxonomy is colon-no-space.
+- Every ticket description must end with the **Business Impact** block defined in the canonical spec above (same heading, same fields, same allowed values), including the `**Scope:**`, `**Estimate Basis:**`, and `**Work Type:**` taxonomy fields. On Jira the body is the only durable record (the automation strips custom labels), so the block must be complete. Add it on updates if missing.
+- Do **not** add review-taxonomy labels (`impact:`, `scope:`, `estimate:`, `work_type:`) on Jira tickets; the automation removes them. Those labels stay on GitHub PRs only.
 - Wrap every file path, SQL identifier, column name, and code token in backticks (bare underscores render as emphasis otherwise). Do not use Markdown link syntax `[text](path)` for local file references; list the path in a code span.
 - JQL ordering: jira-cli rejects inline `ORDER BY`; use `--order-by <field> [--reverse]`.
 - After create/update, fetch back with `jira issue view <KEY>` and confirm the body and Business Impact block render as intended.

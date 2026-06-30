@@ -33,6 +33,8 @@ brew "googleworkspace-cli"
 brew "jq"
 # Open-source, cross-platform JavaScript runtime environment
 brew "node"
+# Drop-in replacement for Terraform. Infrastructure as Code Tool
+brew "opentofu"
 # PDF rendering library (based on the xpdf-3.0 code base)
 brew "poppler"
 # Utility that provides fast incremental file transfer

@@ -364,4 +364,5 @@
     "workbench.activityBar.location": "top",
     "window.commandCenter": false,
     "markdown-preview-github-styles.colorTheme": "light",
+    "terminal.integrated.tabs.enabled": false,
 }

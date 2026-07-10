@@ -1,4 +1,5 @@
 tap "ankitpokhrel/jira-cli"
+tap "can1357/tap"
 tap "databricks/tap"
 tap "felixkratz/formulae", "https://github.com/FelixKratz/homebrew-formulae"
 tap "hashicorp/tap"
@@ -63,6 +64,8 @@ brew "yq"
 brew "zoxide"
 # Fish shell like syntax highlighting for zsh
 brew "zsh-syntax-highlighting"
+# Coding agent with the IDE wired in
+brew "can1357/tap/omp", trusted: true
 # A window border system for macOS
 brew "felixkratz/formulae/borders", trusted: true
 # Vault

@@ -1,0 +1,26 @@
+defaultThinkingLevel: medium
+startup: 
+  checkUpdate: false
+modelRoles: 
+  default: amazon-bedrock/eu.anthropic.claude-sonnet-5
+  smol: amazon-bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0
+  tiny: amazon-bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0
+  slow: amazon-bedrock/eu.anthropic.claude-opus-4-8
+  plan: amazon-bedrock/eu.anthropic.claude-opus-4-8
+enabledModels: 
+  - amazon-bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0
+  - amazon-bedrock/eu.anthropic.claude-opus-4-5-20251101-v1:0
+  - amazon-bedrock/eu.anthropic.claude-opus-4-6-v1
+  - amazon-bedrock/eu.anthropic.claude-opus-4-7
+  - amazon-bedrock/eu.anthropic.claude-opus-4-8
+  - amazon-bedrock/eu.anthropic.claude-sonnet-4-5-20250929-v1:0
+  - amazon-bedrock/eu.anthropic.claude-sonnet-4-6
+  - amazon-bedrock/eu.anthropic.claude-sonnet-5
+  - amazon-bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0
+  - amazon-bedrock/global.anthropic.claude-opus-4-5-20251101-v1:0
+  - amazon-bedrock/global.anthropic.claude-opus-4-6-v1
+  - amazon-bedrock/global.anthropic.claude-opus-4-7
+  - amazon-bedrock/global.anthropic.claude-opus-4-8
+  - amazon-bedrock/global.anthropic.claude-sonnet-4-5-20250929-v1:0
+  - amazon-bedrock/global.anthropic.claude-sonnet-4-6
+  - amazon-bedrock/global.anthropic.claude-sonnet-5

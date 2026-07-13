@@ -15,7 +15,8 @@
 
 - Track bigger projects, multi-step plans, and design docs as GitHub issues (`gh issue create`; update with `gh issue comment` or by editing the body), not as markdown files committed to the repo root. Keep the repo root clean.
 - Reserve in-repo markdown for code-adjacent docs (READMEs, setup notes). Anything that reads like a project plan, roadmap, or tracker belongs in an issue.
-- Exception: repos without GitHub Issues enabled. Use that platform's tracker instead (e.g. HelloFresh repos track plans in Jira, see the HelloFresh context).
+- Any open feature or fix TODO surfaced during work (not just big projects) should be filed as a GitHub issue in that repo, not left as a code comment, a chat note, or a markdown checklist. If it's not being done now, it goes in an issue.
+- Exception: repos without GitHub Issues enabled. Use that platform's tracker instead (e.g. HelloFresh repos don't have GitHub Issues enabled; track plans and TODOs in Jira there, see the HelloFresh context).
 
 ## Commits
 

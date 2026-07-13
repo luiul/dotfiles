@@ -148,7 +148,7 @@ This repo uses the schemachange tool to manage Snowflake objects.
 
 ## Connecting to HelloFresh Systems
 
-CLI-first. Reach every system through its CLI, or a documented `curl` REST recipe where no CLI exists. Use MCP only for capabilities that are MCP-native with no CLI/REST path (the HelloDev knowledge base), and only when I explicitly ask for it (see **HelloDev Knowledge Base** below). Never consult the HelloDev KB MCP eagerly or on your own initiative. All tokens live in `~/dotfiles/.env` and are exported into the shell by `.zshrc` (`set -a; source ~/dotfiles/.env`), so any command run here already sees them, including from pi.
+CLI-first. Reach every system through its CLI, or a documented `curl` REST recipe where no CLI exists. Use MCP only for capabilities that are MCP-native with no CLI/REST path (the HelloDev knowledge base, and Slack permalink/thread lookups), and only when I explicitly ask for it (see **HelloDev Knowledge Base** below). Never consult the HelloDev KB MCP eagerly or on your own initiative. All tokens live in `~/dotfiles/.env` and are exported into the shell by `.zshrc` (`set -a; source ~/dotfiles/.env`), so any command run here already sees them, including from pi.
 
 | System | Tool | Auth |
 | --- | --- | --- |
@@ -159,8 +159,8 @@ CLI-first. Reach every system through its CLI, or a documented `curl` REST recip
 | Databricks | `databricks` CLI | OAuth |
 | AWS (S3, etc.) | `aws` CLI | SSO (`hfsso` session, browser) |
 | Google Docs | `md2gdoc` | service account |
-| Slack | `slackcli` (read/search/post, pi & Claude) + `curl` Web API (directory reads) | `slackcli` browser session tokens (xoxc+xoxd); `SLACK_TOKEN` (env) for directory reads |
-| HelloDev KB | MCP (Claude only) | no pi path yet |
+| Slack | `slackcli` (read/search/post, pi & Claude) + `curl` Web API (directory reads); Slack MCP also bridged into pi via `pi-mcp-adapter` for parity with Claude | `slackcli` browser session tokens (xoxc+xoxd); `SLACK_TOKEN` (env) for directory reads; Slack MCP uses its own OAuth |
+| HelloDev KB | MCP (pi & Claude, via `pi-mcp-adapter`) | none required |
 
 Do not use the Atlassian MCP for Jira or Confluence; the CLI and REST recipes below replace it.
 
@@ -406,7 +406,9 @@ JSON
 
 ## Slack (`slackcli` + `curl` Web API)
 
-**Primary path (read, search, post): `slackcli`** (shaharia-lab/slackcli, Homebrew tap `shaharia-lab/tap`, `slackcli --version` -> 0.7.0). This is pi's equivalent of the Slack MCP plugin Claude uses: Claude reaches Slack through the hosted OAuth MCP server (`slack@claude-plugins-official` -> `https://mcp.slack.com/mcp`), which pi cannot cleanly bridge because it is OAuth-gated. `slackcli` gives pi the same read/search/post capability over the Slack Web API. It is already authenticated to the **HelloFresh** workspace (`T02AGMUUR`, `hellofresh.slack.com`) via **browser session tokens** (`xoxc` + `xoxd`), which avoids the IT approval a full Slack App would need. slackcli stores its own auth (`slackcli auth list`), independent of `SLACK_TOKEN`.
+**Primary path (read, search, post): `slackcli`** (shaharia-lab/slackcli, Homebrew tap `shaharia-lab/tap`, `slackcli --version` -> 0.7.0). `slackcli` gives pi read/search/post capability over the Slack Web API and is the fastest path for routine work. It is already authenticated to the **HelloFresh** workspace (`T02AGMUUR`, `hellofresh.slack.com`) via **browser session tokens** (`xoxc` + `xoxd`), which avoids the IT approval a full Slack App would need. slackcli stores its own auth (`slackcli auth list`), independent of `SLACK_TOKEN`.
+
+**Also available: the same Slack MCP Claude uses** (`slack@claude-plugins-official` -> `https://mcp.slack.com/mcp`), bridged into pi via `pi-mcp-adapter` (`slack` server in `~/dotfiles/pi/.pi/agent/mcp.json`, tools prefixed `slack_`). Reach for this when a Slack link is a permalink to a specific message or thread (`https://hellofresh.slack.com/archives/<channel_id>/p<ts>` optionally with `?thread_ts=...`) or a DM (`archives/D...`), since it resolves permalinks directly instead of requiring a channel-history scan. First use triggers a one-time OAuth flow (`/mcp` in pi walks through `auth-start`/`auth-complete`); after that it reconnects automatically (`lifecycle: lazy`).
 
 ```bash
 slackcli auth list                                          # show authenticated workspaces
@@ -458,6 +460,6 @@ The internal KB is exposed only as an HTTP MCP endpoint (`hellofresh-kb`, `.../m
 **Do not consult the HelloDev KB / `kb_*` MCP tools eagerly.** Only query it when I explicitly ask you to (e.g. "check HelloDev", "ask the KB", "search the knowledge base"). For everything else, prefer the repo checkout, the CLIs/REST recipes above, and what is already in context. Do not reach for these tools on your own initiative just because a question is HelloFresh-related.
 
 - Claude reaches it via the `hellofresh-kb` server in `~/.claude.json`.
-- pi reaches it via the `mcp-bridge` extension (`~/dotfiles/pi/.pi/agent/extensions/mcp-bridge.ts`), which discovers the MCP tools and registers each as a native pi tool prefixed `kb_` (e.g. `kb_search_internal_knowledge_base`). Run `/mcp-tools` in pi to list them. The endpoint is reachable on the corporate network without a token (set `MCP_BRIDGE_TOKEN` if that changes).
+- pi reaches it via [`pi-mcp-adapter`](https://pi.dev/packages/pi-mcp-adapter) (the `kb` server in `~/dotfiles/pi/.pi/agent/mcp.json`), which registers each MCP tool directly, prefixed `kb_` (e.g. `kb_search_internal_knowledge_base`). Run `/mcp` in pi to list bridged servers/tools. The endpoint is reachable on the corporate network without a token.
 
 Note: this MCP serves the KB content, not the Backstage docs portal at `hellodev.hellofresh.io`. That portal is a JS SPA behind OAuth; `curl` only returns the app shell, and `/api/techdocs/*` is auth-gated. For docs that exist in a local repo checkout, read the repo copy instead.

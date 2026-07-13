@@ -21,6 +21,10 @@
       "url": "https://mcp.draw.io/mcp",
       "lifecycle": "lazy",
       "directTools": true
+    },
+    "context-mode": {
+      "command": "context-mode",
+      "directTools": true
     }
   }
 }

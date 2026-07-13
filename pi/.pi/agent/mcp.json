@@ -21,17 +21,6 @@
       "url": "https://mcp.draw.io/mcp",
       "lifecycle": "lazy",
       "directTools": true
-    },
-    "slack": {
-      "type": "http",
-      "url": "https://mcp.slack.com/mcp",
-      "lifecycle": "lazy",
-      "directTools": true,
-      "auth": "oauth",
-      "oauth": {
-        "clientId": "1601185624273.8899143856786",
-        "redirectUri": "http://localhost:3118/callback"
-      }
     }
   }
 }

@@ -148,7 +148,7 @@ This repo uses the schemachange tool to manage Snowflake objects.
 
 ## Connecting to HelloFresh Systems
 
-CLI-first. Reach every system through its CLI, or a documented `curl` REST recipe where no CLI exists. Use MCP only for capabilities that are MCP-native with no CLI/REST path (the HelloDev knowledge base, and Slack permalink/thread lookups), and only when I explicitly ask for it (see **HelloDev Knowledge Base** below). Never consult the HelloDev KB MCP eagerly or on your own initiative. All tokens live in `~/dotfiles/.env` and are exported into the shell by `.zshrc` (`set -a; source ~/dotfiles/.env`), so any command run here already sees them, including from pi.
+CLI-first. Reach every system through its CLI, or a documented `curl` REST recipe where no CLI exists. Use MCP only for capabilities that are MCP-native with no CLI/REST path (the HelloDev knowledge base), and only when I explicitly ask for it (see **HelloDev Knowledge Base** below). Never consult the HelloDev KB MCP eagerly or on your own initiative. All tokens live in `~/dotfiles/.env` and are exported into the shell by `.zshrc` (`set -a; source ~/dotfiles/.env`), so any command run here already sees them, including from pi.
 
 | System | Tool | Auth |
 | --- | --- | --- |
@@ -159,7 +159,7 @@ CLI-first. Reach every system through its CLI, or a documented `curl` REST recip
 | Databricks | `databricks` CLI | OAuth |
 | AWS (S3, etc.) | `aws` CLI | SSO (`hfsso` session, browser) |
 | Google Docs | `md2gdoc` | service account |
-| Slack | `slackcli` (read/search/post, pi & Claude) + `curl` Web API (directory reads); Slack MCP also bridged into pi via `pi-mcp-adapter` for parity with Claude | `slackcli` browser session tokens (xoxc+xoxd); `SLACK_TOKEN` (env) for directory reads; Slack MCP uses its own OAuth |
+| Slack | `slackcli` (read/search/post, pi & Claude) + `curl` Web API (directory reads) | `slackcli` browser session tokens (xoxc+xoxd); `SLACK_TOKEN` (env) for directory reads |
 | HelloDev KB | MCP (pi & Claude, via `pi-mcp-adapter`) | none required |
 
 Do not use the Atlassian MCP for Jira or Confluence; the CLI and REST recipes below replace it.
@@ -406,9 +406,7 @@ JSON
 
 ## Slack (`slackcli` + `curl` Web API)
 
-**Primary path (read, search, post): `slackcli`** (shaharia-lab/slackcli, Homebrew tap `shaharia-lab/tap`, `slackcli --version` -> 0.7.0). `slackcli` gives pi read/search/post capability over the Slack Web API and is the fastest path for routine work. It is already authenticated to the **HelloFresh** workspace (`T02AGMUUR`, `hellofresh.slack.com`) via **browser session tokens** (`xoxc` + `xoxd`), which avoids the IT approval a full Slack App would need. slackcli stores its own auth (`slackcli auth list`), independent of `SLACK_TOKEN`.
-
-**Also available: the same Slack MCP Claude uses** (`slack@claude-plugins-official` -> `https://mcp.slack.com/mcp`), bridged into pi via `pi-mcp-adapter` (`slack` server in `~/dotfiles/pi/.pi/agent/mcp.json`, tools prefixed `slack_`). Reach for this when a Slack link is a permalink to a specific message or thread (`https://hellofresh.slack.com/archives/<channel_id>/p<ts>` optionally with `?thread_ts=...`) or a DM (`archives/D...`), since it resolves permalinks directly instead of requiring a channel-history scan. First use triggers a one-time OAuth flow (`/mcp` in pi walks through `auth-start`/`auth-complete`); after that it reconnects automatically (`lifecycle: lazy`).
+**Primary path (read, search, post): `slackcli`** (shaharia-lab/slackcli, Homebrew tap `shaharia-lab/tap`, `slackcli --version` -> 0.7.0). This is pi's equivalent of the Slack MCP plugin Claude uses: Claude reaches Slack through the hosted OAuth MCP server (`slack@claude-plugins-official` -> `https://mcp.slack.com/mcp`), which pi cannot cleanly bridge (the `pi-mcp-adapter` OAuth flow for it was tried on 2026-07-13 and repeatedly failed with "invalid or expired state parameter" on the localhost callback; not pursued further). `slackcli` gives pi the same read/search/post capability over the Slack Web API. It is already authenticated to the **HelloFresh** workspace (`T02AGMUUR`, `hellofresh.slack.com`) via **browser session tokens** (`xoxc` + `xoxd`), which avoids the IT approval a full Slack App would need. slackcli stores its own auth (`slackcli auth list`), independent of `SLACK_TOKEN`. Browser session tokens rotate/expire periodically (symptom: `Slack API error: invalid_auth` on any command); re-auth with `slackcli auth login-browser` (extract fresh `xoxc`/`xoxd` per `slackcli auth extract-tokens`) when that happens.
 
 ```bash
 slackcli auth list                                          # show authenticated workspaces
@@ -451,7 +449,7 @@ curl -s -H "Authorization: Bearer $SLACK_TOKEN" -G --data-urlencode 'query=deplo
   https://slack.com/api/search.messages | jq '.messages.matches[].text'
 ```
 
-Note: `slackcli` (Homebrew) already covers post/history/search via browser session tokens, so a custom uv Slack tool is no longer needed. If the browser session token expires, re-auth with `slackcli auth login-browser` (extract `xoxc`/`xoxd` per `slackcli auth extract-tokens`).
+Note: `slackcli` (Homebrew) already covers post/history/search via browser session tokens, so a custom uv Slack tool is no longer needed.
 
 ## HelloDev Knowledge Base
 

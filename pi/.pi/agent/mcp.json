@@ -1,0 +1,37 @@
+{
+  "settings": {
+    "toolPrefix": "server",
+    "idleTimeout": 10
+  },
+  "mcpServers": {
+    "kb": {
+      "type": "http",
+      "url": "https://genai-lab-api.eu.foundations.shared.int.hellofresh.io/mcp/v2",
+      "lifecycle": "lazy",
+      "directTools": true
+    },
+    "excalidraw": {
+      "type": "http",
+      "url": "https://mcp.excalidraw.com",
+      "lifecycle": "lazy",
+      "directTools": true
+    },
+    "drawio": {
+      "type": "http",
+      "url": "https://mcp.draw.io/mcp",
+      "lifecycle": "lazy",
+      "directTools": true
+    },
+    "slack": {
+      "type": "http",
+      "url": "https://mcp.slack.com/mcp",
+      "lifecycle": "lazy",
+      "directTools": true,
+      "auth": "oauth",
+      "oauth": {
+        "clientId": "1601185624273.8899143856786",
+        "redirectUri": "http://localhost:3118/callback"
+      }
+    }
+  }
+}

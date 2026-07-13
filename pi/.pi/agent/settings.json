@@ -26,6 +26,7 @@
   "packages": [
     "npm:pi-hermes-memory",
     "npm:@tintinweb/pi-subagents",
-    "npm:pi-web-access"
+    "npm:pi-web-access",
+    "npm:pi-mcp-adapter"
   ]
 }

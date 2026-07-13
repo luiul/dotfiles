@@ -24,9 +24,10 @@
   "lastChangelogVersion": "0.80.6",
   "theme": "dark",
   "packages": [
-    "npm:pi-hermes-memory",
     "npm:@tintinweb/pi-subagents",
     "npm:pi-web-access",
-    "npm:pi-mcp-adapter"
+    "npm:pi-mcp-adapter",
+    "npm:context-mode",
+    "npm:pi-hermes-memory"
   ]
 }

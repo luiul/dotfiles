@@ -4,7 +4,12 @@
  * Replaces the default footer with a two-line status bar:
  *
  *   <project>  ⎇ <branch> ●<dirty> ↑<ahead> ↓<behind>     <model> <thinking>
- *   <session>  ↑<in> ↓<out> ⊕<cache>  $<cost>     [██████░░░░] <pct>%  <tok>/<win>
+ *   <session>  ↑<in> ↓<out> ⊕<cache>  $<cost>     [██████▏░░] <pct>%  <tok>/<win>  ▸<free>
+ *
+ * The context cluster on the right of line 2 is compaction-aware: the bar shows
+ * a marker (▏) at the auto-compaction threshold (contextWindow - reserveTokens),
+ * its colour tracks proximity to that threshold rather than the raw window, and
+ * ▸<free> reports how many tokens remain before auto-compaction triggers.
  *
  * On narrow terminals it collapses to a single compact line. Toggle the bar on
  * and off with the /statusbar command.
@@ -14,6 +19,9 @@
  */
 
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -23,12 +31,53 @@ const execFileAsync = promisify(execFile);
 
 const GIT_POLL_MS = 4000;
 const NARROW_WIDTH = 80;
+// Matches pi's compaction default; overridden from settings.json when present.
+const DEFAULT_RESERVE_TOKENS = 16384;
 
 interface GitState {
 	dirty: number;
 	ahead: number;
 	behind: number;
 }
+
+interface CompactionConfig {
+	enabled: boolean;
+	reserveTokens: number;
+}
+
+// Read compaction settings (project overrides global; falls back to pi defaults).
+// The extension context does not expose settings, so we read the files directly.
+const readCompactionConfig = (cwd: string): CompactionConfig => {
+	const candidates = [
+		join(cwd, ".pi", "settings.json"),
+		join(homedir(), ".pi", "agent", "settings.json"),
+	];
+	let enabled = true;
+	let reserveTokens = DEFAULT_RESERVE_TOKENS;
+	let sawEnabled = false;
+	let sawReserve = false;
+	for (const path of candidates) {
+		try {
+			const raw = JSON.parse(readFileSync(path, "utf8")) as {
+				compaction?: { enabled?: boolean; reserveTokens?: number };
+			};
+			const c = raw?.compaction;
+			if (c) {
+				if (!sawEnabled && typeof c.enabled === "boolean") {
+					enabled = c.enabled;
+					sawEnabled = true;
+				}
+				if (!sawReserve && typeof c.reserveTokens === "number" && c.reserveTokens > 0) {
+					reserveTokens = c.reserveTokens;
+					sawReserve = true;
+				}
+			}
+		} catch {
+			// Missing or malformed settings file: keep defaults.
+		}
+	}
+	return { enabled, reserveTokens };
+};
 
 const THINKING_LABEL: Record<string, string> = {
 	off: "",
@@ -41,6 +90,7 @@ const THINKING_LABEL: Record<string, string> = {
 
 export default function (pi: ExtensionAPI) {
 	let git: GitState = { dirty: 0, ahead: 0, behind: 0 };
+	let compaction: CompactionConfig = { enabled: true, reserveTokens: DEFAULT_RESERVE_TOKENS };
 	let timer: ReturnType<typeof setInterval> | undefined;
 	let enabled = true;
 
@@ -50,22 +100,30 @@ export default function (pi: ExtensionAPI) {
 		return `${(n / 1_000_000).toFixed(1)}M`;
 	};
 
-	// Sum token usage and cost across the current branch's assistant messages.
+	// Sum token usage and cost across the current branch's assistant messages, and
+	// capture the most recent valid usage so we can report last-turn cache reuse.
 	const tally = (ctx: ExtensionContext) => {
 		let input = 0,
 			output = 0,
 			cache = 0,
 			cost = 0;
+		let lastHitRate: number | null = null;
 		for (const e of ctx.sessionManager.getBranch()) {
 			if (e.type === "message" && e.message.role === "assistant") {
-				const u = (e.message as AssistantMessage).usage;
+				const m = e.message as AssistantMessage;
+				const u = m.usage;
 				input += u.input;
 				output += u.output;
 				cache += u.cacheRead + u.cacheWrite;
 				cost += u.cost.total;
+				// Cache reuse for the last real turn: share of the prompt served from cache.
+				if (m.stopReason !== "aborted" && m.stopReason !== "error") {
+					const prompt = u.input + u.cacheRead;
+					if (prompt > 0) lastHitRate = (u.cacheRead / prompt) * 100;
+				}
 			}
 		}
-		return { input, output, cache, cost };
+		return { input, output, cache, cost, lastHitRate };
 	};
 
 	const refreshGit = async (ctx: ExtensionContext) => {
@@ -113,10 +171,36 @@ export default function (pi: ExtensionAPI) {
 				return truncateToWidth(left + " ".repeat(gap) + right, width);
 			};
 
-			const contextBar = (pct: number, slots: number): string => {
-				const filled = Math.min(slots, Math.max(0, Math.round((pct / 100) * slots)));
-				const color = pct >= 80 ? "error" : pct >= 50 ? "warning" : "success";
-				return `[${theme.fg(color, "█".repeat(filled))}${theme.fg("dim", "░".repeat(slots - filled))}]`;
+			// Context bar with a marker at the auto-compaction threshold. Colour tracks
+			// proximity to that threshold (where compaction fires), not the raw window.
+			const contextBar = (
+				tokens: number,
+				contextWindow: number,
+				usable: number,
+				slots: number,
+			): string => {
+				const ratio = contextWindow > 0 ? tokens / contextWindow : 0;
+				const filled = Math.min(slots, Math.max(0, Math.round(ratio * slots)));
+				const compactRatio = usable > 0 ? tokens / usable : ratio;
+				const color =
+					compactRatio >= 0.95 ? "error" : compactRatio >= 0.75 ? "warning" : "success";
+				// Slot (1-based) just before which auto-compaction becomes reachable.
+				const threshold =
+					compaction.enabled && contextWindow > 0
+						? Math.min(slots, Math.max(1, Math.round((usable / contextWindow) * slots)))
+						: 0;
+				let out = "";
+				for (let i = 0; i < slots; i++) {
+					const isThreshold = i === threshold - 1;
+					if (isThreshold) {
+						out += theme.fg(i < filled ? "error" : "warning", "▏");
+					} else if (i < filled) {
+						out += theme.fg(color, "█");
+					} else {
+						out += theme.fg("dim", "░");
+					}
+				}
+				return `[${out}]`;
 			};
 
 			// Format a percentage with exactly two decimal places.
@@ -149,11 +233,17 @@ export default function (pi: ExtensionAPI) {
 					const sm = ctx.sessionManager;
 					const project = (ctx.cwd.split("/").pop() || ctx.cwd) ?? "";
 					const name = sm.getSessionName();
-					const { input, output, cache, cost } = tally(ctx);
+					const { input, output, cache, cost, lastHitRate } = tally(ctx);
 					const usage = ctx.getContextUsage();
 					const model = ctx.model?.id ?? "no-model";
 					const think = thinkingTag();
 					const pct = usage?.percent ?? null;
+					// Usable window before auto-compaction triggers.
+					const usableWindow = usage
+						? Math.max(0, usage.contextWindow - (compaction.enabled ? compaction.reserveTokens : 0))
+						: 0;
+					const untilCompact =
+						usage && usage.tokens != null ? Math.max(0, usableWindow - usage.tokens) : null;
 
 					// --- Narrow terminals: single compact line ---
 					if (width < NARROW_WIDTH) {
@@ -161,6 +251,9 @@ export default function (pi: ExtensionAPI) {
 							.filter(Boolean)
 							.join(" ");
 						const rightBits = [
+							usage && usage.tokens != null
+								? theme.fg("dim", `${fmtTokens(usage.tokens)}/${fmtTokens(usage.contextWindow)}`)
+								: "",
 							pct != null ? theme.fg("muted", `${fmtPct(pct)}%`) : "",
 							theme.fg("success", `$${cost.toFixed(2)}`),
 							theme.fg("dim", model),
@@ -183,16 +276,35 @@ export default function (pi: ExtensionAPI) {
 							theme.fg("dim", " ⊕") +
 							theme.fg("muted", fmtTokens(cache)),
 					);
+					// Last-turn cache reuse: high values mean most of the prompt was cached.
+					if (lastHitRate != null) {
+						const hitColor =
+							lastHitRate >= 80 ? "success" : lastHitRate >= 50 ? "warning" : "dim";
+						parts2.push(theme.fg("dim", "≡") + theme.fg(hitColor, `${lastHitRate.toFixed(0)}%`));
+					}
 					parts2.push(theme.fg("success", `$${cost.toFixed(3)}`));
 					const l2 = parts2.join(theme.fg("dim", "  ·  "));
 
 					let r2: string;
 					if (usage && usage.tokens != null && usage.percent != null) {
 						r2 =
-							contextBar(usage.percent, 10) +
+							contextBar(usage.tokens, usage.contextWindow, usableWindow, 10) +
 							" " +
 							theme.fg("muted", `${fmtPct(usage.percent)}%`) +
 							theme.fg("dim", `  ${fmtTokens(usage.tokens)}/${fmtTokens(usage.contextWindow)}`);
+						// Free tokens before auto-compaction fires.
+						if (untilCompact != null && compaction.enabled) {
+							const freeColor =
+								untilCompact <= usableWindow * 0.05
+									? "error"
+									: untilCompact <= usableWindow * 0.25
+										? "warning"
+										: "dim";
+							r2 += theme.fg("dim", "  ▸") + theme.fg(freeColor, fmtTokens(untilCompact));
+						}
+					} else if (usage) {
+						// Post-compaction: token count unknown until the next response.
+						r2 = theme.fg("dim", `~/${fmtTokens(usage.contextWindow)} (post-compact)`);
 					} else {
 						r2 = theme.fg("dim", "context n/a");
 					}
@@ -204,6 +316,7 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	pi.on("session_start", async (_event, ctx) => {
+		compaction = readCompactionConfig(ctx.cwd);
 		void refreshGit(ctx);
 		timer = setInterval(() => {
 			void refreshGit(ctx);

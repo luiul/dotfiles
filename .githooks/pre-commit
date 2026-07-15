@@ -26,15 +26,29 @@ fi
 # Update Claude plugin tracking: Marketplacefile + Pluginfile
 if command -v claude &>/dev/null && command -v jq &>/dev/null; then
 	# Marketplacefile: "<name> <owner/repo>" per line (source type is always github today)
+	# Write to a temp file and only replace the tracked file when non-empty, so a
+	# transient failure (claude/jq unavailable) never clobbers a good file.
+	mp_tmp=$(mktemp)
 	claude plugin marketplace list --json 2>/dev/null |
 		jq -r '.[] | select(.source == "github") | "\(.name) \(.repo)"' 2>/dev/null |
-		sort >|Marketplacefile || true
-	[[ -s Marketplacefile ]] && git add Marketplacefile
+		sort >"$mp_tmp" || true
+	if [[ -s "$mp_tmp" ]]; then
+		mv "$mp_tmp" Marketplacefile
+		git add Marketplacefile
+	else
+		rm -f "$mp_tmp"
+	fi
 
 	# Pluginfile: "<plugin>@<marketplace>" per line (consumed by `claude plugin install`)
+	pl_tmp=$(mktemp)
 	claude plugin list --json 2>/dev/null |
-		jq -r '.[].id' 2>/dev/null | sort >|Pluginfile || true
-	[[ -s Pluginfile ]] && git add Pluginfile
+		jq -r '.[].id' 2>/dev/null | sort >"$pl_tmp" || true
+	if [[ -s "$pl_tmp" ]]; then
+		mv "$pl_tmp" Pluginfile
+		git add Pluginfile
+	else
+		rm -f "$pl_tmp"
+	fi
 fi
 
 # Detect secrets in staged files before committing (gitleaks)

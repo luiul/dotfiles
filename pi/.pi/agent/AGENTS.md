@@ -2,6 +2,12 @@
 
 > Canonical global preferences, shared by pi (`~/.pi/agent/AGENTS.md`) and Claude Code (`~/.claude/CLAUDE.md`, a symlink to this file). Edit here only.
 
+## Autonomy
+
+- Default to acting rather than asking. Make the reasonable call and proceed instead of pausing to check in on judgment calls you're equipped to make.
+- Only stop to ask when genuinely blocked: a decision only the user can make, missing input that can't be inferred, or an action that's destructive, hard to reverse, or visible to others (force-push, `rm -rf`, sending messages, posting publicly, etc.).
+- Don't ask "should I proceed?" or "want me to also do X?" when the answer is inferable from the request. Do it and report what changed.
+
 ## Python
 
 - Always use `uv` for Python operations (`uv run` instead of `python`, `uv pip` instead of `pip`, `uv venv` instead of `python -m venv`, etc.)

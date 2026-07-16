@@ -80,7 +80,7 @@
       "WebFetch"
     ]
   },
-  "model": "sonnet",
+  "model": "opusplan",
   "hooks": {
     "Notification": [
       {

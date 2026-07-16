@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Re-authenticate slackcli against a Slack workspace using credentials
+# extracted directly from the local Slack desktop app (via slacktokens).
+# No browser, no DevTools, no manual copy-paste.
+#
+# Usage: slack-relogin [workspace-key] [workspace-url]
+#   workspace-key: key in slacktokens' JSON output (default: hellofresh, matches "https://hellofresh.slack.com/")
+#   workspace-url: value to pass to slackcli --workspace-url (default: https://hellofresh.slack.com)
+set -euo pipefail
+
+WORKSPACE_HOST="${1:-hellofresh.slack.com}"
+WORKSPACE_URL="${2:-https://${WORKSPACE_HOST}}"
+
+command -v slacktokens >/dev/null || { echo "slacktokens not installed. brew install hishamkaram/slacktokens/slacktokens" >&2; exit 1; }
+command -v slackcli >/dev/null || { echo "slackcli not installed. brew install shaharia-lab/tap/slackcli" >&2; exit 1; }
+
+TOKEN=$(slacktokens -tokens | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+key = 'https://${WORKSPACE_HOST}/'
+if key not in d:
+    print(f'workspace {key} not found among: ' + ', '.join(d.keys()), file=sys.stderr)
+    sys.exit(1)
+print(d[key]['token'])
+")
+
+COOKIE=$(slacktokens -cookie | python3 -c "
+import json, sys, urllib.parse
+print(urllib.parse.unquote(json.load(sys.stdin)['value']))
+")
+
+slackcli auth login-browser --xoxc="$TOKEN" --xoxd="$COOKIE" --workspace-url="$WORKSPACE_URL"

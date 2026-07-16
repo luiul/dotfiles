@@ -1,6 +1,6 @@
 {
   "defaultProvider": "amazon-bedrock",
-  "defaultModel": "eu.anthropic.claude-opus-4-8",
+  "defaultModel": "eu.anthropic.claude-sonnet-5",
   "enabledModels": [
     "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
     "eu.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -21,7 +21,7 @@
   ],
   "enableInstallTelemetry": false,
   "enableAnalytics": false,
-  "lastChangelogVersion": "0.80.6",
+  "lastChangelogVersion": "0.80.7",
   "theme": "dark",
   "packages": [
     "npm:@tintinweb/pi-subagents",

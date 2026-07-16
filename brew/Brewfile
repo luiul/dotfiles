@@ -2,6 +2,7 @@ tap "ankitpokhrel/jira-cli"
 tap "databricks/tap"
 tap "felixkratz/formulae", "https://github.com/FelixKratz/homebrew-formulae"
 tap "hashicorp/tap"
+tap "hishamkaram/slacktokens"
 tap "mlz11/tap"
 tap "oven-sh/bun"
 tap "shaharia-lab/tap"
@@ -71,6 +72,8 @@ brew "zsh-syntax-highlighting"
 brew "felixkratz/formulae/borders", trusted: true
 # Vault
 brew "hashicorp/tap/vault", trusted: true
+# Extract Slack workspace tokens and authentication cookies from the desktop app
+brew "hishamkaram/slacktokens/slacktokens", trusted: true
 # Slack CLI - Interact with Slack from command line
 brew "shaharia-lab/tap/slackcli", trusted: true
 # macOS notifications with Claude icon for Claude Code hooks

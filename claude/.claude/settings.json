@@ -16,7 +16,6 @@
     "pr": ""
   },
   "permissions": {
-    "defaultMode": "auto",
     "allow": [
       "Read",
       "Glob",
@@ -78,7 +77,8 @@
       "Bash(gcloud logging:*)",
       "Bash(cd:*)",
       "WebFetch"
-    ]
+    ],
+    "defaultMode": "auto"
   },
   "model": "opusplan",
   "hooks": {

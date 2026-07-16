@@ -40,6 +40,7 @@
 ## Dotfiles
 
 - Dotfiles live at `~/dotfiles` (a git repo). Read from there directly when relevant; no symlink needed. Treat `~/dotfiles/.env` as containing real secrets and do not surface its values unless asked.
+- `claude/.claude/settings.json` is NOT stowed (it's in `.stow-local-ignore`) because Claude Code rewrites the live `~/.claude/settings.json` in place at runtime, which would clobber a symlink. The live file is the source of truth; the dotfiles copy is a tracked snapshot. Editing only the dotfiles copy does NOT change the running config. To change a setting: edit `~/.claude/settings.json` directly, then refresh the snapshot with `cp ~/.claude/settings.json ~/dotfiles/claude/.claude/settings.json`.
 
 ## Large Files
 

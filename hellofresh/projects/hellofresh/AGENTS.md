@@ -319,6 +319,14 @@ Conventions:
 - Wrap every file path, SQL identifier, column name, and code token in backticks (bare underscores render as emphasis otherwise). Do not use Markdown link syntax `[text](path)` for local file references; list the path in a code span.
 - JQL ordering: jira-cli rejects inline `ORDER BY`; use `--order-by <field> [--reverse]`.
 - After create/update, fetch back with `jira issue view <KEY>` and confirm the body and Business Impact block render as intended.
+- **Every ISA ticket must carry a `fixVersion` so it lands on board 11974** (Global Ops DE Scrum). The board's saved filter is `project = ISA AND fixVersion IN ("Engineering", "OR - Engineering", DPM)`; a ticket with no `fixVersion` (or one outside that list) is invisible on the board and backlog regardless of assignee, reporter, or status. Default to `Engineering` (version id `30557`) unless the ticket clearly belongs to `OR - Engineering` or `DPM`. Set it at creation time (`jira issue create` does not expose `--fix-version`, so follow up with the REST call below), and check for it whenever creating or editing a ticket assigned or reported by me:
+  ```bash
+  curl -s -u "luis.aceituno@hellofresh.com:$JIRA_API_TOKEN" -X PUT \
+    "https://hellofresh.atlassian.net/rest/api/3/issue/ISA-XXXXX" \
+    -H 'Content-Type: application/json' \
+    --data '{"fields":{"fixVersions":[{"id":"30557"}]}}'
+  ```
+  To sweep for any of my tickets missing this (assignee or reporter = me), page through `POST /rest/api/3/search/jql` with `jql=project = ISA AND (assignee = currentUser() OR reporter = currentUser()) AND fixVersion is EMPTY` (the legacy `GET /rest/api/3/search` endpoint is removed; use `/rest/api/3/search/jql` with `nextPageToken` pagination), then PUT the fix above per key.
 
 ## Confluence (`curl` REST)
 
@@ -406,7 +414,15 @@ JSON
 
 ## Slack (`slackcli` + `curl` Web API)
 
-**Primary path (read, search, post): `slackcli`** (shaharia-lab/slackcli, Homebrew tap `shaharia-lab/tap`, `slackcli --version` -> 0.7.0). This is pi's equivalent of the Slack MCP plugin Claude uses: Claude reaches Slack through the hosted OAuth MCP server (`slack@claude-plugins-official` -> `https://mcp.slack.com/mcp`), which pi cannot cleanly bridge (the `pi-mcp-adapter` OAuth flow for it was tried on 2026-07-13 and repeatedly failed with "invalid or expired state parameter" on the localhost callback; not pursued further). `slackcli` gives pi the same read/search/post capability over the Slack Web API. It is already authenticated to the **HelloFresh** workspace (`T02AGMUUR`, `hellofresh.slack.com`) via **browser session tokens** (`xoxc` + `xoxd`), which avoids the IT approval a full Slack App would need. slackcli stores its own auth (`slackcli auth list`), independent of `SLACK_TOKEN`. Browser session tokens rotate/expire periodically (symptom: `Slack API error: invalid_auth` on any command); re-auth with `slackcli auth login-browser` (extract fresh `xoxc`/`xoxd` per `slackcli auth extract-tokens`) when that happens.
+**Primary path (read, search, post): `slackcli`** (shaharia-lab/slackcli, Homebrew tap `shaharia-lab/tap`, `slackcli --version` -> 0.7.0). This is pi's equivalent of the Slack MCP plugin Claude uses: Claude reaches Slack through the hosted OAuth MCP server (`slack@claude-plugins-official` -> `https://mcp.slack.com/mcp`), which pi cannot cleanly bridge (the `pi-mcp-adapter` OAuth flow for it was tried on 2026-07-13 and repeatedly failed with "invalid or expired state parameter" on the localhost callback; not pursued further). `slackcli` gives pi the same read/search/post capability over the Slack Web API. It is already authenticated to the **HelloFresh** workspace (`T02AGMUUR`, `hellofresh.slack.com`) via **browser session tokens** (`xoxc` + `xoxd`), which avoids the IT approval a full Slack App would need. slackcli stores its own auth (`slackcli auth list`), independent of `SLACK_TOKEN`. Browser session tokens rotate/expire periodically (symptom: `Slack API error: invalid_auth` on any command).
+
+**Re-auth (preferred, fully automated, no browser/DevTools): `slack-relogin`.** Script at `~/dotfiles/hellofresh/.local/bin/slack-relogin` (stowed onto `PATH`). It uses [`slacktokens`](https://github.com/hishamkaram/slacktokens) (`brew install hishamkaram/slacktokens/slacktokens`) to pull the `xoxc` token + `xoxd` session cookie directly out of the Slack **desktop app's** local storage/Keychain, URL-decodes the cookie, and calls `slackcli auth login-browser` for you. Requires Slack.app installed and logged in.
+
+```bash
+slack-relogin   # re-authenticates slackcli against hellofresh.slack.com, no prompts
+```
+
+**Fallback (if `slack-relogin` fails, e.g. Slack.app not installed/logged in):** browser DevTools Network tab on `hellofresh.slack.com` → right-click any Slack API request → Copy → **Copy as cURL** → `slackcli auth parse-curl --from-clipboard --login`. The older manual recipe (extract `xoxd`/`xoxc` by hand via `slackcli auth extract-tokens` and pass them to `slackcli auth login-browser --xoxd=... --xoxc=...`) still works too but is the least preferred of the three, purely manual.
 
 ```bash
 slackcli auth list                                          # show authenticated workspaces
@@ -418,6 +434,8 @@ slackcli messages send --recipient-id <id> --message "hi"   # post (add --thread
 ```
 
 A Slack URL like `https://hellofresh.slack.com/archives/C0BFPQSFYLR` carries the channel ID as its last path segment (`C0BFPQSFYLR`); pass it straight to `slackcli conversations read`.
+
+**Before posting any Slack response (`slackcli messages send`), draft it into a scratch file first for review** (per the global Scratch Files rule: `~/scratch/<descriptive-name>.md`, print the absolute path). Only run `slackcli messages send` after I've reviewed/approved the draft. This applies to new messages and thread replies alike; skip the scratch step only if I explicitly say to post directly.
 
 **Directory reads (fallback): `curl` Web API** with `SLACK_TOKEN` from `.env`. This HelloFresh **user token** authenticates (`auth.test` ok) but only carries **directory-read** scopes (`channels:read`, `groups:read`, `users:read`, `team:read`). It works for:
 

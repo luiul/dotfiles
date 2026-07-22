@@ -25,6 +25,12 @@
     "context-mode": {
       "command": "context-mode",
       "directTools": true
+    },
+    "slack": {
+      "command": "slack-mcp-server-hf",
+      "args": ["--transport", "stdio", "-no-cache", "-enabled-tools", "conversations_history,conversations_replies,conversations_search_messages,channels_list,conversations_add_message"],
+      "lifecycle": "lazy",
+      "directTools": true
     }
   }
 }

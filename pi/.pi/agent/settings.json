@@ -21,7 +21,7 @@
   ],
   "enableInstallTelemetry": false,
   "enableAnalytics": false,
-  "lastChangelogVersion": "0.80.10",
+  "lastChangelogVersion": "0.81.1",
   "theme": "dark",
   "packages": [
     "npm:@tintinweb/pi-subagents",

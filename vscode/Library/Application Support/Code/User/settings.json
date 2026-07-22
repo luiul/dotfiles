@@ -32,10 +32,18 @@
     "editor.bracketPairColorization.enabled": true,
     "editor.inlineSuggest.enabled": true,
     "editor.copyWithSyntaxHighlighting": false,
+    "editor.minimap.enabled": false,
     "editor.minimap.autohide": "mouseover",
     "editor.minimap.renderCharacters": false,
+    "editor.scrollbar.verticalScrollbarSize": 4,
+    "editor.scrollbar.horizontalScrollbarSize": 4,
     "editor.folding": true,
+    "editor.showFoldingControls": "mouseover",
     "editor.glyphMargin": true,
+    "editor.lineNumbersMinChars": 3,
+    "editor.lineDecorationsWidth": 2,
+    "editor.padding.top": 0,
+    "editor.padding.bottom": 0,
     "editor.rulers": [
         120
     ],
@@ -76,6 +84,8 @@
         ]
     },
     "editor.lineNumbers": "on",
+    // === Breadcrumbs (extra vertical space) ===
+    "breadcrumbs.enabled": false,
     "editor.unicodeHighlight.ambiguousCharacters": false,
     // === Editor hygiene ===
     "files.trimTrailingWhitespace": true,
@@ -365,4 +375,12 @@
     "window.commandCenter": false,
     "markdown-preview-github-styles.colorTheme": "light",
     "terminal.integrated.tabs.enabled": false,
+    "yaml.disableSchemaDetection": [
+        "**/.github/workflows/*.yml",
+        "**/.github/workflows/*.yaml",
+        "**/.gitea/workflows/*.yml",
+        "**/.gitea/workflows/*.yaml",
+        "**/.forgejo/workflows/*.yml",
+        "**/.forgejo/workflows/*.yaml"
+    ],
 }

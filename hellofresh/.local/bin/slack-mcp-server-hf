@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Launches korotovsky/slack-mcp-server for the HelloFresh workspace, pulling a
+# fresh xoxc/xoxd browser session straight from the local Slack desktop app
+# (via slacktokens) on every start -- so pi's MCP server always starts with a
+# live token instead of a possibly-expired cached one.
+#
+# Sets Enterprise Grid mitigation flags (custom User-Agent + TLS handshake)
+# defensively, since HelloFresh's Slack Enterprise Grid runs session-forking
+# anomaly detection that can sign the whole account out when a scraped
+# session cookie is replayed from a second client. See the
+# `slack-cli-auth-hellofresh` skill for the full history/root cause.
+#
+# Usage: slack-mcp-server-hf [args passed through to slack-mcp-server]
+set -euo pipefail
+
+WORKSPACE_HOST="hellofresh.slack.com"
+
+command -v slacktokens >/dev/null || { echo "slacktokens not installed. brew install hishamkaram/slacktokens/slacktokens" >&2; exit 1; }
+command -v slack-mcp-server >/dev/null || { echo "slack-mcp-server not installed. npm install -g slack-mcp-server" >&2; exit 1; }
+
+SLACK_MCP_XOXC_TOKEN=$(slacktokens -tokens | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+key = 'https://${WORKSPACE_HOST}/'
+if key not in d:
+    print(f'workspace {key} not found among: ' + ', '.join(d.keys()), file=sys.stderr)
+    sys.exit(1)
+print(d[key]['token'])
+")
+
+SLACK_MCP_XOXD_TOKEN=$(slacktokens -cookie | python3 -c "
+import json, sys, urllib.parse
+print(urllib.parse.unquote(json.load(sys.stdin)['value']))
+")
+
+export SLACK_MCP_XOXC_TOKEN
+export SLACK_MCP_XOXD_TOKEN
+export SLACK_MCP_USER_AGENT="${SLACK_MCP_USER_AGENT:-Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36}"
+export SLACK_MCP_CUSTOM_TLS="${SLACK_MCP_CUSTOM_TLS:-true}"
+
+exec slack-mcp-server "$@"

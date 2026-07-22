@@ -34,6 +34,8 @@ brew "gitleaks"
 brew "go"
 # CLI for Drive, Gmail, Calendar, Sheets, Docs, Chat, Admin, and more
 brew "googleworkspace-cli"
+# Agent multiplexer that lives in your terminal
+brew "herdr"
 # Lightweight and flexible command-line JSON processor
 brew "jq"
 # Open-source, cross-platform JavaScript runtime environment

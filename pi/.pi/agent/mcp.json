@@ -25,14 +25,6 @@
     "context-mode": {
       "command": "context-mode",
       "directTools": true
-    },
-    "slack": {
-      "type": "http",
-      "url": "https://mcp.slack.com/mcp",
-      "lifecycle": "lazy",
-      "directTools": true,
-      "auth": "bearer",
-      "bearerTokenEnv": "SLACK_MCP_TOKEN"
     }
   }
 }

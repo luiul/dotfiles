@@ -40,8 +40,6 @@
     "editor.folding": true,
     "editor.showFoldingControls": "mouseover",
     "editor.glyphMargin": true,
-    "editor.lineNumbersMinChars": 3,
-    "editor.lineDecorationsWidth": 2,
     "editor.padding.top": 0,
     "editor.padding.bottom": 0,
     "editor.rulers": [
@@ -302,7 +300,7 @@
     "yaml.schemas": {
         "file:///Users/luis.aceituno/.vscode/extensions/docsmsft.docs-yaml-1.0.6/dist/toc.schema.json": "/toc\\.yml/i"
     },
-    "workbench.colorTheme": "Monokai",
+    "workbench.colorTheme": "Monokai Night",
     "python.languageServer": "Pylance",
     "editor.inlayHints.enabled": "offUnlessPressed",
     "jupyter.askForKernelRestart": false,
@@ -383,4 +381,8 @@
         "**/.forgejo/workflows/*.yml",
         "**/.forgejo/workflows/*.yaml"
     ],
+    "workbench.statusBar.visible": false,
+    "workbench.layoutControl.enabled": false,
+    "chat.titleBar.openInAgentsWindow.enabled": false,
+    "workbench.browser.showInTitleBar": false
 }

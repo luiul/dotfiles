@@ -83,7 +83,7 @@
     },
     "editor.lineNumbers": "on",
     // === Breadcrumbs (extra vertical space) ===
-    "breadcrumbs.enabled": false,
+    // "breadcrumbs.enabled": false,
     "editor.unicodeHighlight.ambiguousCharacters": false,
     // === Editor hygiene ===
     "files.trimTrailingWhitespace": true,
@@ -126,6 +126,10 @@
     "git.autoRepositoryDetection": "openEditors",
     "git.openRepositoryInParentFolders": "always",
     "git.autofetch": true,
+    // Worktrees share a leaf folder name per repo (~/worktrees/<owner>/<branch>/<repo>,
+    // branch as parent so pi-hermes-memory's cwd-basename project detection resolves to the
+    // repo, not the branch) — show the branch in the title bar so windows stay distinguishable.
+    "window.title": "${rootName}${separator}${activeRepositoryBranchName}${separator}${activeEditorShort}",
     // === GitHub Settings ===
     "githubPullRequests.remotes": [
         "origin",

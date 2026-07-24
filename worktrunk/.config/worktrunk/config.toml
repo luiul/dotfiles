@@ -1,18 +1,68 @@
+# Centralize every worktree under ~/worktrees instead of scattering them as siblings of each
+# repo (would clutter shared dirs like ~/projects/hellofresh/) or nesting them inside the repo
+# (risky on a shared monorepo like tardis-community without a local core.excludesFile on every
+# machine).
+#
+# Branch as the PARENT segment and repo as the LEAF (not the more obvious owner/repo/branch) is
+# deliberate: pi's memory/skill system (pi-hermes-memory) detects "project" as nothing more than
+# path.basename(cwd) at session start, with no override hook. A worktree path ending in the
+# branch name (…/tardis-community/fix-thing) would make every worktree its own disconnected
+# memory/skill bucket named after the branch, fragmenting everything already recorded under the
+# main checkout's bucket (named after the repo). Ending in the repo name instead
+# (…/fix-thing/tardis-community) makes every worktree of a repo resolve to the SAME project
+# bucket as the main checkout, so memory/skills stay unified across the whole repo regardless of
+# which branch/worktree pi was launched from. VS Code's title bar (below) carries the branch
+# distinction instead, since the folder name no longer does.
+worktree-path = "~/worktrees/{{ owner }}/{{ branch | sanitize }}/{{ repo }}"
+
 # .venv is symlinked (below); skip it in copy-ignored so we don't try to reflink it too.
 [step.copy-ignored]
 exclude = [".venv/", ".DS_Store"]
 
 # Symlink .venv (shared, handled separately), copy other gitignored files (.vscode/settings.json,
-# .env, etc.) via reflink, and open the new worktree in VS Code.
+# .env, etc.) via reflink, open the new worktree in VS Code, register the repo so `wtclean`
+# can find and sweep its worktrees later from anywhere, and register+build+watch the worktree
+# in code-review-graph so its branch-specific code graph is queryable/kept fresh like the main
+# repo's. Guarded by `command -v` so this is a no-op on machines without code-review-graph.
 [post-start]
 venv = "ln -sfn {{ repo_path }}/.venv {{ worktree_path }}/.venv"
 copy = "wt step copy-ignored --force"
 vscode = "code -n {{ worktree_path }}"
+registry = "mkdir -p ~/.cache/wt && echo '{{ repo_path }}' >> ~/.cache/wt/known-repos && sort -u -o ~/.cache/wt/known-repos ~/.cache/wt/known-repos"
+crg = '''
+if command -v code-review-graph >/dev/null 2>&1; then
+  code-review-graph register "{{ worktree_path }}" --alias "{{ repo }}-{{ branch | sanitize }}" >/dev/null 2>&1
+  ( cd "{{ worktree_path }}" && code-review-graph build >/dev/null 2>&1 )
+  command -v crg-daemon >/dev/null 2>&1 && crg-daemon add "{{ worktree_path }}" --alias "{{ repo }}-{{ branch | sanitize }}" >/dev/null 2>&1
+fi
+'''
 
 # Refuse to remove protected branches. pre-* hooks abort on non-zero exit.
+# crg-cleanup deregisters the worktree from code-review-graph/its daemon before removal; always
+# exits 0 so a code-review-graph hiccup never blocks a worktree removal.
 [pre-remove]
 protect = '''
 case "{{ branch }}" in
   main|master|live) echo "refusing to remove protected branch: {{ branch }}" >&2; exit 1 ;;
 esac
+'''
+crg-cleanup = '''
+command -v crg-daemon >/dev/null 2>&1 && crg-daemon remove "{{ worktree_path }}" >/dev/null 2>&1
+command -v code-review-graph >/dev/null 2>&1 && code-review-graph unregister "{{ worktree_path }}" >/dev/null 2>&1
+exit 0
+'''
+
+# tardis-community: many independent dbt projects live under pipelines/<tribe>/<squad>/dbt.
+# `wt step copy-ignored` (above) already reflinks each project's gitignored dbt_packages/ from
+# the base worktree, so this only self-heals the rare case where that cache is still missing
+# (first-ever worktree for a given dbt project, or base never ran `dbt deps`). Runs after the
+# global post-start step above (project hooks append after user hooks).
+[[projects."github.com/hellofresh/tardis-community".post-start]]
+dbt-deps = '''
+for f in "{{ worktree_path }}"/pipelines/*/*/dbt/dbt_project.yml; do
+  [ -e "$f" ] || continue
+  d=$(dirname "$f")
+  [ -d "$d/dbt_packages" ] && continue
+  ( cd "$d" && "{{ worktree_path }}/.venv/bin/dbt" deps )
+done
 '''

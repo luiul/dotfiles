@@ -31,6 +31,12 @@
       "args": ["--transport", "stdio", "-no-cache", "-enabled-tools", "conversations_history,conversations_replies,conversations_search_messages,channels_list,conversations_add_message"],
       "lifecycle": "lazy",
       "directTools": true
+    },
+    "code-review-graph": {
+      "command": "code-review-graph",
+      "args": ["serve", "--tools", "get_architecture_overview_tool,query_graph_tool,get_impact_radius_tool,get_review_context_tool,detect_changes_tool"],
+      "lifecycle": "lazy",
+      "directTools": true
     }
   }
 }

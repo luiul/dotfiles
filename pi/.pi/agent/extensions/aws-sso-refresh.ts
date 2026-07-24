@@ -14,6 +14,9 @@
  */
 
 import { execFile } from "node:child_process";
+import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
@@ -29,19 +32,80 @@ const VALIDATE_TTL_MS = 5 * 60_000;
 let lastValidAt = 0;
 let inFlight: Promise<boolean> | undefined;
 
-// True when the current SSO credentials can call AWS.
-async function sessionValid(): Promise<boolean> {
+// Cross-PROCESS guard: separate `pi`/`pi -p` invocations (e.g. many
+// concurrent probes from sync-enabled-models.sh, or several terminal tabs
+// starting around the same time) don't share the in-process `inFlight`
+// dedup above, since each is a fresh Node process with its own module state.
+// Without this, several of them can independently decide the session is
+// invalid (a real observed failure mode: concurrent `aws sts
+// get-caller-identity` calls transiently erroring under contention, not
+// actual expiry) and each launch its own `aws sso login` -- multiple
+// concurrent browser/device-code flows. This lockfile makes every process
+// but the first one that observes a recent login attempt skip straight to
+// re-checking validity instead of launching another login.
+const LOGIN_LOCK_PATH = join(tmpdir(), `pi-aws-sso-login-${PROFILE}.lock`);
+const LOGIN_LOCK_TTL_MS = 30_000;
+
+function recentLoginInFlightElsewhere(): boolean {
 	try {
-		await execFileAsync("aws", ["sts", "get-caller-identity", "--profile", PROFILE], {
-			timeout: 15_000,
-		});
-		return true;
+		const ts = Number(readFileSync(LOGIN_LOCK_PATH, "utf8"));
+		return Date.now() - ts < LOGIN_LOCK_TTL_MS;
 	} catch {
 		return false;
 	}
 }
 
+function claimLoginLock(): void {
+	try {
+		writeFileSync(LOGIN_LOCK_PATH, String(Date.now()));
+	} catch {
+		// Best-effort; if we can't write the lock, worst case we don't dedup
+		// across processes this one time.
+	}
+}
+
+function releaseLoginLock(): void {
+	try {
+		unlinkSync(LOGIN_LOCK_PATH);
+	} catch {
+		// Already gone/never created -- fine.
+	}
+}
+
+// True when the current SSO credentials can call AWS. Retries once on
+// failure: under concurrent process starts (e.g. many `pi -p` invocations at
+// once, as sync-enabled-models.sh does when probing), `aws sts
+// get-caller-identity` can transiently fail from SSO-cache-file/API
+// contention even though the session is genuinely valid, which previously
+// caused several processes to each independently decide "expired" and spawn
+// their own `aws sso login` -- a real incident, not auth expiry. A short
+// retry absorbs that transient failure before we conclude the session is
+// actually invalid.
+async function sessionValid(): Promise<boolean> {
+	for (let attempt = 0; attempt < 2; attempt++) {
+		try {
+			await execFileAsync("aws", ["sts", "get-caller-identity", "--profile", PROFILE], {
+				timeout: 15_000,
+			});
+			return true;
+		} catch {
+			if (attempt === 0) await new Promise((r) => setTimeout(r, 1_000));
+		}
+	}
+	return false;
+}
+
 async function login(ctx: ExtensionContext): Promise<boolean> {
+	// Another process just started (or finished) its own login very recently:
+	// give it a moment to land rather than piling on a second browser flow,
+	// then re-check validity (it likely already fixed things for everyone,
+	// since all processes share the same underlying SSO session/cache).
+	if (recentLoginInFlightElsewhere()) {
+		await new Promise((r) => setTimeout(r, 3_000));
+		if (await sessionValid()) return true;
+	}
+
+	claimLoginLock();
 	ctx.ui.notify(`AWS SSO expired - opening browser to log in (${PROFILE})...`, "info");
 	try {
 		await execFileAsync("aws", ["sso", "login", "--profile", PROFILE], {
@@ -52,6 +116,8 @@ async function login(ctx: ExtensionContext): Promise<boolean> {
 	} catch {
 		ctx.ui.notify(`AWS SSO login failed - run 'aws sso login --profile ${PROFILE}' manually`, "error");
 		return false;
+	} finally {
+		releaseLoginLock();
 	}
 }
 

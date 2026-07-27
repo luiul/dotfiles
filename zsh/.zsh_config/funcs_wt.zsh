@@ -86,6 +86,27 @@ _wtx_known_repos() {
 	printf '%s\n' "${repos[@]}"
 }
 
+# Best-effort filesystem birth time (creation time) of a path, as a Unix
+# timestamp. Falls back with a non-zero exit if unavailable (e.g. a
+# filesystem without birthtime support), so callers can fall back to
+# something else (typically the last-commit timestamp).
+_wtx_creation_ts() {
+	local wtpath="$1" ts
+	# BSD/macOS stat: %B = birth time, prints 0 if the filesystem doesn't track it.
+	ts=$(stat -f '%B' "$wtpath" 2>/dev/null)
+	if [[ -n "$ts" && "$ts" != "0" ]]; then
+		print -r -- "$ts"
+		return 0
+	fi
+	# GNU stat: %W = birth time, prints 0 or "-" if unsupported.
+	ts=$(stat --format='%W' "$wtpath" 2>/dev/null)
+	if [[ -n "$ts" && "$ts" != "0" && "$ts" != "-" ]]; then
+		print -r -- "$ts"
+		return 0
+	fi
+	return 1
+}
+
 # Format a KB integer (as from `du -sk`) as a short human-readable size.
 _wtx_human_kb() {
 	local kb=$1
@@ -261,7 +282,7 @@ _wtx_list() {
 	# on every repo iteration (rather than once, up front) is a zsh footgun —
 	# once these already hold a value from a prior iteration, re-declaring
 	# them bare prints a "name=value" dump instead of quietly resetting.
-	local branch ts is_main is_current dirty main_state wtstate age tags flags
+	local branch wtpath ts is_main is_current dirty main_state wtstate age tags flags creation_ts
 	for repo in "${repos[@]}"; do
 		[[ -d "$repo" ]] || continue
 		json=$(wt -C "$repo" --config-set list.json-schema=1 list --format json 2>/dev/null)
@@ -277,7 +298,7 @@ _wtx_list() {
 		fi
 
 		rows=$(printf '%s' "$json" | jq -r '
-			.[] | [.branch, (.commit.timestamp // 0), (.is_main // false), (.is_current // false),
+			.[] | [.branch, .path, (.commit.timestamp // 0), (.is_main // false), (.is_current // false),
 			       ((.working_tree.staged // false) or (.working_tree.modified // false) or (.working_tree.untracked // false) or (.working_tree.deleted // false) or (.working_tree.renamed // false)),
 			       (.main_state // ""), (.worktree.state // "")] | @tsv
 		')
@@ -285,7 +306,7 @@ _wtx_list() {
 
 		echo
 		echo "$(basename "$repo"):"
-		while IFS=$'\t' read -r branch ts is_main is_current dirty main_state wtstate; do
+		while IFS=$'\t' read -r branch wtpath ts is_main is_current dirty main_state wtstate; do
 			[[ -z "$branch" ]] && continue
 			total=$((total + 1))
 
@@ -302,10 +323,22 @@ _wtx_list() {
 			if [[ "$wtstate" == "prunable" ]]; then
 				age="stale"
 				flags="$flags, ${c_yellow}worktree dir missing${c_reset}"
-			elif [[ "$ts" == "0" ]]; then
-				age="?"
 			else
-				age="$(((now - ts) / 86400))d"
+				# For non-main worktrees, .commit.timestamp is the last-commit
+				# date of the branch, which for a freshly created worktree with
+				# no new commits is just the base branch's last commit — often
+				# days/weeks old, not "how long has this worktree existed".
+				# Prefer the worktree directory's filesystem birth time instead,
+				# falling back to the commit timestamp when birthtime isn't
+				# available (or for the main worktree, where commit age IS the
+				# meaningful number: "repo last updated X days ago").
+				if [[ "$is_main" != "true" ]] && creation_ts=$(_wtx_creation_ts "$wtpath"); then
+					age="$(((now - creation_ts) / 86400))d"
+				elif [[ "$ts" == "0" ]]; then
+					age="?"
+				else
+					age="$(((now - ts) / 86400))d"
+				fi
 			fi
 			flags="${flags#, }"
 			[[ -n "$flags" ]] && flags=" ($flags)"

@@ -29,6 +29,39 @@ venv = "ln -sfn {{ repo_path }}/.venv {{ worktree_path }}/.venv"
 copy = "wt step copy-ignored --force"
 vscode = "code -n {{ worktree_path }}"
 registry = "mkdir -p ~/.cache/wt && echo '{{ repo_path }}' >> ~/.cache/wt/known-repos && sort -u -o ~/.cache/wt/known-repos ~/.cache/wt/known-repos"
+# pi/Claude discover AGENTS.md/CLAUDE.md by walking up from cwd to the filesystem root,
+# concatenating every match along the way. From the main checkout ({{ repo_path }}, e.g.
+# ~/projects/hellofresh/tardis-community) that walk passes through ~/projects/hellofresh/ and
+# picks up its org-level AGENTS.md/CLAUDE.md. A worktree lives in a disjoint tree
+# (~/worktrees/hellofresh/<branch>/tardis-community) whose walk-up never passes through
+# ~/projects/hellofresh/, so that file is silently missing there.
+#
+# Fix: search upward from the main checkout's PARENT directory for the nearest AGENTS.md and
+# CLAUDE.md, stopping at $HOME (whatever sits at/above $HOME is already found identically by
+# both walks, since both the checkout and the worktree live under $HOME). Deliberately does not
+# assume the file is exactly one level up -- some repos may be nested deeper (e.g. a subgroup
+# directory) or have no such file at all, in which case this is a silent no-op. Whatever is
+# found is symlinked into {{ owner }}'s worktree root (one level above every branch dir for this
+# owner), which is exactly the directory pi's walk-up passes through for every worktree of every
+# repo under this owner -- so this only needs to run (idempotently) once per owner, not per branch.
+agents-md = '''
+home="$HOME"
+owner_dir=$(dirname "$(dirname "{{ worktree_path }}")")
+for name in AGENTS.md CLAUDE.md; do
+  dir=$(dirname "{{ repo_path }}")
+  found=""
+  while [ "$dir" != "$home" ] && [ "$dir" != "/" ]; do
+    if [ -f "$dir/$name" ]; then
+      found="$dir/$name"
+      break
+    fi
+    parent=$(dirname "$dir")
+    [ "$parent" = "$dir" ] && break
+    dir="$parent"
+  done
+  [ -n "$found" ] && ln -sf "$found" "$owner_dir/$name"
+done
+'''
 crg = '''
 if command -v code-review-graph >/dev/null 2>&1; then
   code-review-graph register "{{ worktree_path }}" --alias "{{ repo }}-{{ branch | sanitize }}" >/dev/null 2>&1

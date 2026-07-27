@@ -10,8 +10,11 @@
  *     read-only allowlist) is about to run -> switch to `executeModel`.
  *     This is the primary, deterministic signal.
  *   - The new user prompt clearly signals planning or execution intent
- *     (keyword match) -> switch to the matching model. This only fires on
- *     explicit phrasing; it never forces a default mode on a fresh session.
+ *     (keyword match against `planIntentPhrases`/`executeIntentPhrases` in
+ *     automodel.json, e.g. bare "plan"/"execute" as whole words, or phrases
+ *     like "let's plan"/"plan:") -> switch to the matching model. This only
+ *     fires on explicit phrasing; it never forces a default mode on a fresh
+ *     session.
  *
  * Once switched to "execute", the mode is sticky (a `read`/`grep`/etc. call
  * does not bounce it back to "plan") -- only a planning-intent prompt or a
@@ -58,7 +61,7 @@ interface AutoModelConfig {
 const DEFAULT_CONFIG: AutoModelConfig = {
 	enabled: true,
 	requireConfirmation: true,
-	planModel: { provider: "amazon-bedrock", model: "eu.anthropic.claude-opus-4-8" },
+	planModel: { provider: "amazon-bedrock", model: "eu.anthropic.claude-opus-5" },
 	executeModel: { provider: "amazon-bedrock", model: "eu.anthropic.claude-sonnet-5" },
 	mutatingTools: ["edit", "write"],
 	readOnlyBashPrefixes: ["ls", "cat", "pwd", "which", "echo", "find", "grep", "git status", "git log", "git diff"],
@@ -67,11 +70,13 @@ const DEFAULT_CONFIG: AutoModelConfig = {
 		"execute:", "implement:", "build:", "fix:", "do:", "apply:", "ship:",
 		"write:", "create:", "add:", "update:", "remove:", "delete:",
 		"refactor:", "migrate:", "deploy:", "run:",
+		"execute", "implement",
 	],
 	planIntentPhrases: [
 		"let's plan", "propose a plan", "investigate", "give me a plan",
 		"plan:", "investigate:", "research:", "explore:", "analyze:", "analyse:",
 		"review:", "propose:", "outline:", "design:", "draft:", "assess:", "audit:",
+		"plan",
 	],
 };
 
@@ -118,18 +123,30 @@ function classifyTool(toolName: string, input: unknown, config: AutoModelConfig)
 	return "neutral";
 }
 
-// Substring match, but the phrase must start at the beginning of the text or be preceded by
-// whitespace/punctuation -- not by a word character. This lets short imperative labels like
-// "do:" or "plan:" match at the start of a message or sentence without false-matching inside
-// an unrelated word (e.g. "do:" inside "todo:").
+// Substring match, but bounded on both sides so bare keywords (e.g. "plan", "execute") only
+// match as whole words, not as a prefix buried in a longer one:
+//   - left boundary: the phrase must start at the beginning of the text or be preceded by
+//     whitespace/punctuation, not a word character (so "do:" doesn't match inside "todo:").
+//   - right boundary: only enforced when the phrase itself ends in a word character (letters/
+//     digits) -- this stops "plan" from matching inside "planning"/"plant" or "execute" inside
+//     "executive"/"executed", while leaving colon-terminated phrases like "plan:" untouched
+//     (the colon already unambiguously terminates the keyword).
 function matchesAny(text: string, phrases: string[]): boolean {
 	const lower = text.toLowerCase();
 	return phrases.some((phrase) => {
 		const needle = phrase.toLowerCase();
 		const idx = lower.indexOf(needle);
 		if (idx === -1) return false;
-		if (idx === 0) return true;
-		return !/[a-z0-9_]/.test(lower[idx - 1]);
+
+		const before = idx === 0 ? undefined : lower[idx - 1];
+		if (before !== undefined && /[a-z0-9_]/.test(before)) return false;
+
+		const lastChar = needle[needle.length - 1];
+		if (/[a-z0-9_]/.test(lastChar)) {
+			const after = lower[idx + needle.length];
+			if (after !== undefined && /[a-z0-9_]/.test(after)) return false;
+		}
+		return true;
 	});
 }
 

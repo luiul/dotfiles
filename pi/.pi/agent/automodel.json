@@ -1,7 +1,7 @@
 {
 	"enabled": true,
 	"requireConfirmation": true,
-	"planModel": { "provider": "amazon-bedrock", "model": "eu.anthropic.claude-opus-4-8" },
+	"planModel": { "provider": "amazon-bedrock", "model": "eu.anthropic.claude-opus-5" },
 	"executeModel": { "provider": "amazon-bedrock", "model": "eu.anthropic.claude-sonnet-5" },
 	"mutatingTools": ["edit", "write"],
 	"readOnlyBashPrefixes": [
@@ -17,13 +17,15 @@
 		"just do it", "ship it", "let's build", "start implementing",
 		"execute:", "implement:", "build:", "fix:", "do:", "apply:", "ship:",
 		"write:", "create:", "add:", "update:", "remove:", "delete:",
-		"refactor:", "migrate:", "deploy:", "run:"
+		"refactor:", "migrate:", "deploy:", "run:",
+		"execute", "implement"
 	],
 	"planIntentPhrases": [
 		"let's plan", "propose a plan", "investigate", "research this", "explore the codebase",
 		"don't change", "don't touch", "don't edit", "how would you", "what's the best way",
 		"without making any changes", "give me a plan", "before implementing",
 		"plan:", "investigate:", "research:", "explore:", "analyze:", "analyse:",
-		"review:", "propose:", "outline:", "design:", "draft:", "assess:", "audit:"
+		"review:", "propose:", "outline:", "design:", "draft:", "assess:", "audit:",
+		"plan"
 	]
 }

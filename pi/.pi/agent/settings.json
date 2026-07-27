@@ -1,6 +1,6 @@
 {
   "defaultProvider": "amazon-bedrock",
-  "defaultModel": "eu.anthropic.claude-opus-5",
+  "defaultModel": "eu.anthropic.claude-sonnet-5",
   "enabledModels": [
     "amazon.nova-lite-v1:0",
     "amazon.nova-micro-v1:0",

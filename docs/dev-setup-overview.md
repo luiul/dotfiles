@@ -7,8 +7,8 @@ What changed, why, and how the pieces talk to each other. Written 2026-07-24.
 - **Repos flattened**: `~/projects/hellofresh/<repo>` and `~/projects/personal/<repo>` — no more numbered pipeline-stage folders. Meaning/relationships now come from the code itself (code-review-graph) and TRE, not folder depth.
 - **Worktrees centralized**: `~/worktrees/<owner>/<branch>/<repo>` (note: branch before repo — deliberate, see §4/diagram below, it's what keeps pi's memory and skills unified per-repo instead of fragmenting per-branch).
 - **code-review-graph** indexes every repo (currently 45, growing automatically as work touches new ones), a background daemon keeps every graph fresh automatically (native FS events, no cron/hook needed), and 5 curated MCP tools are wired into pi for architecture/query/impact/review-context/change-detection questions.
-- **Daily loop**: `wtnew` to start (shows what's already in flight for this repo, prompts for a short description, creates/reuses the worktree, opens VS Code, wires up code-review-graph) → work → `wtclean --dry-run` / `wtclean` to clean up (grouped by repo, shows size + merge status + a total reclaimable estimate, skips dirty/open-PR worktrees, auto-cleans stale/dangling references).
-- Full evaluation history and reasoning (graphify vs codegraph vs code-review-graph, the memory-scoping bug and fix, three wtclean bugs found and fixed) is in [luiul/dotfiles#4](https://github.com/luiul/dotfiles/issues/4).
+- **One entrypoint, `wtx`**: `wtx new` to start (shows what's already in flight for this repo, prompts for a short description, creates/reuses the worktree, opens VS Code, wires up code-review-graph) → work → `wtx list` to see everything in flight across every repo → `wtx clean --dry-run` / `wtx clean` to bulk-sweep old ones (grouped by repo, shows size + merge status + a total reclaimable estimate, skips dirty/open-PR worktrees, auto-cleans stale/dangling references) or `wtx remove BRANCH` to remove one specific worktree on the spot (fzf picker if you don't already know the branch name). `wtx status` shows the code-review-graph daemon + registry health. See §2 for why `new`/`clean`/`list`/`remove` were chosen as the subcommand names (they mirror `wt`'s own vocabulary on purpose).
+- Full evaluation history and reasoning (graphify vs codegraph vs code-review-graph, the memory-scoping bug and fix, three wtclean bugs found and fixed before it became `wtx clean`) is in [luiul/dotfiles#4](https://github.com/luiul/dotfiles/issues/4).
 
 ## The taxonomy problem this replaces
 
@@ -34,9 +34,11 @@ flowchart LR
     B["~/worktrees/{owner}/{branch}/{repo}<br/>worktree, centralized"]
   end
 
-  subgraph WT["worktrunk (wt)"]
-    N[wtnew]
-    C[wtclean]
+  subgraph WT["wtx (wraps worktrunk)"]
+    N["wtx new"]
+    L["wtx list"]
+    C["wtx clean"]
+    R["wtx remove"]
   end
 
   subgraph CRG["code-review-graph"]
@@ -55,7 +57,9 @@ flowchart LR
   M -->|"query_graph, impact,<br/>review context, ..."| PI
   B -->|"basename = repo name"| PM
   A -->|"basename = repo name"| PM
+  L -->|"scans registry"| B
   C -->|"scans registry,<br/>wt remove"| B
+  R -->|"wt remove"| B
 ```
 
 ## 1. Repo layout: flat by owner
@@ -93,7 +97,7 @@ Why centralized at all (vs sibling-of-repo, the worktrunk default, or nested-ins
 1. `venv` — symlink `.venv` from the main repo (shared across all worktrees of that repo; venvs can't be copied, only shared or rebuilt)
 2. `copy` — `wt step copy-ignored --force`: reflinks every other gitignored file (dbt_packages/, .env, local config overrides) from the main repo, instant via copy-on-write
 3. `vscode` — opens a new VS Code window at the worktree
-4. `registry` — appends the repo path to `~/.cache/wt/known-repos`, deduped (this is what lets `wtclean` — see below — discover repos from anywhere)
+4. `registry` — appends the repo path to `~/.cache/wt/known-repos`, deduped (this is what lets `wtx clean`/`wtx list`/`wtx remove` — see below — discover repos from anywhere)
 5. `crg` — registers the worktree with code-review-graph, builds its graph, and adds it to the daemon's watch list (guarded by `command -v`, so this is a silent no-op on a machine without code-review-graph installed)
 
 ### Global pre-remove hooks (fire when a worktree is *removed*)
@@ -105,10 +109,15 @@ Why centralized at all (vs sibling-of-repo, the worktrunk default, or nested-ins
 
 `dbt-deps` — self-healing only: walks `pipelines/*/*/dbt/dbt_project.yml`, and for any dbt project whose `dbt_packages/` is *still* missing after `copy` ran (i.e. the base worktree never had it either), runs `dbt deps`. Scoped to this one repo via `[projects."github.com/hellofresh/tardis-community".post-start]` in the user config, so it doesn't touch any other repo, and it doesn't touch the shared repo's own `.config/wt.toml` either — this is a personal setup, not something teammates inherit.
 
-### Zsh helpers (`~/dotfiles/zsh/.zsh_config/funcs_wt.zsh`)
+### `wtx`: one entrypoint for the daily loop (`~/dotfiles/zsh/.zsh_config/funcs_wt.zsh`)
 
-- **`wtnew`** (alias `wtn`) — before prompting, shows any worktrees already open for this repo (avoids accidentally starting a near-duplicate of work already in flight elsewhere). Prompts for a short branch description (blank -> timestamp id `wip-YYYYMMDD-HHMMSS`), slugifies and caps it at 40 chars on a word boundary, then creates or reuses the worktree via `wt switch`. No Jira ticket in the branch name — that's attached when opening the PR instead, not baked into the workspace identity.
-- **`wtclean`** — removes worktrees whose last commit is older than N weeks (default 2), across every repo in the registry plus the one you're standing in (or just one repo, via `--repo NAME`). Output is grouped by repo, color-coded (green = removable, yellow = skipped), and shows per-worktree size, merge status ("branch will be deleted" vs "branch will be kept"), and a total reclaimable-size estimate before you confirm. `-v/--verbose` also lists worktrees under the age threshold, for full visibility. Skips: the main worktree, the current worktree, dirty worktrees (never force-removes), and any branch with an open GitHub PR (via `gh`, with the PR title shown) — this last one matters because PRs sit open for review before merging, so age alone isn't a safe deletion signal. Also detects and cleans up *stale* worktrees (directory deleted outside of `wt` — crashed tool, manual `rm -rf`, etc.) regardless of age, since there's nothing left to lose there. Tracks and reports success/failure per removal.
+Everything worktree-related is one dispatcher function, `wtx SUBCOMMAND [ARGS...]`, instead of a scattering of separate `wt*` shell functions — a single command to remember, with subcommands that mirror `wt`'s own vocabulary (`new`/`list`/`clean`/`remove`) rather than inventing new names on top of it. `wtx help` prints the full list; every subcommand also answers `--help` on its own.
+
+- **`wtx new`** (alias `n`) — before prompting, shows any worktrees already open for this repo (avoids accidentally starting a near-duplicate of work already in flight elsewhere). Prompts for a short branch description (blank -> timestamp id `wip-YYYYMMDD-HHMMSS`), slugifies and caps it at 40 chars on a word boundary, then creates or reuses the worktree via `wt switch`. No Jira ticket in the branch name — that's attached when opening the PR instead, not baked into the workspace identity.
+- **`wtx list`** (alias `ls`) — read-only, no GitHub calls, so it's always fast: shows every worktree across every repo in the registry plus the one you're standing in, grouped by repo, tagged `[main]`/`[current]`, with age and dirty/merged flags. `--repo NAME` scopes to one repo; `--json` emits the merged raw `wt list` JSON for scripting.
+- **`wtx clean`** — the bulk, unattended-friendly sweep: removes worktrees whose last commit is older than N weeks (default 2), across every repo in the registry plus the one you're standing in (or just one repo, via `--repo NAME`). Output is grouped by repo, color-coded (green = removable, yellow = skipped), and shows per-worktree size, merge status ("branch will be deleted" vs "branch will be kept"), and a total reclaimable-size estimate before you confirm. `-v/--verbose` also lists worktrees under the age threshold, for full visibility. Skips: the main worktree, the current worktree, dirty worktrees (never force-removes), and any branch with an open GitHub PR (via `gh`, with the PR title shown) — this last one matters because PRs sit open for review before merging, so age alone isn't a safe deletion signal. Also detects and cleans up *stale* worktrees (directory deleted outside of `wt` — crashed tool, manual `rm -rf`, etc.) regardless of age, since there's nothing left to lose there. Tracks and reports success/failure per removal.
+- **`wtx remove`** (alias `rm`) — the precise, interactive counterpart to `clean`: removes one or more specific worktrees by branch name, no age threshold, no PR check. Scope defaults to the repo you're standing in (falling back to every known repo if you're not inside one), or pass `--repo NAME` explicitly; a branch name that matches more than one known repo is treated as ambiguous and asks you to disambiguate rather than guessing. Omit the branch name entirely to get an `fzf` picker (multi-select with Tab) over the worktrees in scope; without `fzf` installed it just prints the candidates and asks you to re-run with an explicit name. Protected branches (`main`/`master`/`live`) are refused by wt's own pre-remove hook regardless.
+- **`wtx status`** (alias `st`) — quick health check for the surrounding tooling: `crg-daemon status` (every watched repo/worktree + PIDs) plus the known-repos registry that `list`/`clean`/`remove` all scan.
 
 ## 3. code-review-graph: the semantic layer
 
@@ -120,9 +129,9 @@ Chosen over graphify and codegraph (both evaluated and rejected — see GitHub i
 
 ### What's running right now
 
-- **45 repos** registered and built in code-review-graph (36 hellofresh + 7 personal + dotfiles itself, plus 1 currently-active worktree registered the same way) — this count grows automatically as `wtnew`/work touches new repos, it's not a fixed number. The whole `tardis-community` monorepo (~4,000 files, ~2,800 SQL) builds in about 5 seconds.
+- **45 repos** registered and built in code-review-graph (36 hellofresh + 7 personal + dotfiles itself, plus 1 currently-active worktree registered the same way) — this count grows automatically as `wtx new`/work touches new repos, it's not a fixed number. The whole `tardis-community` monorepo (~4,000 files, ~2,800 SQL) builds in about 5 seconds.
 - **`crg-watch` daemon**: one long-running process + one lightweight per-repo watcher, all idling at ~0% CPU / ~0.1% memory, using native FS events. Every registered repo's graph rebuilds automatically on save — no manual `build`/`update` step, no git-commit-hook needed.
-- **`~/.cache/wt/known-repos`** (the separate registry `wtclean` scans) is lazier by design — a repo only lands there the first time `wtnew` creates a worktree for it with hooks enabled, not pre-populated for every repo you have cloned. If `wtclean` reports scanning fewer repos than you expect, that's why; it's not a bug, there's just nothing to clean up yet for a repo you've only ever worked in via its main checkout.
+- **`~/.cache/wt/known-repos`** (the separate registry `wtx clean`/`wtx list`/`wtx remove` scan) is lazier by design — a repo only lands there the first time `wtx new` creates a worktree for it with hooks enabled, not pre-populated for every repo you have cloned. If `wtx clean`/`wtx list` report scanning fewer repos than you expect, that's why; it's not a bug, there's just nothing to clean up yet for a repo you've only ever worked in via its main checkout.
 - **MCP server** registered in `~/.pi/agent/mcp.json`:
   ```json
   "code-review-graph": {
@@ -146,16 +155,17 @@ Chosen over graphify and codegraph (both evaluated and rejected — see GitHub i
 ```mermaid
 sequenceDiagram
   actor You
-  participant wtnew
+  participant WtxNew as wtx new
   participant wt as wt (worktrunk)
   participant Hooks as post-start hooks
   participant CRG as code-review-graph
   participant GH as GitHub
+  participant WtxClean as wtx clean
 
-  You->>wtnew: wtnew
-  wtnew->>You: existing worktrees for this repo? + prompt
-  You->>wtnew: "fix pricing bug" (or blank)
-  wtnew->>wt: wt switch --create branch
+  You->>WtxNew: wtx new
+  WtxNew->>You: existing worktrees for this repo? + prompt
+  You->>WtxNew: "fix pricing bug" (or blank)
+  WtxNew->>wt: wt switch --create branch
   wt->>Hooks: run post-start
   Hooks->>Hooks: venv symlink, copy-ignored
   Hooks->>Hooks: code -n (open VS Code)
@@ -165,13 +175,13 @@ sequenceDiagram
 
   Note over You,GH: time passes, work happens, PR opened
 
-  You->>wtclean: wtclean --dry-run
-  wtclean->>wt: wt list --format json per repo
-  wtclean->>GH: gh pr list --head branch
-  GH-->>wtclean: open PR found, or not
-  wtclean-->>You: grouped report, size, merge status, total
-  You->>wtclean: wtclean -y
-  wtclean->>wt: wt remove branch
+  You->>WtxClean: wtx clean --dry-run
+  WtxClean->>wt: wt list --format json per repo
+  WtxClean->>GH: gh pr list --head branch
+  GH-->>WtxClean: open PR found, or not
+  WtxClean-->>You: grouped report, size, merge status, total
+  You->>WtxClean: wtx clean -y
+  WtxClean->>wt: wt remove branch
   wt->>Hooks: run pre-remove
   Hooks->>Hooks: protect main and master and live
   Hooks->>CRG: crg-daemon remove + unregister
@@ -181,7 +191,7 @@ sequenceDiagram
 **Starting work on something:**
 ```
 cd ~/projects/hellofresh/<repo>   # or wherever you already are
-wtnew                              # prompts for a description, creates the worktree,
+wtx new                            # prompts for a description, creates the worktree,
                                     # opens VS Code, registers+builds+watches it in code-review-graph
 ```
 
@@ -197,12 +207,15 @@ No re-reading raw files needed for orientation questions — the graph is alread
 
 **Cleaning up:**
 ```
-wtclean --dry-run           # see what's old and safe to remove, with size + merge status
-wtclean                      # remove worktrees >2 weeks old, skipping dirty ones and ones with an open PR
-wtclean --repo tardis-community   # scope to just one repo
-wtclean -v                   # also show worktrees under the age threshold, for context
+wtx list                          # see everything in flight, across every repo, right now
+wtx clean --dry-run                # see what's old and safe to bulk-remove, with size + merge status
+wtx clean                           # remove worktrees >2 weeks old, skipping dirty ones and ones with an open PR
+wtx clean --repo tardis-community   # scope the bulk sweep to just one repo
+wtx clean -v                        # also show worktrees under the age threshold, for context
+wtx remove fix-pricing-bug          # remove one specific worktree right now, regardless of age
+wtx remove                          # ...or omit the branch for an fzf picker over what's in scope
 ```
-Removal automatically deregisters the worktree from code-review-graph too — nothing manual to remember.
+Removal (via either `clean` or `remove`) automatically deregisters the worktree from code-review-graph too — nothing manual to remember.
 
 **If code-review-graph or its daemon ever misbehaves:**
 ```
@@ -242,7 +255,7 @@ flowchart TD
 
 Same repo, same `project.name` now, regardless of which worktree (or the main checkout) pi was launched from. Confirmed end-to-end too: a real `wt switch --create` under the new template still runs every post-start hook correctly (venv, copy-ignored, VS Code, registry, code-review-graph register+build+daemon-watch) and cleans up correctly on removal.
 
-**What this doesn't fix, and why it's fine:** project memory is resolved *once*, when a pi session starts — not re-evaluated if you `cd` mid-session. That's an existing pi-hermes-memory design choice, unrelated to worktrees, and the right mental model already matches how you'd naturally work: `cd`/`wtnew` into the worktree first, *then* start (or resume) the pi session there, same as you'd already do for the main checkout.
+**What this doesn't fix, and why it's fine:** project memory is resolved *once*, when a pi session starts — not re-evaluated if you `cd` mid-session. That's an existing pi-hermes-memory design choice, unrelated to worktrees, and the right mental model already matches how you'd naturally work: `cd`/`wtx new` into the worktree first, *then* start (or resume) the pi session there, same as you'd already do for the main checkout.
 
 **What doesn't migrate automatically:** worktrees created *before* this fix (e.g. an existing one under `.../tardis-community/wip-20260724-151503`) keep the old branch-leaf shape — git worktrees can't be safely `mv`'d the way a main checkout can (linked-worktree admin files hold absolute paths). They'll just have branch-named memory/skill scoping until removed; new worktrees created after this fix all get the corrected shape automatically.
 

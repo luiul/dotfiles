@@ -20,8 +20,8 @@ worktree-path = "~/worktrees/{{ owner }}/{{ branch | sanitize }}/{{ repo }}"
 exclude = [".venv/", ".DS_Store"]
 
 # Symlink .venv (shared, handled separately), copy other gitignored files (.vscode/settings.json,
-# .env, etc.) via reflink, open the new worktree in VS Code, register the repo so `wtclean`
-# can find and sweep its worktrees later from anywhere, and register+build+watch the worktree
+# .env, etc.) via reflink, open the new worktree in VS Code, register the repo so `wtx clean`
+# (or `wtx list`/`wtx remove`) can find and sweep its worktrees later from anywhere, and register+build+watch the worktree
 # in code-review-graph so its branch-specific code graph is queryable/kept fresh like the main
 # repo's. Guarded by `command -v` so this is a no-op on machines without code-review-graph.
 [post-start]

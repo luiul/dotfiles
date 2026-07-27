@@ -385,7 +385,6 @@
         "**/.forgejo/workflows/*.yml",
         "**/.forgejo/workflows/*.yaml"
     ],
-    "workbench.statusBar.visible": false,
     "workbench.layoutControl.enabled": false,
     "chat.titleBar.openInAgentsWindow.enabled": false,
     "workbench.browser.showInTitleBar": false

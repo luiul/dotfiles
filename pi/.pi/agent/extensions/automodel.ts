@@ -110,13 +110,40 @@ function loadConfig(): AutoModelConfig {
 	}
 }
 
+// Bare `cd <path>` never mutates anything on its own -- it's the near-universal first line of
+// every multi-command bash call in this workflow (the model habitually `cd`s into the worktree
+// before doing anything else). A standalone `VAR=value` assignment (no trailing command on the
+// same segment) is likewise side-effect-free.
+const CD_ONLY_RE = /^cd\s+\S+$/;
+const VAR_ASSIGN_ONLY_RE = /^[A-Za-z_][A-Za-z0-9_]*=\S*$/;
+
+// Real-world bash calls are multi-line/multi-command (`cd x\n...`, `a && b`, `a; b`, `a | b`).
+// Matching the readonly prefixes against the *whole* raw command string means a single leading
+// `cd <path>` (or var assignment) line defeats the check for every subsequent line, so a call
+// that's 100% cat/ls/grep after the `cd` still gets classified "mutating" -- which was firing an
+// execute-mode switch (and a confirmation prompt) on almost every read-only investigation. Split
+// into segments and require ALL of them to be safe instead.
+function classifyBashCommand(command: string, config: AutoModelConfig): Classification {
+	const segments = command
+		.split(/\r?\n|&&|\|\||[;|]/)
+		.map((segment) => segment.trim())
+		.filter((segment) => segment.length > 0);
+	if (segments.length === 0) return "neutral";
+
+	const allSafe = segments.every((segment) => {
+		if (CD_ONLY_RE.test(segment)) return true;
+		if (VAR_ASSIGN_ONLY_RE.test(segment)) return true;
+		return config.readOnlyBashPrefixes.some((prefix) => segment.startsWith(prefix));
+	});
+	return allSafe ? "readonly" : "mutating";
+}
+
 function classifyTool(toolName: string, input: unknown, config: AutoModelConfig): Classification {
 	if (config.mutatingTools.includes(toolName)) return "mutating";
 	if (ALWAYS_READONLY_TOOLS.has(toolName)) return "readonly";
 	if (toolName === "bash") {
 		const command = String((input as { command?: string })?.command ?? "").trim();
-		const isReadOnly = config.readOnlyBashPrefixes.some((prefix) => command.startsWith(prefix));
-		return isReadOnly ? "readonly" : "mutating";
+		return classifyBashCommand(command, config);
 	}
 	// Everything else (memory, skill_manage, slack_*, kb_*, drawio_*, excalidraw_*, the
 	// generic mcp gateway, ...) is a side effect unrelated to code plan/execute -- ignore it.

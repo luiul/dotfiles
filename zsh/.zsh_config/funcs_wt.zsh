@@ -146,24 +146,25 @@ _wtx_new() {
 		return 1
 	fi
 
+	# Resolved via git-common-dir (not --show-toplevel) so this also works
+	# correctly when wtx new is run from inside an existing worktree, not
+	# just the main checkout. Computed unconditionally (not gated on jq)
+	# since the reuse path below needs it too, regardless of jq presence.
+	local repo_root
+	repo_root=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+	[[ -n "$repo_root" ]] && repo_root=$(dirname "$repo_root")
+
 	# Show what's already in flight for this repo before asking for a new
 	# description — avoids accidentally starting a near-duplicate of work
-	# that's already sitting in another worktree. Resolved via git-common-dir
-	# (not --show-toplevel) so this also works correctly when wtx new is run
-	# from inside an existing worktree, not just the main checkout.
-	if command -v jq &>/dev/null; then
-		local repo_root
-		repo_root=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
-		[[ -n "$repo_root" ]] && repo_root=$(dirname "$repo_root")
-		if [[ -n "$repo_root" ]]; then
-			local existing
-			existing=$(wt -C "$repo_root" --config-set list.json-schema=1 list --format json 2>/dev/null \
-				| LC_ALL=C tr -d '\033' \
-				| jq -r '.[] | select(.is_main != true and .is_current != true) | "  \(.branch)"' 2>/dev/null)
-			if [[ -n "$existing" ]]; then
-				echo "Existing worktrees for $(basename "$repo_root"):"
-				echo "$existing"
-			fi
+	# that's already sitting in another worktree.
+	if [[ -n "$repo_root" ]] && command -v jq &>/dev/null; then
+		local existing
+		existing=$(wt -C "$repo_root" --config-set list.json-schema=1 list --format json 2>/dev/null \
+			| LC_ALL=C tr -d '\033' \
+			| jq -r '.[] | select(.is_main != true and .is_current != true) | "  \(.branch)"' 2>/dev/null)
+		if [[ -n "$existing" ]]; then
+			echo "Existing worktrees for $(basename "$repo_root"):"
+			echo "$existing"
 		fi
 	fi
 
@@ -194,9 +195,26 @@ _wtx_new() {
 
 	if git show-ref --verify --quiet "refs/heads/$branch"; then
 		echo "Branch '$branch' already exists — reusing its worktree."
-		# post-start hooks (VS Code, venv, copy-ignored) only fire on
-		# creation, so open the editor ourselves when reusing.
-		wt switch "$branch" "$@" && code -n .
+		# post-start hooks (VS Code, venv, copy-ignored, herdr registration)
+		# only fire on creation (per wt's own docs: "wt switch — Runs
+		# pre-start/post-start hooks on --create") — reusing an existing
+		# worktree skips them entirely. Replicate what's needed here: open
+		# the editor ourselves, then re-run just the "herdr" post-start hook
+		# (registers the repo + this worktree as herdr workspaces) so a
+		# worktree that predates the herdr hook, or is being reused from a
+		# fresh terminal, still shows up in herdr instead of silently never
+		# getting registered.
+		if wt switch "$branch" "$@"; then
+			code -n .
+			if [[ -n "$repo_root" ]]; then
+				local wt_path
+				wt_path=$(git -C "$repo_root" worktree list --porcelain 2>/dev/null | awk -v b="refs/heads/$branch" '
+					$1 == "worktree" { p = substr($0, 10) }
+					$1 == "branch" && $2 == b { print p }
+				')
+				[[ -n "$wt_path" ]] && wt -C "$wt_path" hook post-start herdr -y &>/dev/null
+			fi
+		fi
 	else
 		# Creation-time setup (VS Code, venv symlink, copy-ignored, repo
 		# registration) is handled by the global post-start hooks in

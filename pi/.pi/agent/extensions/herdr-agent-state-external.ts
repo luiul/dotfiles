@@ -25,6 +25,10 @@
 // Opt out with PI_HERDR_EXTERNAL_DISABLE=1.
 
 import { execFile } from "node:child_process";
+import { mkdir, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const HERDR_BIN = process.env.HERDR_BIN_PATH || "herdr";
 const SOURCE = "herdr:pi-external";
@@ -102,12 +106,59 @@ async function createPaneForCwd(cwd: string): Promise<string | undefined> {
   return created?.result?.root_pane?.pane_id;
 }
 
+// Cross-process mutex for the create path: two pi processes launched at
+// almost the same moment in a cwd herdr has never seen (e.g. two VS Code
+// terminals opened together) would otherwise both find no existing pane and
+// both call `workspace create`, producing two workspaces for the same
+// directory. An atomic `mkdir` (fails with EEXIST if another process holds
+// it) serializes the check-then-create across processes, not just within
+// one. If the lock can't be acquired within the deadline (contention, a
+// stale lock from a crashed process, or no permission to write tmpdir), we
+// give up and proceed unlocked rather than risk hanging pi's startup
+// forever; worst case reverts to the original best-effort behavior.
+function lockDirFor(cwd: string): string {
+  const hash = createHash("sha1").update(cwd).digest("hex").slice(0, 16);
+  return join(tmpdir(), `pi-herdr-pane-lock-${hash}`);
+}
+
+async function withCwdLock<T>(cwd: string, fn: () => Promise<T>): Promise<T> {
+  const dir = lockDirFor(cwd);
+  const deadline = Date.now() + 5000;
+  let owned = false;
+  while (!owned) {
+    try {
+      await mkdir(dir);
+      owned = true;
+    } catch (err: any) {
+      if (err?.code !== "EEXIST" || Date.now() > deadline) {
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 100 + Math.random() * 150));
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    if (owned) {
+      await rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+}
+
 async function resolvePaneId(cwd: string): Promise<string | undefined> {
   const existing = await findPaneForCwd(cwd);
   if (existing) {
     return existing;
   }
-  return createPaneForCwd(cwd);
+  return withCwdLock(cwd, async () => {
+    // Re-check inside the lock: another process may have created a pane for
+    // this cwd while we were waiting to acquire it.
+    const recheck = await findPaneForCwd(cwd);
+    if (recheck) {
+      return recheck;
+    }
+    return createPaneForCwd(cwd);
+  });
 }
 
 let reportSeq = Date.now() * 1000;
@@ -254,8 +305,6 @@ export default function (pi) {
     const sessionPath = safeGet(() => ctx?.sessionManager?.getSessionFile?.());
     const sessionId = safeGet(() => ctx?.sessionManager?.getSessionId?.());
     agentActive = ctx?.isIdle?.() === false;
-    lastState = undefined; // force the first publish through
-    lastMessage = undefined;
 
     // Don't block pi's own startup on herdr CLI round-trips; resolve and report
     // in the background.

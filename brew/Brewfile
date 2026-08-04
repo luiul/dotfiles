@@ -44,6 +44,8 @@ brew "opentofu"
 brew "poppler"
 # Utility that provides fast incremental file transfer
 brew "rsync"
+# CLI proxy to minimize LLM token consumption
+brew "rtk"
 # Autoformat shell script source code
 brew "shfmt"
 # CLI for snowflake

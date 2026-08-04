@@ -261,6 +261,7 @@
     "telemetry.telemetryLevel": "off",
     "redhat.telemetry.enabled": false,
     "window.openFilesInNewWindow": "on",
+    "window.confirmBeforeClose": "always",
     // === Files/Housekeeping ===
     "files.autoSave": "onWindowChange",
     "files.exclude": {

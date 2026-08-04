@@ -17,3 +17,6 @@ alias rmd='rm -ri' # Interactive directory removal
 
 # Homebrew Services for Borders
 alias borders-restart='brew services restart borders'
+
+# Coppice (path-based CLI for git worktrees, wraps wt)
+alias cop=coppice

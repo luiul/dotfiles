@@ -3,6 +3,12 @@
 # extracted directly from the local Slack desktop app (via slacktokens).
 # No browser, no DevTools, no manual copy-paste.
 #
+# Note: pi's Slack reading (via slack-mcp-server-hf) does not use slackcli or
+# this script at all -- it extracts its own fresh session on every launch,
+# fully automatically. This script exists for slackcli itself (e.g. Claude
+# Code's fallback path, or manual ad-hoc use), in case slackcli's own stored
+# session (`slackcli auth list`) goes stale.
+#
 # Usage: slack-relogin [workspace-key] [workspace-url]
 #   workspace-key: key in slacktokens' JSON output (default: hellofresh, matches "https://hellofresh.slack.com/")
 #   workspace-url: value to pass to slackcli --workspace-url (default: https://hellofresh.slack.com)

@@ -28,7 +28,7 @@
     },
     "slack": {
       "command": "slack-mcp-server-hf",
-      "args": ["--transport", "stdio", "-no-cache", "-enabled-tools", "conversations_history,conversations_replies,conversations_search_messages,channels_list,conversations_add_message"],
+      "args": ["--transport", "stdio", "-no-cache", "-enabled-tools", "conversations_history,conversations_replies,conversations_search_messages,channels_list"],
       "lifecycle": "lazy",
       "directTools": true
     },

@@ -1,14 +1,38 @@
 #!/usr/bin/env bash
-# Launches korotovsky/slack-mcp-server for the HelloFresh workspace, pulling a
-# fresh xoxc/xoxd browser session straight from the local Slack desktop app
-# (via slacktokens) on every start -- so pi's MCP server always starts with a
-# live token instead of a possibly-expired cached one.
+# Launches korotovsky/slack-mcp-server for the HelloFresh workspace, READ-ONLY
+# (see -enabled-tools in ~/dotfiles/pi/.pi/agent/mcp.json -- conversations_add_message
+# is intentionally not enabled; this tool is for reading Slack, not posting).
 #
-# Sets Enterprise Grid mitigation flags (custom User-Agent + TLS handshake)
-# defensively, since HelloFresh's Slack Enterprise Grid runs session-forking
-# anomaly detection that can sign the whole account out when a scraped
-# session cookie is replayed from a second client. See the
-# `slack-cli-auth-hellofresh` skill for the full history/root cause.
+# Fully self-contained, fully automatic, no manual steps ever: pulls a fresh
+# xoxc/xoxd browser session straight from the Slack desktop app's local
+# storage via `slacktokens` on every launch. Since this is a `lifecycle:
+# lazy` MCP server (see mcp.json), it re-launches (and so re-extracts a fresh
+# cookie) each time pi needs it -- if the previous session died for any
+# reason, the very next Slack read just works again with no action from you
+# beyond having Slack.app open and signed in, which you'd want anyway.
+#
+# Root cause of the periodic "logged out of Slack, suspicious activity"
+# problem: any tool that replays the SAME live session cookie the Slack
+# desktop app is actively using triggers HelloFresh Enterprise Grid's
+# session-forking anomaly detection (one cookie, concurrent clients looks
+# like a stolen cookie), which signs the whole account out -- hitting the
+# real desktop app too -- and emails you "suspicious activity". This is a
+# structural property of borrowing the desktop app's own session and can't
+# be fully eliminated without either (a) a separately-obtained browser
+# session (requires a one-time manual DevTools capture -- explicitly ruled
+# out, we don't do that) or (b) a dedicated bot token via a Slack Security
+# review (KB000103), which is its own long process and can't read DMs or use
+# search (bot tokens don't get those scopes) -- not a full replacement for
+# reading Slack the way a human does. So the mitigation here is to minimize
+# concurrent consumers of the live cookie: this wrapper is the ONLY
+# automated tool that touches it (no slackcli involved, no separate cached
+# copy sitting around), which keeps it at exactly "desktop app + this
+# wrapper" instead of three or more concurrent readers.
+#
+# If Slack ever does force a real sign-out, you'll need to sign back into
+# Slack.app yourself (that step can't be scripted -- it's SSO/MFA-gated by
+# design) -- the very next call to this wrapper then picks up the fresh
+# cookie automatically, no separate re-auth command needed.
 #
 # Usage: slack-mcp-server-hf [args passed through to slack-mcp-server]
 set -euo pipefail

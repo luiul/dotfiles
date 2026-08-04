@@ -159,7 +159,7 @@ CLI-first. Reach every system through its CLI, or a documented `curl` REST recip
 | Databricks | `databricks` CLI | OAuth |
 | AWS (S3, etc.) | `aws` CLI | SSO (`hfsso` session, browser) |
 | Google Docs | `md2gdoc` | service account |
-| Slack | `slack` MCP server (pi, primary) + `slackcli` (fallback CLI, pi & Claude) + `curl` Web API (directory reads) | browser session tokens (xoxc+xoxd), re-extracted per launch for MCP or stored by `slackcli`; `SLACK_TOKEN` (env) for directory reads |
+| Slack | `slack` MCP server (pi, read-only, only path) + `curl` Web API (directory reads) | browser session tokens (xoxc+xoxd), re-extracted automatically per launch; `SLACK_TOKEN` (env) for directory reads |
 | HelloDev KB | MCP (pi & Claude, via `pi-mcp-adapter`) | none required |
 
 Do not use the Atlassian MCP for Jira or Confluence; the CLI and REST recipes below replace it.
@@ -412,52 +412,30 @@ JSON
 
 - After creation, write the returned page ID back into the local file's frontmatter so future edits route correctly.
 
-## Slack (`slack-mcp-server` MCP + `slackcli`/`curl` fallback)
+## Slack (`slack-mcp-server` MCP) — READ ONLY, MCP-only, fully automatic
 
-**Primary path for pi (read, search, post): the `slack` MCP server**, wired natively into `~/dotfiles/pi/.pi/agent/mcp.json` — no CLI shelling-out, pi calls `slack_conversations_history`, `slack_conversations_replies`, `slack_conversations_search_messages`, `slack_channels_list`, `slack_conversations_add_message` directly. Backed by `korotovsky/slack-mcp-server` (npm global `slack-mcp-server@1.3.0`, tracked in `brew/Brewfile`), launched through a wrapper: `~/dotfiles/hellofresh/.local/bin/slack-mcp-server-hf` (stowed onto `PATH`). The wrapper pulls a **fresh** `xoxc`/`xoxd` browser session straight from the Slack **desktop app** via `slacktokens` on every launch (same extraction as `slack-relogin`, just exported as env vars instead of feeding `slackcli`'s credential store), sets `SLACK_MCP_USER_AGENT` + `SLACK_MCP_CUSTOM_TLS=true` (Enterprise Grid anti-detection mitigation the tool ships specifically for this), and execs `slack-mcp-server`. The mcp.json entry passes `-no-cache` (skip the startup users/channels cache build — that bulk fetch is the behavior most likely to trip Enterprise Grid scraping detection per community reports; tradeoff: `#channel-name`/`@user` lookups won't resolve, always use channel/user **IDs**) and `-enabled-tools` scoped to the five tools above (`conversations_add_message` needs no extra flag to allow posting once listed there — see the tool's own docs on `SLACK_MCP_ENABLED_TOOLS` vs `SLACK_MCP_ADD_MESSAGE_TOOL` for channel-restricted alternatives).
+**Per standing instruction: pi only reads Slack, never posts, and never requires manual steps for auth/fallback.** Never call `slack_conversations_add_message` (it isn't even enabled, see below). No browser DevTools, no manual token capture, no slackcli involvement for pi -- everything here is one self-contained script.
 
-Note this is a **different** integration from Claude's: Claude reaches Slack through a hosted OAuth MCP (`slack@claude-plugins-official` -> `https://mcp.slack.com/mcp`, enabled in `~/.claude/settings.json`'s `enabledPlugins`), which requires the Slack workspace admin to have approved the MCP integration via OAuth (gated the same way KB000103 gates a custom Slack App). pi's own OAuth bridge to that same hosted server was tried on 2026-07-13 and repeatedly failed ("invalid or expired state parameter" on the localhost callback), so pi does not use it — `slack-mcp-server` (self-hosted, browser-session auth, no OAuth/admin approval needed) is pi's equivalent instead. If Claude's hosted MCP is ever confirmed working end-to-end for this workspace, it's worth revisiting whether pi's OAuth bridge issue can be retried, but as of now they are two independent, non-interchangeable setups.
+**The only path: the `slack` MCP server**, wired natively into `~/dotfiles/pi/.pi/agent/mcp.json` — pi calls `slack_conversations_history`, `slack_conversations_replies`, `slack_conversations_search_messages`, `slack_channels_list` directly, no CLI shelling-out. Backed by `korotovsky/slack-mcp-server` (npm global `slack-mcp-server@1.3.0`, tracked in `brew/Brewfile`), launched through a wrapper: `~/dotfiles/hellofresh/.local/bin/slack-mcp-server-hf` (stowed onto `PATH`). The wrapper pulls a fresh `xoxc`/`xoxd` browser session straight from the Slack **desktop app** via `slacktokens` on every launch, sets `SLACK_MCP_USER_AGENT` + `SLACK_MCP_CUSTOM_TLS=true` (Enterprise Grid anti-detection mitigation the tool ships specifically for this), and execs `slack-mcp-server`. The mcp.json entry passes `-no-cache` (skip the startup users/channels cache build — that bulk fetch is the behavior most likely to trip Enterprise Grid scraping detection per community reports; tradeoff: `#channel-name`/`@user` lookups won't resolve, always use channel/user **IDs**) and `-enabled-tools` scoped to those four read tools only — `conversations_add_message` is deliberately excluded, so the write tool doesn't exist in this setup at all.
 
-**Known issue (inherited from `slackcli`, not solved by switching tools): the periodic "signed out of Slack, suspicious activity" logout.** Root cause: *any* tool that replays the Slack desktop app's live session cookie — `slackcli`, `slackdump`, `slack-mcp-server`, doesn't matter — is subject to HelloFresh Enterprise Grid's "session forking" anomaly detection (Slack's own writeup: slack.engineering/catching-compromised-cookies), which flags one cookie used concurrently from two clients/TLS fingerprints as possibly stolen, auto-signs the session out, and emails the human "suspicious activity" — and because it's one shared cookie, the kick-out hits the real desktop Slack app too. Confirmed live on 2026-07-22 with `slack-mcp-server`: a single `conversations_history` call round-tripped successfully (auth worked fine, no TLS spoofing even needed), but the *very next* call — via `slackcli`, a separate consumer of the same cookie lineage — came back `invalid_auth`, and a fresh `slack-relogin` attempt also failed immediately after, meaning the account was genuinely signed out server-side (matching the real "suspicious activity" email the human received that same moment), not just a CLI-side token expiry. **Recovery:** log back into Slack.app normally, then run `slack-relogin` once to refresh `slackcli`'s stored session — `slack-mcp-server-hf` needs no separate re-auth since it re-extracts a fresh token on every launch, but a launch immediately after a fresh sign-in can still race the propagation, so retry once if the first call after a fresh login fails.
+**`slackcli` is intentionally not part of pi's Slack setup.** It used to be documented as a fallback CLI, but that just added a second concurrent consumer of the same live desktop-app cookie for no benefit pi actually needs (pi never shells out to it — the MCP tools cover read/search/list already). Fewer concurrent consumers of one cookie means less exposure to the session-forking detection below. (`slackcli` and its own re-auth helper `slack-relogin` still exist in `~/dotfiles/hellofresh/.local/bin/` for ad-hoc manual use or Claude Code's separate fallback path, but pi does not use either.)
 
-**Evaluated `rusq/slackdump` as a replacement (2026-07-22) — rejected outright**, before `slack-mcp-server` was tried. It ships a TLS-fingerprint mitigation (PR #622) for exactly this detection, but it does not work against HelloFresh's Enterprise Grid tenant in practice: `slackdump workspace import <env-file>` validates the `xoxc`/`xoxd` fine ("Workspace added and selected"), but the very next command (`slackdump list channels ...`, tried with and without `-enterprise`) immediately fails with `005 (Initialization Error): invalid_auth`, reproduced twice with freshly extracted credentials, while `slackcli`'s own separately-cached session kept working throughout — `slackdump` simply can't hold a session on this workspace. It's also read-only (archive/dump/list/search, no message-sending), so it could never have replaced `slackcli`/`slack-mcp-server` even if auth had worked. Don't re-attempt without a newer release that specifically claims an Enterprise Grid auth fix.
+Note this is a **different** integration from Claude's: Claude reaches Slack through a hosted OAuth MCP (`slack@claude-plugins-official` -> `https://mcp.slack.com/mcp`, enabled in `~/.claude/settings.json`'s `enabledPlugins`), which requires the Slack workspace admin to have approved the MCP integration via OAuth (gated the same way KB000103 gates a custom Slack App). pi's own OAuth bridge to that same hosted server was tried on 2026-07-13 and repeatedly failed ("invalid or expired state parameter" on the localhost callback), so pi does not use it — `slack-mcp-server` (self-hosted, browser-session auth, no OAuth/admin approval needed) is pi's equivalent instead.
 
-**The durable fix is still unchanged and still not done:** stop borrowing the human session entirely — register a narrowly-scoped Slack **bot app** (`xoxb` token) via HelloFresh Security review (KB000103), requesting only `channels:history`, `channels:read`, `chat:write` for channels the bot is invited to — avoid bundling the broad "sensitive" scopes (`im:history`, `mpim:history`, `groups:history`, `search:read.*`, `users:read.email`) that get auto-denied. A bot token is its own identity, not subject to session-forking detection at all (both `slackcli` and `slack-mcp-server` accept `xoxb` as an alternative to `xoxc`/`xoxd` — the wrapper script would just export `SLACK_MCP_XOXB_TOKEN` instead once one exists), and would eliminate the logout/suspicious-activity problem at the source instead of working around Slack's detection.
+**Known issue, and why it's handled automatically rather than "fixed": the periodic "signed out of Slack, suspicious activity" logout.** Root cause: *any* tool that replays the Slack desktop app's live session cookie is subject to HelloFresh Enterprise Grid's "session forking" anomaly detection (Slack's own writeup: slack.engineering/catching-compromised-cookies), which flags one cookie used concurrently from two clients/TLS fingerprints as possibly stolen, auto-signs the session out, and emails the human "suspicious activity" — and because it's one shared cookie, the kick-out hits the real desktop Slack app too. This can't be fully eliminated while still requiring zero manual steps: the two ways to truly decouple from the desktop app's session are (a) a separately-obtained browser session (needs a one-time manual DevTools capture — explicitly out of scope per standing instruction) or (b) a dedicated read-only bot token via Slack Security review (KB000103) — its own multi-day/week process, and bot tokens can't read DMs or use `search.messages` at all (those scopes don't exist for bots), so it wouldn't fully replace this setup even once approved. Given that, **the actual fix applied is to minimize concurrent consumers of the cookie** (dropped slackcli from pi's path, above) and make recovery fully automatic: the MCP server is `lifecycle: lazy` in mcp.json, so it relaunches — and re-extracts a brand new cookie from `slacktokens` — every time pi needs it. If a session dies mid-use, the *next* Slack read just works again, no separate re-auth command required. **The only truly manual step left, and it's unavoidable:** if Slack force-signs the account out server-side, you have to sign back into Slack.app yourself (SSO/MFA can't be scripted) — after that, the next automatic launch picks the fresh cookie up with no further action.
 
-**Secondary path (fallback CLI, or when MCP tools aren't available): `slackcli`** (shaharia-lab/slackcli, Homebrew tap `shaharia-lab/tap`, `slackcli --version` -> 0.7.0). Same underlying auth (`xoxc`+`xoxd`) and same risk profile as above. slackcli stores its own auth (`slackcli auth list`), independent of `SLACK_TOKEN`.
+**Evaluated `rusq/slackdump` as a replacement (2026-07-22) — rejected outright**, before `slack-mcp-server` was tried. It ships a TLS-fingerprint mitigation (PR #622) for exactly this detection, but it does not work against HelloFresh's Enterprise Grid tenant in practice: `slackdump workspace import <env-file>` validates the `xoxc`/`xoxd` fine ("Workspace added and selected"), but the very next command (`slackdump list channels ...`, tried with and without `-enterprise`) immediately fails with `005 (Initialization Error): invalid_auth`, reproduced twice with freshly extracted credentials. Don't re-attempt without a newer release that specifically claims an Enterprise Grid auth fix.
 
-**Re-auth (preferred, fully automated, no browser/DevTools): `slack-relogin`.** Script at `~/dotfiles/hellofresh/.local/bin/slack-relogin` (stowed onto `PATH`). It uses [`slacktokens`](https://github.com/hishamkaram/slacktokens) (`brew install hishamkaram/slacktokens/slacktokens`) to pull the `xoxc` token + `xoxd` session cookie directly out of the Slack **desktop app's** local storage/Keychain, URL-decodes the cookie, and calls `slackcli auth login-browser` for you. Requires Slack.app installed and logged in.
+**MCP tools available (all read-only):**
 
-```bash
-slack-relogin   # re-authenticates slackcli against hellofresh.slack.com, no prompts
-```
+| Tool | Purpose |
+|------|---------|
+| `slack_conversations_history` (`channel_id`, `limit`) | Read recent channel/DM history |
+| `slack_conversations_replies` (`channel_id`, `thread_ts`) | Read a specific thread |
+| `slack_conversations_search_messages` (`query`) | Search messages |
+| `slack_channels_list` | List channels |
 
-**Fallback (if `slack-relogin` fails, e.g. Slack.app not installed/logged in):** browser DevTools Network tab on `hellofresh.slack.com` → right-click any Slack API request → Copy → **Copy as cURL** → `slackcli auth parse-curl --from-clipboard --login`. The older manual recipe (extract `xoxd`/`xoxc` by hand via `slackcli auth extract-tokens` and pass them to `slackcli auth login-browser --xoxd=... --xoxc=...`) still works too but is the least preferred of the three, purely manual.
-
-```bash
-slackcli auth list                                          # show authenticated workspaces
-slackcli conversations read <channel_id> --limit 20         # read channel history (e.g. C0BFPQSFYLR)
-slackcli conversations read <channel_id> --thread-ts <ts>   # read a specific thread
-slackcli conversations read <channel_id> --json             # JSON (includes reply timestamps)
-slackcli search messages "deploy failed"                     # search messages
-slackcli messages send --recipient-id <id> --message "hi"   # post (add --thread-ts to reply)
-```
-
-A Slack URL like `https://hellofresh.slack.com/archives/C0BFPQSFYLR` carries the channel ID as its last path segment (`C0BFPQSFYLR`); pass it straight to `slackcli conversations read`.
-
-**Before posting any Slack response (`slackcli messages send` or the MCP `slack_conversations_add_message` tool), draft it into a scratch file first for review** (per the global Scratch Files rule: `~/scratch/<descriptive-name>.md`, print the absolute path). Only post after I've reviewed/approved the draft. This applies to new messages and thread replies alike; skip the scratch step only if I explicitly say to post directly.
-
-**MCP tool equivalents (pi's primary path, no shell-out):**
-
-| Tool | Equivalent to |
-|------|---------------|
-| `slack_conversations_history` (`channel_id`, `limit`) | `slackcli conversations read <channel_id> --limit N` |
-| `slack_conversations_replies` (`channel_id`, `thread_ts`) | `slackcli conversations read <channel_id> --thread-ts <ts>` |
-| `slack_conversations_search_messages` (`query`) | `slackcli search messages "..."` |
-| `slack_channels_list` | `slackcli search channels "..."` (needs cache; `-no-cache` is set, so prefer known channel IDs over name lookups) |
-| `slack_conversations_add_message` (`channel_id`, `payload`) | `slackcli messages send --recipient-id <id> --message "..."` |
-
-Since the mcp.json entry passes `-no-cache`, always pass channel IDs (e.g. `C0BFPQSFYLR`), not `#channel-name`/`@user` lookups, to these tools.
+Since the mcp.json entry passes `-no-cache`, always pass channel IDs (e.g. `C0BFPQSFYLR`), not `#channel-name`/`@user` lookups, to these tools. A Slack URL like `https://hellofresh.slack.com/archives/C0BFPQSFYLR` carries the channel ID as its last path segment.
 
 **Directory reads (fallback): `curl` Web API** with `SLACK_TOKEN` from `.env`. This HelloFresh **user token** authenticates (`auth.test` ok) but only carries **directory-read** scopes (`channels:read`, `groups:read`, `users:read`, `team:read`). It works for:
 
@@ -469,27 +447,7 @@ curl -s -H "Authorization: Bearer $SLACK_TOKEN" -G --data-urlencode 'limit=20' \
 curl -s -H "Authorization: Bearer $SLACK_TOKEN" https://slack.com/api/auth.test | jq .  # identity
 ```
 
-That token **cannot** post, read message history, or search: `chat.postMessage`, `conversations.history`, and `search.messages` all return `missing_scope`. Use the `slack` MCP tools or `slackcli` (above) for post/history/search. The `curl` messaging recipes below only apply if a messaging-scoped token (`chat:write`, `channels:history` + `groups:history`, `search:read`) is ever set in `SLACK_TOKEN`.
-
-When a properly scoped token is set, the messaging recipes are:
-
-```bash
-# Post a message (needs chat:write)
-curl -s -H "Authorization: Bearer $SLACK_TOKEN" -H 'Content-type: application/json' \
-  -d '{"channel":"#tribe-us-ops-analytics","text":"hello"}' \
-  https://slack.com/api/chat.postMessage | jq '.ok'
-
-# Read recent channel history (needs channels:history; channel ID, e.g. C0123456789)
-curl -s -H "Authorization: Bearer $SLACK_TOKEN" -G \
-  --data-urlencode 'channel=<channel_id>' --data-urlencode 'limit=20' \
-  https://slack.com/api/conversations.history | jq '.messages[].text'
-
-# Search messages (needs search:read, user token)
-curl -s -H "Authorization: Bearer $SLACK_TOKEN" -G --data-urlencode 'query=deploy failed' \
-  https://slack.com/api/search.messages | jq '.messages.matches[].text'
-```
-
-Note: `slackcli` (Homebrew) already covers post/history/search via browser session tokens, so a custom uv Slack tool is no longer needed.
+That token **cannot** read message history or search: `conversations.history` and `search.messages` return `missing_scope`. Use the `slack` MCP tools (above) for history/search.
 
 ## HelloDev Knowledge Base
 

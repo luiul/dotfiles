@@ -69,21 +69,6 @@ if command -v code-review-graph >/dev/null 2>&1; then
   command -v crg-daemon >/dev/null 2>&1 && crg-daemon add "{{ worktree_path }}" --alias "{{ repo }}-{{ branch | sanitize }}" >/dev/null 2>&1
 fi
 '''
-# Register the new worktree as a herdr workspace so it shows up in the herdr TUI
-# alongside the main checkout's workspace, instead of only existing as a plain
-# git worktree on disk. herdr's `worktree open --path` needs `--cwd {{ repo_path }}`
-# (the MAIN checkout, not the new worktree) to satisfy its "must act from the repo
-# parent workspace" rule -- passing the worktree's own path as --cwd fails with
-# linked_worktree_source. --no-focus keeps this a silent background registration
-# (like the registry/crg hooks above), matching the herdr entry list without
-# stealing focus from wherever `wtx new` was run; flip to --focus to auto-switch
-# into the new workspace on every creation instead.
-herdr = '''
-if command -v herdr >/dev/null 2>&1; then
-  herdr worktree open --cwd "{{ repo_path }}" --path "{{ worktree_path }}" --label "{{ repo }}-{{ branch | sanitize }}" --no-focus >/dev/null 2>&1 || true
-fi
-'''
-
 # Refuse to remove protected branches. pre-* hooks abort on non-zero exit.
 # crg-cleanup deregisters the worktree from code-review-graph/its daemon before removal; always
 # exits 0 so a code-review-graph hiccup never blocks a worktree removal.

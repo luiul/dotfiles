@@ -20,14 +20,21 @@ worktree-path = "~/worktrees/{{ owner }}/{{ branch | sanitize }}/{{ repo }}"
 exclude = [".venv/", ".DS_Store"]
 
 # Symlink .venv (shared, handled separately), copy other gitignored files (.vscode/settings.json,
-# .env, etc.) via reflink, open the new worktree in VS Code, register the repo so `coppice list`
-# (or `coppice remove`) can find its worktrees later from anywhere, and register+build+watch the worktree
-# in code-review-graph so its branch-specific code graph is queryable/kept fresh like the main
-# repo's. Guarded by `command -v` so this is a no-op on machines without code-review-graph.
+# .env, etc.) via reflink, register the repo so `coppice list` (or `coppice remove`) can find its
+# worktrees later from anywhere, and register+build+watch the worktree in code-review-graph so
+# its branch-specific code graph is queryable/kept fresh like the main repo's. Guarded by
+# `command -v` so this is a no-op on machines without code-review-graph.
+#
+# Deliberately no VS Code hook here: `coppice new` (aka `cop new`) opens VS Code itself, at the
+# matching subdirectory of the new worktree when pointed at a project inside a monorepo (e.g.
+# tardis-community's pipelines/<tribe>/<squad>), not just the worktree root -- a `{{
+# worktree_path }}`-only hook here can't express that offset, it only ever sees the root, so a
+# hook doing the same thing would open a second, wrong-location window on every `cop new`. Only a
+# no-op gap for plain `wt switch` used outside `coppice`; re-add `code -n {{ worktree_path }}`
+# below if that stops being rare enough to ignore.
 [post-start]
 venv = "ln -sfn {{ repo_path }}/.venv {{ worktree_path }}/.venv"
 copy = "wt step copy-ignored --force"
-vscode = "code -n {{ worktree_path }}"
 registry = "mkdir -p ~/.cache/wt && echo '{{ repo_path }}' >> ~/.cache/wt/known-repos && sort -u -o ~/.cache/wt/known-repos ~/.cache/wt/known-repos"
 # pi/Claude discover AGENTS.md/CLAUDE.md by walking up from cwd to the filesystem root,
 # concatenating every match along the way. From the main checkout ({{ repo_path }}, e.g.

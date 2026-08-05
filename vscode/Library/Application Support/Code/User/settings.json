@@ -35,8 +35,6 @@
     "editor.minimap.enabled": false,
     "editor.minimap.autohide": "mouseover",
     "editor.minimap.renderCharacters": false,
-    "editor.scrollbar.verticalScrollbarSize": 8,
-    "editor.scrollbar.horizontalScrollbarSize": 8,
     "editor.folding": true,
     "editor.showFoldingControls": "mouseover",
     "editor.glyphMargin": true,

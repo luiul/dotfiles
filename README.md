@@ -127,11 +127,11 @@ Two files track this state, both auto-updated on every commit via the pre-commit
 | `Marketplacefile` | `<name> <owner/repo>` per line    | Marketplaces to register with `claude plugin marketplace add` |
 | `Pluginfile`      | `<plugin>@<marketplace>` per line | Plugins to install with `claude plugin install`               |
 
-On a fresh machine, `setup.sh` first registers marketplaces, then installs plugins. `upgrade-tools` refreshes marketplace indices and updates each installed plugin.
+On a fresh machine, `setup.sh` first registers marketplaces, then installs plugins. Marketplace/plugin updates are handled by Claude Code itself, not by `upgrade-tools`.
 
 ## `upgrade-tools`
 
-The `upgrade-tools` shell function (defined in `zsh/.zsh_config/funcs.zsh`) upgrades everything in one go: Homebrew, `uv` tools, npm globals, Claude Code, and Claude plugins. Missing tools are skipped rather than failing. Pass `--check` (or `-c`) for a dry-run preview of what is outdated.
+The `upgrade-tools` shell function (defined in `zsh/.zsh_config/funcs.zsh`) upgrades everything in one go: Homebrew, `uv` tools, and npm globals. Missing tools are skipped rather than failing. Pass `--check` (or `-c`) for a dry-run preview of what is outdated.
 
 ## Pre-commit Hook
 

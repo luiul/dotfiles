@@ -42,82 +42,92 @@ md-to-rtf() {
 }
 
 upgrade-tools() {
-	# TRAPINT returning 0 swallows Ctrl+C so only the current step dies and
-	# the next step runs. Use Ctrl+\ (SIGQUIT) to abort the whole function.
-	TRAPINT() { return 0; }
+	# Everything lives in a try/always block so cleanup (below) is guaranteed
+	# to run even if the try-list is aborted abnormally (e.g. by an untrapped
+	# signal) -- see zshmisc(1), "{ list } always { list }". Without this,
+	# aborting mid-run could leave the TRAPINT override and helper functions
+	# defined globally for the rest of the shell session (Ctrl+C would then
+	# stay silently swallowed everywhere, not just inside this function).
+	{
+		# TRAPINT returning 0 swallows Ctrl+C so only the current step dies and
+		# the next step runs. Use Ctrl+\ (SIGQUIT) to abort the whole function.
+		TRAPINT() { return 0; }
 
-	_report() {
-		case $2 in
-		0) print -P "  %F{green}✓%f $1 up to date" ;;
-		130) print -P "  %F{yellow}⚠%f $1 interrupted" ;;
-		*) print -P "  %F{red}✗%f $1 failed (exit $2)" ;;
-		esac
-	}
-	_run() {
-		local label=$1 tool=$2
-		shift 2
-		print -P "\n%F{blue}==>%f $label"
-		if ! command -v "$tool" &>/dev/null; then
-			print -P "  %F{yellow}⊘%f $tool not installed (skipped)"
+		_report() {
+			case $2 in
+			0) print -P "  %F{green}✓%f $1 up to date" ;;
+			130) print -P "  %F{yellow}⚠%f $1 interrupted" ;;
+			*) print -P "  %F{red}✗%f $1 failed (exit $2)" ;;
+			esac
+		}
+		_run() {
+			local label=$1 tool=$2
+			shift 2
+			print -P "\n%F{blue}==>%f $label"
+			# "command" bypasses any shell function/alias named after the tool,
+			# so a shadowed "npm"/"brew"/"claude" etc. can't hijack these
+			# privileged upgrade calls.
+			if ! command -v "$tool" &>/dev/null; then
+				print -P "  %F{yellow}⊘%f $tool not installed (skipped)"
+				return
+			fi
+			command "$@"
+			_report "$label" $?
+		}
+		_preview() {
+			local label=$1 tool=$2
+			shift 2
+			print -P "\n%F{blue}==>%f $label"
+			if ! command -v "$tool" &>/dev/null; then
+				print -P "  %F{yellow}⊘%f $tool not installed"
+				return
+			fi
+			if (($# == 0)); then
+				print -P "  %F{yellow}⊘%f no preview available"
+				return
+			fi
+			local out
+			out=$(command "$@" 2>/dev/null)
+			[[ -n "$out" ]] && print -r -- "$out" | sed 's/^/  /' || print -P "  %F{green}✓%f up to date"
+		}
+
+		if [[ $1 == --check || $1 == -c ]]; then
+			command -v brew &>/dev/null && command brew update >/dev/null 2>&1
+			_preview "Homebrew"            brew   brew outdated
+			_preview "uv tools"            uv
+			_preview "npm global packages" npm    npm outdated -g
+			_preview "Claude Code"         claude
+			_preview "Claude plugins"      claude
 			return
 		fi
-		"$@"
-		_report "$label" $?
-	}
-	_preview() {
-		local label=$1 tool=$2
-		shift 2
-		print -P "\n%F{blue}==>%f $label"
-		if ! command -v "$tool" &>/dev/null; then
-			print -P "  %F{yellow}⊘%f $tool not installed"
-			return
-		fi
-		if (($# == 0)); then
-			print -P "  %F{yellow}⊘%f no preview available"
-			return
-		fi
-		local out
-		out=$("$@" 2>/dev/null)
-		[[ -n "$out" ]] && print "$out" | sed 's/^/  /' || print -P "  %F{green}✓%f up to date"
-	}
 
-	if [[ $1 == --check || $1 == -c ]]; then
-		command -v brew &>/dev/null && brew update >/dev/null 2>&1
-		_preview "Homebrew"            brew   brew outdated
-		_preview "uv tools"            uv
-		_preview "npm global packages" npm    npm outdated -g
-		_preview "Claude Code"         claude
-		_preview "Claude plugins"      claude
-		unfunction _run _report _preview TRAPINT
-		return
-	fi
+		_run "Homebrew" brew sh -c 'command brew update && command brew upgrade && command brew cleanup'
+		_run "uv tools" uv uv tool upgrade --all
+		_run "npm global packages" npm npm update -g
+		_run "Claude Code" claude claude update
 
-	_run "Homebrew" brew sh -c 'brew update && brew upgrade && brew cleanup'
-	_run "uv tools" uv uv tool upgrade --all
-	_run "npm global packages" npm npm update -g
-	_run "Claude Code" claude claude update
-
-	print -P "\n%F{blue}==>%f Claude plugins"
-	if ! command -v claude &>/dev/null || ! command -v jq &>/dev/null; then
-		print -P "  %F{yellow}⊘%f claude or jq not installed (skipped)"
-	else
-		claude plugin marketplace update
-		_report "marketplace refresh" $?
-		local plugins plugin
-		plugins=$(claude plugin list --json 2>/dev/null | jq -r '.[].id' 2>/dev/null)
-		if [[ -z "$plugins" ]]; then
-			print -P "  %F{yellow}⊘%f no plugins installed (skipped)"
+		print -P "\n%F{blue}==>%f Claude plugins"
+		if ! command -v claude &>/dev/null || ! command -v jq &>/dev/null; then
+			print -P "  %F{yellow}⊘%f claude or jq not installed (skipped)"
 		else
-			while IFS= read -r plugin; do
-				[[ -n "$plugin" ]] && {
-					claude plugin update "$plugin"
-					_report "$plugin" $?
-				}
-			done <<<"$plugins"
+			command claude plugin marketplace update
+			_report "marketplace refresh" $?
+			local plugins plugin
+			plugins=$(command claude plugin list --json 2>/dev/null | command jq -r '.[].id' 2>/dev/null)
+			if [[ -z "$plugins" ]]; then
+				print -P "  %F{yellow}⊘%f no plugins installed (skipped)"
+			else
+				while IFS= read -r plugin; do
+					[[ -n "$plugin" ]] && {
+						command claude plugin update "$plugin"
+						_report "$plugin" $?
+					}
+				done <<<"$plugins"
+			fi
 		fi
-	fi
-
-	unfunction _run _report _preview TRAPINT
+	} always {
+		unfunction _run _report _preview TRAPINT 2>/dev/null
+	}
 }
 
 # Loaded once, imports only zf_rm (not a global rm override) so temp-file

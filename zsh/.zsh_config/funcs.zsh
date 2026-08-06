@@ -65,8 +65,8 @@ upgrade-tools() {
 			shift 2
 			print -P "\n%F{blue}==>%f $label"
 			# "command" bypasses any shell function/alias named after the tool,
-			# so a shadowed "npm"/"brew"/"claude" etc. can't hijack these
-			# privileged upgrade calls.
+			# so a shadowed "npm"/"brew" etc. can't hijack these privileged
+			# upgrade calls.
 			if ! command -v "$tool" &>/dev/null; then
 				print -P "  %F{yellow}⊘%f $tool not installed (skipped)"
 				return
@@ -96,35 +96,12 @@ upgrade-tools() {
 			_preview "Homebrew"            brew   brew outdated
 			_preview "uv tools"            uv
 			_preview "npm global packages" npm    npm outdated -g
-			_preview "Claude Code"         claude
-			_preview "Claude plugins"      claude
 			return
 		fi
 
 		_run "Homebrew" brew sh -c 'command brew update && command brew upgrade && command brew cleanup'
 		_run "uv tools" uv uv tool upgrade --all
 		_run "npm global packages" npm npm update -g
-		_run "Claude Code" claude claude update
-
-		print -P "\n%F{blue}==>%f Claude plugins"
-		if ! command -v claude &>/dev/null || ! command -v jq &>/dev/null; then
-			print -P "  %F{yellow}⊘%f claude or jq not installed (skipped)"
-		else
-			command claude plugin marketplace update
-			_report "marketplace refresh" $?
-			local plugins plugin
-			plugins=$(command claude plugin list --json 2>/dev/null | command jq -r '.[].id' 2>/dev/null)
-			if [[ -z "$plugins" ]]; then
-				print -P "  %F{yellow}⊘%f no plugins installed (skipped)"
-			else
-				while IFS= read -r plugin; do
-					[[ -n "$plugin" ]] && {
-						command claude plugin update "$plugin"
-						_report "$plugin" $?
-					}
-				done <<<"$plugins"
-			fi
-		fi
 	} always {
 		unfunction _run _report _preview TRAPINT 2>/dev/null
 	}

@@ -15,6 +15,30 @@
 # distinction instead, since the folder name no longer does.
 worktree-path = "~/worktrees/{{ owner }}/{{ branch | sanitize }}/{{ repo }}"
 
+# Keep the default branch fresh before it becomes the base of a new worktree/branch -- the same
+# habit as `gpull` (fetch + fast-forward), but scoped to worktree creation instead of a manual
+# alias. Guarded on `target_worktree_path` being unset, since that's only true when `wt switch`
+# is about to CREATE a worktree, not when switching between existing ones -- otherwise this would
+# fire (and hit the network) on every `wt switch`. Deliberately targets the default branch, not
+# `{{ base }}`: in a pre-switch hook, `base`/`base_worktree_path` mean "the worktree you're
+# switching FROM", not "what the new branch will fork from" (that's only correct in pre-start,
+# which fires after the worktree/branch already exists -- too late to freshen anything).
+# worktree_path_of_branch() finds wherever the default branch is actually checked out (usually
+# the main checkout, but not necessarily) and fast-forwards it there; falls back to updating the
+# ref directly when nobody has it checked out. Best-effort (`|| true`): a flaky/offline fetch
+# should never block creating a worktree, just skip the freshen.
+[pre-switch]
+sync-default = '''
+{% if not target_worktree_path %}
+{% set p = worktree_path_of_branch(default_branch) %}
+{% if p %}
+git -C "{{ p }}" fetch --prune && git -C "{{ p }}" pull --ff-only || true
+{% else %}
+git fetch origin "{{ default_branch }}:{{ default_branch }}" || true
+{% endif %}
+{% endif %}
+'''
+
 # .venv is symlinked (below); skip it in copy-ignored so we don't try to reflink it too.
 [step.copy-ignored]
 exclude = [".venv/", ".DS_Store"]

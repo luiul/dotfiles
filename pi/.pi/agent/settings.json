@@ -47,6 +47,7 @@
     "mistral.ministral-3-14b-instruct",
     "mistral.ministral-3-3b-instruct",
     "mistral.ministral-3-8b-instruct",
+    "mistral.mistral-large-3-675b-instruct",
     "mistral.voxtral-mini-3b-2507",
     "mistral.voxtral-small-24b-2507",
     "moonshot.kimi-k2-thinking",

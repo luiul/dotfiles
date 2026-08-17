@@ -1,6 +1,6 @@
 {
   "defaultRegion": "eu-west-1",
-  "generatedAt": "2026-08-17T20:27:49Z",
+  "generatedAt": "2026-08-17T20:55:02Z",
   "models": {
     "amazon.nova-lite-v1:0": "us-east-1",
     "amazon.nova-micro-v1:0": "us-east-1",

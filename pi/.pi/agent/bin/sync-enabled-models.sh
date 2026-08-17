@@ -334,11 +334,13 @@ if $dry_run; then
 fi
 
 # Full region map, for bedrock-region-sync.ts and the pi-use / pi-region /
-# pi-models zsh functions.
-map_json=$(echo "$usable_tsv" | jq -R -s '
+# pi-models zsh functions. Sorted by key (-S) so re-runs with an unchanged
+# model set produce a clean, near-empty git diff instead of reshuffling every
+# key based on that run's parallel-probe completion order (which is random).
+map_json=$(echo "$usable_tsv" | jq -R -s -S '
   split("\n") | map(select(length > 0) | split("\t")) | map({key: .[0], value: .[1]}) | from_entries
 ')
-printf '%s\n' "$map_json" | jq --arg region "$DEFAULT_REGION" --arg gen "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+printf '%s\n' "$map_json" | jq -S --arg region "$DEFAULT_REGION" --arg gen "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '{generatedAt: $gen, defaultRegion: $region, models: .}' > "$BEDROCK_MODELS_JSON"
 echo "Wrote $(echo "$usable_tsv" | wc -l | tr -d ' ') model(s) to $BEDROCK_MODELS_JSON" >&2
 

@@ -124,6 +124,10 @@ PROBE_TIMEOUT="${PROBE_TIMEOUT:-45}"
 PROBE_CONCURRENCY="${PROBE_CONCURRENCY:-3}"
 PROBE_FAIL_CIRCUIT="${PROBE_FAIL_CIRCUIT:-6}"
 ENABLED_MODELS_SCOPE="${ENABLED_MODELS_SCOPE:-all}"
+# Some globally named inference profiles are only enabled in a particular
+# region for this account. Keep these overrides explicit and exact rather
+# than silently selecting the default region after a failed probe.
+MODEL_REGION_OVERRIDES="${MODEL_REGION_OVERRIDES:-global.openai.gpt-5.6-sol=us-east-1}"
 export AWS_PROFILE PROBE_FAIL_CIRCUIT
 
 # All regions to scan, default first (its usable subset becomes enabledModels).
@@ -135,9 +139,31 @@ for arg in "$@"; do
   case "$arg" in
     --dry-run)  dry_run=true ;;
     --no-probe) probe=false ;;
+    --help|-h)
+      sed -n '1,112p' "$0"
+      exit 0
+      ;;
     *) echo "Unknown arg: $arg" >&2; exit 2 ;;
   esac
 done
+
+case "$ENABLED_MODELS_SCOPE" in
+  all|default-region) ;;
+  *) echo "ENABLED_MODELS_SCOPE must be 'all' or 'default-region' (got: $ENABLED_MODELS_SCOPE)" >&2; exit 2 ;;
+esac
+
+case "$PROBE_TIMEOUT" in
+  ''|*[!0-9]*) echo "PROBE_TIMEOUT must be a positive integer (got: $PROBE_TIMEOUT)" >&2; exit 2 ;;
+  0) echo "PROBE_TIMEOUT must be a positive integer" >&2; exit 2 ;;
+esac
+case "$PROBE_CONCURRENCY" in
+  ''|*[!0-9]*) echo "PROBE_CONCURRENCY must be a positive integer (got: $PROBE_CONCURRENCY)" >&2; exit 2 ;;
+  0) echo "PROBE_CONCURRENCY must be a positive integer" >&2; exit 2 ;;
+esac
+case "$PROBE_FAIL_CIRCUIT" in
+  ''|*[!0-9]*) echo "PROBE_FAIL_CIRCUIT must be a positive integer (got: $PROBE_FAIL_CIRCUIT)" >&2; exit 2 ;;
+  0) echo "PROBE_FAIL_CIRCUIT must be a positive integer" >&2; exit 2 ;;
+esac
 
 command -v aws >/dev/null || { echo "aws CLI not found" >&2; exit 1; }
 command -v pi  >/dev/null || { echo "pi not found" >&2; exit 1; }
@@ -184,12 +210,21 @@ done
 # case/if (not associative arrays: this account's /bin/bash is 3.2, which
 # predates `declare -A`).
 region_for_id() {
-  local id="$1"
+  local id="$1" pair override_id override_region
+  for pair in $MODEL_REGION_OVERRIDES; do
+    override_id="${pair%%=*}"
+    override_region="${pair#*=}"
+    if [[ "$id" == "$override_id" ]]; then
+      echo "$override_region"
+      return
+    fi
+  done
   case "$id" in
-    eu.*|global.*) echo "$DEFAULT_REGION" ;;
-    us.*)          echo "us-east-1" ;;
-    jp.*)          echo "ap-northeast-1" ;;
-    au.*)          echo "ap-southeast-2" ;;
+    eu.*)         echo "eu-west-1" ;;
+    global.*)     echo "$DEFAULT_REGION" ;;
+    us.*)         echo "us-east-1" ;;
+    jp.*)         echo "ap-northeast-1" ;;
+    au.*)         echo "ap-southeast-2" ;;
     *)             echo "" ;;
   esac
 }
@@ -199,9 +234,14 @@ for region in "${REGIONS[@]}"; do
   while IFS= read -r id; do
     [[ -z "$id" ]] && continue
     case $'\n'"$seen_ids"$'\n' in *$'\n'"$id"$'\n'*) continue ;; esac
-    if grep -qxF "$id" "$workdir/cand_$DEFAULT_REGION" 2>/dev/null; then
+    assigned=""
+    if [[ -n "$MODEL_REGION_OVERRIDES" ]]; then
+      assigned=$(region_for_id "$id")
+    fi
+    if [[ -z "$assigned" ]] && grep -qxF "$id" "$workdir/cand_$DEFAULT_REGION" 2>/dev/null; then
       assigned="$DEFAULT_REGION"
-    else
+    fi
+    if [[ -z "$assigned" ]]; then
       assigned=$(region_for_id "$id")
       [[ -z "$assigned" ]] && assigned="$region"
     fi

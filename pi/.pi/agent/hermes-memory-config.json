@@ -1,0 +1,8 @@
+{
+  "reviewTransport": "subprocess",
+  "llmModelOverride": "amazon-bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "llmThinkingOverride": "off",
+  "childExtensionPaths": [
+    "/Users/luis.aceituno/.pi/agent/extensions/aws-sso-refresh.ts"
+  ]
+}

@@ -23,7 +23,7 @@ The script is idempotent and prompts before each step. It will:
 
 Each top-level directory is a stow package that mirrors `$HOME`:
 
-`aws`, `borders`, `brew`, `claude`, `claudenotifier`, `ghostty`, `git`, `hellofresh`, `pip`, `rectangle`, `ruff`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `sublime`, `vscode`, `zsh`
+`aws`, `borders`, `brew`, `claude`, `claudenotifier`, `ghostty`, `git`, `hellofresh`, `pi`, `pip`, `rectangle`, `ruff`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `sublime`, `vscode`, `zsh`
 
 Two packages are tracked but **not stowed** (export-only, see below): `karabiner` and `rectangle`.
 
@@ -78,6 +78,14 @@ Claude Code rewrites `~/.claude/settings.json` in place at runtime (managed hook
 ## AWS
 
 The `aws` package stows `~/.aws/config` (used by the `aws-sso-refresh` pi extension via `AWS_PROFILE=sso-bedrock`). The real `aws/.aws/config` is gitignored because it contains an AWS account ID and the corporate SSO portal URL; only `aws/.aws/config.example` (placeholders) is tracked. On a fresh machine, copy the example to `aws/.aws/config`, fill in real values, then stow. See `aws/README.md`.
+
+## Pi Memory (Hermes)
+
+`pi-hermes-memory`'s background auto-review LLM calls are configured via `pi/.pi/agent/hermes-memory-config.json` (stowed to `~/.pi/agent/hermes-memory-config.json`). Since pi's only configured provider is `amazon-bedrock` authenticated via ambient AWS SSO (`AWS_PROFILE=sso-bedrock`, no `/login`-stored API key), the extension's in-process "Direct" review transport always fails (`no_auth: No API key for amazon-bedrock` — its auth resolver only recognizes a persisted API-key credential), falling through to a "Subprocess" transport that spawns an isolated `pi -p --no-extensions` child. That child previously had no path to the `aws-sso-refresh` extension (stripped by `--no-extensions`), so a stale SSO token at review time could hang the child until pi's hard 120s kill fired ("Memory auto-review failed in both transports ... child timed out after 120000ms").
+
+Fix applied: `reviewTransport: "subprocess"` (skip the always-doomed Direct attempt), `llmModelOverride` to a cheap/fast Bedrock model for background maintenance calls, and `childExtensionPaths` pointing at `aws-sso-refresh.ts` so the isolated child process also proactively refreshes the SSO session before its model call, instead of relying on whatever state the token happened to be in.
+
+**Next step (not yet done, needs a manual interactive command):** run `/login amazon-bedrock` inside pi to store a persisted Bedrock API key (bearer token) in `auth.json`, if the `bedrock-user` SSO role permits minting one. That would let the Direct transport succeed in-process on its own, removing the Subprocess/SSO-refresh dependency for memory review entirely rather than just mitigating it.
 
 ## ClaudeNotifier
 

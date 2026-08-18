@@ -1,5 +1,27 @@
 # Pi extensions
 
+## Model scores companion
+
+`model-scores/index.ts` is the additive `/model-scores` companion picker for issue #9. It leaves pi's native `/model` and Ctrl+P picker untouched.
+
+The picker reads the current session scope, or the available authenticated model registry when the session is unscoped. It groups Bedrock route duplicates by canonical model ID, keeps exact provider and model identities for selection, displays route and invocation region separately, prefers the current `AWS_REGION`, and shows pi's all zero cost metadata as unknown. It writes a versioned runtime cache only under `~/.pi/agent/data/model-scores.json`, never into this stow package.
+
+The cache uses schema version 1, exact `provider + modelId` keys, nullable unknown values, explicit readiness and freshness states, source status, a two second process lock, restrictive permissions, atomic replacement, and last known good cost preservation. `/model-scores sync` reconciles the current inventory and records a local snapshot without network access. `--provider=name` and `--region=name` filter the picker.
+
+After selecting a model family, the detail view lets the user select an exact route. Successful selection calls `pi.setModel()` with that exact model object and reapplies a pinned thinking level with `pi.setThinkingLevel()`. A rejected `setModel()` keeps the selector open and informs the user.
+
+`pi/.pi/agent/models.json` contains official Bedrock pricing overrides for 54 currently enabled model IDs whose family rates were verified against AWS sources. Route and regional differences are preserved where represented by the installed pi catalog. Configured IDs without verified official pricing are intentionally absent and render as unknown rather than free.
+
+Verification from the repository root:
+
+```sh
+bunx vitest run pi/.pi/agent/extensions/model-scores-tests/model-scores-core.test.ts pi/.pi/agent/extensions/model-scores-tests/model-scores-cache.test.ts
+pi --no-session --no-extensions -e pi/.pi/agent/extensions/model-scores/index.ts -p 'Reply with exactly OK.'
+```
+
+The print mode check verifies that the extension loads without opening the interactive picker. Use `/model-scores` from an interactive pi session to exercise the selector.
+
+
 ## Bedrock GPT 5.6 reasoning
 
 `bedrock-openai-reasoning.ts` is a compatibility extension for OpenAI GPT 5.6 models invoked through Amazon Bedrock's Converse API.

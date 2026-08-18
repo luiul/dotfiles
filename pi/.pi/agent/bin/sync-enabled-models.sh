@@ -17,8 +17,7 @@
 #      match whatever model is active inside a running pi session — this is
 #      what makes (1) safe) and the zsh functions pi-use / pi-region /
 #      pi-models (funcs_pi_bedrock.zsh, for switching model/region from the
-#      shell before pi even starts, e.g. one-off `pi-use <id> -p "..."`
-#      calls).
+#      shell before pi even starts, e.g. one-off `pi-use <id> -p "..."` calls).
 #
 # Why this is not a simple list:
 #   - `pi --list-models` shows pi's full Bedrock catalog (~100 models), but that

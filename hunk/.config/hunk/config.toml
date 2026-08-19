@@ -1,0 +1,14 @@
+# Hunk user config.
+# Reference: https://hunk.dev/docs/reference/config/
+
+# Reload the review when its source changes (same as --watch).
+watch = true
+
+# Hide hunk metadata rows in the review stream.
+hunk_headers = false
+
+# Show the files pane by default.
+sidebar = true
+
+# Show agent notes as soon as a review opens.
+agent_notes = true

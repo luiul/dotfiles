@@ -30,10 +30,14 @@ brew "git"
 brew "git-delta"
 # Audit git repos for secrets
 brew "gitleaks"
+# Render markdown on the CLI
+brew "glow"
 # Open source programming language to build simple/reliable/efficient software
 brew "go"
 # CLI for Drive, Gmail, Calendar, Sheets, Docs, Chat, Admin, and more
 brew "googleworkspace-cli"
+# Review-first terminal diff viewer for agent-authored changesets
+brew "hunk"
 # Lightweight and flexible command-line JSON processor
 brew "jq"
 # Open-source, cross-platform JavaScript runtime environment

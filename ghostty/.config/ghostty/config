@@ -19,6 +19,8 @@ clipboard-trim-trailing-spaces = true
 
 # Keybindings
 keybind = global:control+command+shift+option+r=toggle_quick_terminal
+keybind = cmd+n=unbind
+keybind = cmd+shift+n=new_window
 
 # Padding
 window-padding-x = 8

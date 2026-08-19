@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { isToolCallEventType, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -109,7 +109,12 @@ function readJson<T>(path: string, fallback: T): T {
 function writeJson(path: string, value: unknown): void {
 	try {
 		ensureDataDir();
-		writeFileSync(path, JSON.stringify(value, null, 2));
+		// Write-then-rename so a crash mid-write can never leave a half-written,
+		// unparseable JSON file behind -- readJson would otherwise silently fall
+		// back to defaults and quietly lose whatever was already persisted.
+		const temp = `${path}.${process.pid}.tmp`;
+		writeFileSync(temp, JSON.stringify(value, null, 2));
+		renameSync(temp, path);
 	} catch {
 		// non-fatal; the change just will not persist across restarts
 	}
@@ -248,10 +253,20 @@ let repliesState: BaselineState = createBaselineState();
 let editsState: BaselineState = createBaselineState();
 let pendingReminder: string | null = null;
 let candidateStore: CandidateStore = createCandidateStore();
-let repliesSum = 0;
-let repliesCount = 0;
-let editsSum = 0;
-let editsCount = 0;
+// Only samples the baseline did NOT flag as degrading feed these
+// accumulators. This is the load-bearing invariant for "improves over
+// time" rather than "normalizes whatever recurs": if a degrading sample
+// were folded into cross-session history, a session (or a slow drift
+// across many sessions) that writes worse and worse would drag the
+// historical mean up with it, and a future session just as bad would no
+// longer look degrading relative to that inflated baseline. Excluding
+// degrading samples keeps history anchored to "how you write when you are
+// not degrading", so it stays a stable reference point no matter how long
+// a bad stretch runs. See history.ts#mergeChannelHistory for the contract.
+let repliesCleanSum = 0;
+let repliesCleanCount = 0;
+let editsCleanSum = 0;
+let editsCleanCount = 0;
 let observationsSinceFlush = 0;
 
 function resetSessionState(): void {
@@ -260,29 +275,32 @@ function resetSessionState(): void {
 	editsState = seedBaselineFromHistory(history.edits, DEFAULT_WARMUP_COUNT);
 	pendingReminder = null;
 	candidateStore = loadCandidates();
-	repliesSum = 0;
-	repliesCount = 0;
-	editsSum = 0;
-	editsCount = 0;
+	repliesCleanSum = 0;
+	repliesCleanCount = 0;
+	editsCleanSum = 0;
+	editsCleanCount = 0;
 	observationsSinceFlush = 0;
 }
 
-/** Folds this session's accumulated scores into persisted history, then
- * resets the accumulators so a later flush in the same session never
- * double-counts the samples already folded in. Safe to call repeatedly
- * (a no-op merge when a channel has no new samples) and safe to call from
- * both the periodic safety net and session_shutdown. */
+/** Folds this session's accumulated *non-degrading* scores into persisted
+ * history, then resets the accumulators so a later flush in the same
+ * session never double-counts the samples already folded in. Safe to call
+ * repeatedly (a no-op merge when a channel has no new clean samples) and
+ * safe to call from both the periodic safety net and session_shutdown. */
 function flushHistory(): void {
 	try {
 		const history = loadHistory();
 		const nextReplies: ChannelHistory =
-			repliesCount > 0 ? mergeChannelHistory(history.replies, repliesSum / repliesCount, repliesCount) : history.replies;
-		const nextEdits: ChannelHistory = editsCount > 0 ? mergeChannelHistory(history.edits, editsSum / editsCount, editsCount) : history.edits;
+			repliesCleanCount > 0
+				? mergeChannelHistory(history.replies, repliesCleanSum / repliesCleanCount, repliesCleanCount)
+				: history.replies;
+		const nextEdits: ChannelHistory =
+			editsCleanCount > 0 ? mergeChannelHistory(history.edits, editsCleanSum / editsCleanCount, editsCleanCount) : history.edits;
 		saveHistory({ replies: nextReplies, edits: nextEdits });
-		repliesSum = 0;
-		repliesCount = 0;
-		editsSum = 0;
-		editsCount = 0;
+		repliesCleanSum = 0;
+		repliesCleanCount = 0;
+		editsCleanSum = 0;
+		editsCleanCount = 0;
 	} catch {
 		// best-effort; losing one flush just delays learning, never breaks scoring
 	}
@@ -326,8 +344,8 @@ export default function (pi: ExtensionAPI) {
 			const update = updateBaseline(repliesState, score);
 			repliesState = update.state;
 
-			repliesSum += score;
-			repliesCount += 1;
+			repliesCleanSum += update.degrading ? 0 : score;
+			repliesCleanCount += update.degrading ? 0 : 1;
 			candidateStore = pruneCandidates(recordCandidates(candidateStore, findings, new Date().toISOString()), MAX_CANDIDATE_ENTRIES);
 			maybeFlush();
 
@@ -410,8 +428,8 @@ export default function (pi: ExtensionAPI) {
 			const update = updateBaseline(editsState, score);
 			editsState = update.state;
 
-			editsSum += score;
-			editsCount += 1;
+			editsCleanSum += update.degrading ? 0 : score;
+			editsCleanCount += update.degrading ? 0 : 1;
 			candidateStore = pruneCandidates(recordCandidates(candidateStore, findings, new Date().toISOString()), MAX_CANDIDATE_ENTRIES);
 			maybeFlush();
 

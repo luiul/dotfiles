@@ -36,7 +36,17 @@ export function createHistoryState(): HistoryState {
  * running history. Pure: returns a new ChannelHistory, never mutates the
  * input. A session with no scored samples (`sessionCount <= 0`) is a
  * no-op -- there is nothing to learn from a session that never wrote
- * enough prose to be scored. */
+ * enough prose to be scored.
+ *
+ * Contract callers must honor: `sessionMean`/`sessionCount` must be
+ * computed only from samples the baseline did NOT flag as degrading. If a
+ * degrading sample were folded in, a session (or a slow drift across many
+ * sessions) that writes worse and worse would drag this mean up with it,
+ * and a future session just as bad would no longer look degrading
+ * relative to the now-inflated baseline. Feeding in only non-degrading
+ * samples keeps history anchored to "how you write when you are not
+ * degrading", so it stays a stable reference point no matter how long a
+ * bad stretch runs. index.ts is the only caller and honors this. */
 export function mergeChannelHistory(history: ChannelHistory, sessionMean: number, sessionCount: number): ChannelHistory {
 	if (sessionCount <= 0 || !Number.isFinite(sessionMean)) return history;
 	const priorCount = Math.min(history.count, MAX_HISTORY_COUNT);

@@ -81,11 +81,16 @@
   "enableAnalytics": false,
   "lastChangelogVersion": "0.84.2",
   "theme": "dark",
+  "outputPad": 0,
   "packages": [
     "npm:@tintinweb/pi-subagents",
     "npm:pi-web-access",
     "npm:pi-mcp-adapter",
     "npm:context-mode",
-    "npm:pi-hermes-memory"
-  ]
+    "npm:pi-hermes-memory",
+    "npm:agent-ste"
+  ],
+  "markdown": {
+    "codeBlockIndent": ""
+  }
 }

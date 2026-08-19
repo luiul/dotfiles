@@ -22,6 +22,41 @@ pi --no-session --no-extensions -e pi/.pi/agent/extensions/model-scores/index.ts
 The print mode check verifies that the extension loads without opening the interactive picker. Use `/model-scores` from an interactive pi session to exercise the selector.
 
 
+## ste-lite (lazy Simplified Technical English guard)
+
+`ste-lite/` implements the plan in [issue #12](https://github.com/luiul/dotfiles/issues/12): a small, first-party pi extension that nudges assistant replies and file-edit prose toward ASD-STE100-style Simplified Technical English (short sentences, approved-word swaps, no filler/hedging, no passive-voice walls of text).
+
+### Why not `agent-ste` or `ste-guard`
+
+Both were installed and removed twice in this repo's history (see issue #12). `ste-guard` is a Claude Code plugin whose write guard never fires in pi at all. `agent-ste` has a real pi adapter but is a static linter with always-on hard blocks, which is what made it noisy enough to remove. Neither trigger only on a *degrading* trend, which is the core requirement here.
+
+### How it decides when to act
+
+It is lazy by construction, not just by a low duty cycle:
+
+- `scorer.ts` scores prose deterministically (no LLM calls) against a small ASD-STE100-lite rule set: not-approved-word swaps, sentence length, passive voice, hedging/filler phrases, marketing puffery, and unstructured prose walls. The score is normalized per 100 words.
+- `baseline.ts` tracks a rolling per-session baseline (EWMA) rather than a fixed bar. After a short warmup, it only flags a sample as *degrading* when the score jumps well past that session's own recent baseline, and only intervenes once that holds for two consecutive samples. A session that has always run wordy is left alone; a session that starts clean and drifts is not. Degrading samples never pull the baseline up with them, so slow drift stays visible instead of becoming the new normal.
+- On a confirmed degrade, `scorer.ts#autofix()` applies only meaning-preserving mechanical fixes locally (dictionary word swap, or deleting a filler opener when it is the *entire* first sentence — never a partial prefix, which would leave a dangling fragment). Anything that needs judgment (sentence length, passive voice, hedging) is reported, never rewritten.
+- If the mechanical fixes are not enough, a single short (~40 word) reminder is queued and injected once via `before_agent_start` for the next turn only, then cleared. There is no per-turn rule-card injection.
+
+### Modes and safety
+
+- `~/.pi/agent/data/ste-lite/config.json` holds `enabled`, `mode` (`observe` | `nudge` | `strict`), and `scope` (`replies` / `edits`). It ships defaulting to `mode: "observe"`: logging only, zero visible behavior change, until thresholds are calibrated against real sessions (see rollout plan in issue #12).
+- `nudge` applies local autofixes and notifies; it never blocks a tool call.
+- `strict` additionally blocks a `write`/`edit` tool call, but only when every finding in the new prose is the single safest deterministic category (`dictionary/not-approved-word` with an unambiguous replacement) — never on a judgment-call rule.
+- `STE_LITE_DISABLE=1` fully disables all hooks regardless of config, given the install/remove churn on the two prior tools. `/ste-lite [status|on|off|mode <observe|nudge|strict>|reset]` controls it live, no `/reload` required.
+- Every handler is wrapped in try/catch and returns a no-op on any internal error, so a scorer bug can never break the hook chain shared with `pi-hermes-memory` or `context-mode`. Context injection is additive-only (one `before_agent_start` system-prompt append, cleared after use).
+- Observations (score, finding count, degrade/intervene decisions) are logged to `~/.pi/agent/data/ste-lite/observations.log`, capped at 512KB, to support threshold calibration before flipping the default mode.
+
+### Verification
+
+```sh
+bunx vitest run pi/.pi/agent/extensions/ste-lite-tests/scorer.test.ts pi/.pi/agent/extensions/ste-lite-tests/baseline.test.ts
+pi --no-session --no-extensions -e pi/.pi/agent/extensions/ste-lite/index.ts -p 'Reply with exactly OK.'
+```
+
+The unit tests cover the scorer (word/sentence rules, prose-span extraction for markdown vs. source-file comments, the autofix safety guards) and the baseline (warmup, degrade-streak detection, no upward drift on degrading samples, one-shot recovery). The print-mode check confirms the extension loads under pi's real extension loader and the `message_end` hook fires without error.
+
 ## Bedrock GPT 5.6 reasoning
 
 `bedrock-openai-reasoning.ts` is a compatibility extension for OpenAI GPT 5.6 models invoked through Amazon Bedrock's Converse API.

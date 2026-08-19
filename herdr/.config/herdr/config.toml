@@ -11,3 +11,6 @@ key = "cmd+i"
 type = "shell"
 command = "~/.config/herdr/scripts/hunk-review.sh"
 description = "review current changes in a side pane"
+
+[ui]
+agent_panel_sort = "spaces"

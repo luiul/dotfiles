@@ -2,7 +2,22 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { isToolCallEventType, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { createBaselineState, updateBaseline, type BaselineState } from "./baseline.ts";
+import { createBaselineState, DEFAULT_WARMUP_COUNT, updateBaseline, type BaselineState } from "./baseline.ts";
+import {
+	createCandidateStore,
+	pruneCandidates,
+	recordCandidates,
+	topCandidates,
+	type CandidateStore,
+} from "./candidates.ts";
+import { NOT_APPROVED_WORDS } from "./dictionary.ts";
+import {
+	createHistoryState,
+	mergeChannelHistory,
+	seedBaselineFromHistory,
+	type ChannelHistory,
+	type HistoryState,
+} from "./history.ts";
 import { autofix, countWords, extractProseSpans, scoreText, stripMarkdownCode, type Finding } from "./scorer.ts";
 
 // ste-lite: a lazy, deterministic ASD-STE100-style nudge for assistant
@@ -25,6 +40,20 @@ import { autofix, countWords, extractProseSpans, scoreText, stripMarkdownCode, t
 // length, passive voice, hedging, and prose-wall findings are reported,
 // never rewritten.
 //
+// It improves over time in two ways, both cross-session (see history.ts
+// and candidates.ts -- the per-session baseline alone does NOT improve on
+// its own; it resets every session):
+//   1. The degradation baseline is seeded from a persisted running mean
+//      across every session that ever ran, so a returning session needs
+//      only one real sample (not a full warmup) before it can judge
+//      degradation.
+//   2. Recurring soft findings (hedge/puffery/opener phrases, never the
+//      content-derived ones) are tallied across sessions. `/ste-lite
+//      candidates` surfaces the most frequent ones; `/ste-lite promote`
+//      lets a human turn a recurring one into a hard, auto-fixed
+//      dictionary entry. The word list only grows when a person decides
+//      it should.
+//
 // It defaults to "observe" mode (log only, no visible behavior change)
 // so thresholds can be calibrated against real sessions before switching
 // to "nudge". See ../README.md for the rollout plan and rationale.
@@ -41,9 +70,14 @@ const AGENT_DIR = join(homedir(), ".pi", "agent");
 const DATA_DIR = join(AGENT_DIR, "data", "ste-lite");
 const CONFIG_PATH = join(DATA_DIR, "config.json");
 const LOG_PATH = join(DATA_DIR, "observations.log");
+const HISTORY_PATH = join(DATA_DIR, "history.json");
+const CANDIDATES_PATH = join(DATA_DIR, "candidates.json");
+const CUSTOM_DICTIONARY_PATH = join(DATA_DIR, "custom-dictionary.json");
 const MAX_LOG_BYTES = 512 * 1024;
 const MAX_LOG_LINES_KEPT = 200;
 const MIN_WORDS_TO_SCORE = 20;
+const MAX_CANDIDATE_ENTRIES = 200;
+const FLUSH_EVERY_N_OBSERVATIONS = 15;
 
 const DEFAULT_CONFIG: SteLiteConfig = Object.freeze({
 	enabled: true,
@@ -64,33 +98,69 @@ function ensureDataDir(): void {
 	}
 }
 
-function readConfig(): SteLiteConfig {
+function readJson<T>(path: string, fallback: T): T {
 	try {
-		const raw = readFileSync(CONFIG_PATH, "utf8");
-		const parsed = JSON.parse(raw) as Partial<SteLiteConfig>;
-		return {
-			enabled: parsed.enabled ?? DEFAULT_CONFIG.enabled,
-			mode: (parsed.mode as Mode) ?? DEFAULT_CONFIG.mode,
-			scope: { ...DEFAULT_CONFIG.scope, ...parsed.scope },
-		};
+		return { ...fallback, ...(JSON.parse(readFileSync(path, "utf8")) as Partial<T>) };
 	} catch {
-		ensureDataDir();
-		try {
-			writeFileSync(CONFIG_PATH, JSON.stringify(DEFAULT_CONFIG, null, 2));
-		} catch {
-			// non-fatal; fall through to the in-memory default
-		}
-		return { ...DEFAULT_CONFIG, scope: { ...DEFAULT_CONFIG.scope } };
+		return fallback;
 	}
 }
 
-function writeConfig(config: SteLiteConfig): void {
+function writeJson(path: string, value: unknown): void {
 	try {
 		ensureDataDir();
-		writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+		writeFileSync(path, JSON.stringify(value, null, 2));
 	} catch {
 		// non-fatal; the change just will not persist across restarts
 	}
+}
+
+function readConfig(): SteLiteConfig {
+	const parsed = readJson<Partial<SteLiteConfig>>(CONFIG_PATH, {});
+	const config: SteLiteConfig = {
+		enabled: parsed.enabled ?? DEFAULT_CONFIG.enabled,
+		mode: (parsed.mode as Mode) ?? DEFAULT_CONFIG.mode,
+		scope: { ...DEFAULT_CONFIG.scope, ...parsed.scope },
+	};
+	if (!existsSync(CONFIG_PATH)) writeJson(CONFIG_PATH, config);
+	return config;
+}
+
+function writeConfig(config: SteLiteConfig): void {
+	writeJson(CONFIG_PATH, config);
+}
+
+function loadHistory(): HistoryState {
+	const fallback = createHistoryState();
+	const parsed = readJson<Partial<HistoryState>>(HISTORY_PATH, {});
+	return {
+		replies: { ...fallback.replies, ...parsed.replies },
+		edits: { ...fallback.edits, ...parsed.edits },
+	};
+}
+
+function saveHistory(history: HistoryState): void {
+	writeJson(HISTORY_PATH, history);
+}
+
+function loadCandidates(): CandidateStore {
+	return readJson<CandidateStore>(CANDIDATES_PATH, createCandidateStore());
+}
+
+function saveCandidates(store: CandidateStore): void {
+	writeJson(CANDIDATES_PATH, store);
+}
+
+function loadCustomDictionary(): Record<string, string> {
+	return readJson<Record<string, string>>(CUSTOM_DICTIONARY_PATH, {});
+}
+
+function saveCustomDictionary(dictionary: Record<string, string>): void {
+	writeJson(CUSTOM_DICTIONARY_PATH, dictionary);
+}
+
+function effectiveDictionary(): Readonly<Record<string, string>> {
+	return { ...NOT_APPROVED_WORDS, ...loadCustomDictionary() };
 }
 
 function logObservation(entry: Record<string, unknown>): void {
@@ -151,16 +221,16 @@ function buildReminder(findings: readonly Finding[]): string {
 	return `Style check: recent output trended away from Simplified Technical English (${hints || "long, hedgy phrasing"}). Prefer short, direct, ASD-STE100-style sentences: one idea per sentence, active voice, no filler.`;
 }
 
-function applyReplyAutofix(content: unknown): { content: unknown; changes: number } | null {
+function applyReplyAutofix(content: unknown, dictionary: Readonly<Record<string, string>>): { content: unknown; changes: number } | null {
 	if (typeof content === "string") {
-		const fixed = autofix(content);
+		const fixed = autofix(content, dictionary);
 		return fixed.changes.length > 0 ? { content: fixed.text, changes: fixed.changes.length } : null;
 	}
 	if (Array.isArray(content)) {
 		let totalChanges = 0;
 		const nextContent = content.map((part) => {
 			if (!isTextPart(part)) return part;
-			const fixed = autofix(part.text);
+			const fixed = autofix(part.text, dictionary);
 			totalChanges += fixed.changes.length;
 			return fixed.changes.length > 0 ? { ...part, text: fixed.text } : part;
 		});
@@ -171,20 +241,73 @@ function applyReplyAutofix(content: unknown): { content: unknown; changes: numbe
 
 // Per-process session state. One pi process normally holds one active
 // session; session_start (covering "startup" | "new" | "resume" | "fork" |
-// "reload") resets these so state never leaks across a session switch.
+// "reload") reseeds these from persisted history so state never leaks
+// across a session switch, but a returning session still starts informed
+// by everything scored before it -- see history.ts.
 let repliesState: BaselineState = createBaselineState();
 let editsState: BaselineState = createBaselineState();
 let pendingReminder: string | null = null;
+let candidateStore: CandidateStore = createCandidateStore();
+let repliesSum = 0;
+let repliesCount = 0;
+let editsSum = 0;
+let editsCount = 0;
+let observationsSinceFlush = 0;
 
 function resetSessionState(): void {
-	repliesState = createBaselineState();
-	editsState = createBaselineState();
+	const history = loadHistory();
+	repliesState = seedBaselineFromHistory(history.replies, DEFAULT_WARMUP_COUNT);
+	editsState = seedBaselineFromHistory(history.edits, DEFAULT_WARMUP_COUNT);
 	pendingReminder = null;
+	candidateStore = loadCandidates();
+	repliesSum = 0;
+	repliesCount = 0;
+	editsSum = 0;
+	editsCount = 0;
+	observationsSinceFlush = 0;
+}
+
+/** Folds this session's accumulated scores into persisted history, then
+ * resets the accumulators so a later flush in the same session never
+ * double-counts the samples already folded in. Safe to call repeatedly
+ * (a no-op merge when a channel has no new samples) and safe to call from
+ * both the periodic safety net and session_shutdown. */
+function flushHistory(): void {
+	try {
+		const history = loadHistory();
+		const nextReplies: ChannelHistory =
+			repliesCount > 0 ? mergeChannelHistory(history.replies, repliesSum / repliesCount, repliesCount) : history.replies;
+		const nextEdits: ChannelHistory = editsCount > 0 ? mergeChannelHistory(history.edits, editsSum / editsCount, editsCount) : history.edits;
+		saveHistory({ replies: nextReplies, edits: nextEdits });
+		repliesSum = 0;
+		repliesCount = 0;
+		editsSum = 0;
+		editsCount = 0;
+	} catch {
+		// best-effort; losing one flush just delays learning, never breaks scoring
+	}
+}
+
+function maybeFlush(): void {
+	observationsSinceFlush += 1;
+	if (observationsSinceFlush < FLUSH_EVERY_N_OBSERVATIONS) return;
+	observationsSinceFlush = 0;
+	flushHistory();
+	saveCandidates(candidateStore);
 }
 
 export default function (pi: ExtensionAPI) {
 	pi.on("session_start", () => {
 		resetSessionState();
+	});
+
+	pi.on("session_shutdown", () => {
+		try {
+			flushHistory();
+			saveCandidates(candidateStore);
+		} catch {
+			// best-effort; nothing left to do on the way out
+		}
 	});
 
 	pi.on("message_end", async (event: any, ctx: ExtensionContext) => {
@@ -198,9 +321,15 @@ export default function (pi: ExtensionAPI) {
 			const prose = extractReplyProse(event.message.content);
 			if (countWords(prose) < MIN_WORDS_TO_SCORE) return undefined;
 
-			const { score, findings } = scoreText(prose);
+			const dictionary = effectiveDictionary();
+			const { score, findings } = scoreText(prose, dictionary);
 			const update = updateBaseline(repliesState, score);
 			repliesState = update.state;
+
+			repliesSum += score;
+			repliesCount += 1;
+			candidateStore = pruneCandidates(recordCandidates(candidateStore, findings, new Date().toISOString()), MAX_CANDIDATE_ENTRIES);
+			maybeFlush();
 
 			logObservation({
 				channel: "reply",
@@ -216,12 +345,12 @@ export default function (pi: ExtensionAPI) {
 			if (config.mode === "observe") return undefined;
 			if (!update.shouldIntervene) return undefined;
 
-			const fixResult = applyReplyAutofix(event.message.content);
+			const fixResult = applyReplyAutofix(event.message.content, dictionary);
 			if (fixResult) {
 				ctx.ui.notify(`ste-lite: tightened wording (${fixResult.changes} mechanical fix${fixResult.changes === 1 ? "" : "es"})`, "info");
 				logObservation({ channel: "reply", action: "autofix", changes: fixResult.changes });
 
-				const refixed = scoreText(extractReplyProse(fixResult.content));
+				const refixed = scoreText(extractReplyProse(fixResult.content), dictionary);
 				const stillDegrading = updateBaseline(update.state, refixed.score).degrading;
 				if (stillDegrading) {
 					pendingReminder = buildReminder(refixed.findings);
@@ -276,9 +405,15 @@ export default function (pi: ExtensionAPI) {
 			const prose = extractProseSpans(path, newProseSource);
 			if (countWords(prose) < MIN_WORDS_TO_SCORE) return undefined;
 
-			const { score, findings } = scoreText(prose);
+			const dictionary = effectiveDictionary();
+			const { score, findings } = scoreText(prose, dictionary);
 			const update = updateBaseline(editsState, score);
 			editsState = update.state;
+
+			editsSum += score;
+			editsCount += 1;
+			candidateStore = pruneCandidates(recordCandidates(candidateStore, findings, new Date().toISOString()), MAX_CANDIDATE_ENTRIES);
+			maybeFlush();
 
 			logObservation({
 				channel: "edit",
@@ -307,9 +442,21 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("ste-lite", {
-		description: "Check or change ste-lite's simplified-English guard (status | on | off | mode <observe|nudge|strict> | reset)",
+		description:
+			"Check or change ste-lite's simplified-English guard (status | on | off | mode <observe|nudge|strict> | reset | history | candidates [n] | promote <word> <replacement>)",
 		getArgumentCompletions(prefix: string) {
-			const options = ["status", "on", "off", "mode observe", "mode nudge", "mode strict", "reset"];
+			const options = [
+				"status",
+				"on",
+				"off",
+				"mode observe",
+				"mode nudge",
+				"mode strict",
+				"reset",
+				"history",
+				"candidates",
+				"promote",
+			];
 			const items = options.filter((o) => o.startsWith(prefix)).map((v) => ({ value: v, label: v }));
 			return items.length > 0 ? items : null;
 		},
@@ -344,10 +491,50 @@ export default function (pi: ExtensionAPI) {
 				}
 				if (trimmed === "reset") {
 					resetSessionState();
-					ctx.ui.notify("ste-lite: session baseline reset", "info");
+					ctx.ui.notify("ste-lite: session baseline reset (reseeded from persisted history)", "info");
 					return;
 				}
-				ctx.ui.notify("ste-lite: usage: /ste-lite [status|on|off|mode <observe|nudge|strict>|reset]", "warning");
+				if (trimmed === "history") {
+					const history = loadHistory();
+					ctx.ui.notify(
+						`ste-lite history: replies mean=${history.replies.mean.toFixed(2)} (n=${history.replies.count}), edits mean=${history.edits.mean.toFixed(2)} (n=${history.edits.count})`,
+						"info",
+					);
+					return;
+				}
+				const candidatesMatch = /^candidates(?:\s+(\d+))?$/.exec(trimmed);
+				if (candidatesMatch) {
+					const limit = candidatesMatch[1] ? Number.parseInt(candidatesMatch[1], 10) : 10;
+					const top = topCandidates(candidateStore, limit);
+					if (top.length === 0) {
+						ctx.ui.notify("ste-lite: no recurring candidates tracked yet", "info");
+						return;
+					}
+					const lines = top.map((c) => `${c.rule} "${c.excerpt}" x${c.count}`).join("\n");
+					ctx.ui.notify(`ste-lite candidates (promote with /ste-lite promote <word> <replacement>):\n${lines}`, "info");
+					return;
+				}
+				const promoteMatch = /^promote\s+(\S+)\s+(.+)$/.exec(trimmed);
+				if (promoteMatch) {
+					const [, word, replacement] = promoteMatch;
+					if (!/^[a-zA-Z][a-zA-Z'-]*$/.test(word)) {
+						ctx.ui.notify(`ste-lite: "${word}" is not a single plain word, refusing to promote`, "warning");
+						return;
+					}
+					if (NOT_APPROVED_WORDS[word.toLowerCase()]) {
+						ctx.ui.notify(`ste-lite: "${word}" is already a built-in not-approved word`, "warning");
+						return;
+					}
+					const custom = loadCustomDictionary();
+					custom[word.toLowerCase()] = replacement.trim();
+					saveCustomDictionary(custom);
+					ctx.ui.notify(`ste-lite: promoted "${word}" -> "${replacement.trim()}" (hard, auto-fixed from now on)`, "info");
+					return;
+				}
+				ctx.ui.notify(
+					"ste-lite: usage: /ste-lite [status|on|off|mode <observe|nudge|strict>|reset|history|candidates [n]|promote <word> <replacement>]",
+					"warning",
+				);
 			} catch (err) {
 				ctx.ui.notify(`ste-lite: command failed (${err instanceof Error ? err.message : "unknown error"})`, "error");
 			}

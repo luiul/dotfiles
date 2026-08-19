@@ -138,12 +138,12 @@ function findAll(text: string, phrase: string): number[] {
 	return indexes;
 }
 
-export function findViolations(text: string): Finding[] {
+export function findViolations(text: string, dictionary: Readonly<Record<string, string>> = NOT_APPROVED_WORDS): Finding[] {
 	const findings: Finding[] = [];
 	const trimmed = text.trim();
 
 	// dictionary/not-approved-word
-	for (const [word, suggestion] of Object.entries(NOT_APPROVED_WORDS)) {
+	for (const [word, suggestion] of Object.entries(dictionary)) {
 		const re = new RegExp(`\\b${escapeRegExp(word)}\\b`, "gi");
 		for (const m of text.matchAll(re)) {
 			findings.push({
@@ -217,9 +217,9 @@ export function findViolations(text: string): Finding[] {
 	return findings;
 }
 
-export function scoreText(text: string): ScoreResult {
+export function scoreText(text: string, dictionary?: Readonly<Record<string, string>>): ScoreResult {
 	const wordCount = countWords(text);
-	const findings = findViolations(text);
+	const findings = findViolations(text, dictionary);
 	if (wordCount === 0) return { score: 0, wordCount: 0, findings };
 
 	const hardCount = findings.filter((f) => f.severity === "hard").length;
@@ -249,11 +249,11 @@ const MIN_WORDS_AFTER_OPENER_STRIP = 4;
  * that is a judgment call for the author, not a fixer. Never touches
  * hedges, passive voice, or puffery: those need a human or a model
  * rewrite, not a regex. */
-export function autofix(text: string): FixResult {
+export function autofix(text: string, dictionary: Readonly<Record<string, string>> = NOT_APPROVED_WORDS): FixResult {
 	const changes: FixChange[] = [];
 	let result = text;
 
-	for (const [word, suggestion] of Object.entries(NOT_APPROVED_WORDS)) {
+	for (const [word, suggestion] of Object.entries(dictionary)) {
 		const re = new RegExp(`\\b${escapeRegExp(word)}\\b`, "gi");
 		result = result.replace(re, (match) => {
 			const replaced = preserveCase(match, suggestion);

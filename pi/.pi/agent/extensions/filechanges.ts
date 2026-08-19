@@ -16,8 +16,15 @@
  *   into two displayed batches.
  * - Keeps a persistent footer status + widget above the editor showing the
  *   latest batch (survives scrollback, stays visible until the next batch).
- *   The widget is capped at a fixed number of lines; the printed/notified
- *   summary and `/filechanges` show everything.
+ *   The footer status lists the changed file names (most recent first),
+ *   truncated to a character budget with a "+N more" tail when the list is
+ *   long. The widget is capped at a fixed number of lines; the
+ *   printed/notified summary and `/filechanges` show everything.
+ * - The footer status also shows a shortcut hint to open the project root
+ *   in VS Code. `ctrl+shift+v` (and `/filechanges-open`) run `code <root>`,
+ *   where `<root>` is the git repo root when inside one, else `ctx.cwd`.
+ *   Requires the `code` CLI to be on PATH (VS Code > Shell Command: Install
+ *   'code' command in PATH).
  * - Prints/notifies a summary right after the final response, with
  *   +added/-removed line counts and a running total, via `git diff
  *   --no-index` (no extra npm dependency). Binary files are detected via a
@@ -44,7 +51,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { isBashToolResult, isEditToolResult, isToolCallEventType, isWriteToolResult } from "@earendil-works/pi-coding-agent";
+import { isBashToolResult, isEditToolResult, isToolCallEventType, isWriteToolResult, rawKeyHint } from "@earendil-works/pi-coding-agent";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
@@ -59,6 +66,13 @@ const ENTRY_BATCH = "filechanges:batch";
 const WIDGET_MAX_LINES = 8;
 const SUMMARY_MAX_LINES = 30;
 const BINARY_SNIFF_BYTES = 8000;
+// Character budget for the file-name list shown in the footer status line
+// (shared with other extensions' statuses, so keep it tight).
+const STATUS_NAMES_BUDGET = 42;
+// Longest a single file name is allowed to be before middle-truncation.
+const STATUS_NAME_MAX = 24;
+// Keybinding that opens the project root in VS Code (see registerShortcut below).
+const OPEN_VSCODE_SHORTCUT = "ctrl+shift+v";
 
 const DEFAULT_IGNORE = [
 	"package-lock.json",
@@ -142,6 +156,28 @@ function countsText(t: BatchEntry): string {
 	return t.binary ? "(binary)" : `(+${t.added}/-${t.removed})`;
 }
 
+/** Keep the tail of a long name (extension/basename) visible, drop the middle. */
+function truncateNameStart(name: string, maxLen: number): string {
+	if (name.length <= maxLen) return name;
+	return `…${name.slice(name.length - (maxLen - 1))}`;
+}
+
+/** Comma-joined file names, most-recent-first, capped to a character budget with a "+N more" tail. */
+function buildNamesSummary(items: BatchEntry[]): string {
+	if (items.length === 0) return "";
+	const shown: string[] = [];
+	let used = 0;
+	for (const t of items) {
+		const name = truncateNameStart(t.path, STATUS_NAME_MAX);
+		const addedLen = name.length + (shown.length > 0 ? 2 : 0);
+		if (shown.length > 0 && used + addedLen > STATUS_NAMES_BUDGET) break;
+		shown.push(name);
+		used += addedLen;
+	}
+	const remaining = items.length - shown.length;
+	return remaining > 0 ? `${shown.join(", ")}, +${remaining} more` : shown.join(", ");
+}
+
 /** Minimal glob support: `*` = any chars except `/`, `**` = any chars including `/`. */
 function globToRegExp(glob: string): RegExp {
 	let re = "";
@@ -192,12 +228,13 @@ function readIgnoreConfig(cwd: string): string[] {
 
 function formatStatus(batch: Map<string, BatchEntry>, theme?: any): string | undefined {
 	if (batch.size === 0) return undefined;
+	const items = [...batch.values()].sort((a, b) => b.updatedAt - a.updatedAt);
 	let created = 0;
 	let edited = 0;
 	let deleted = 0;
 	let totalAdded = 0;
 	let totalRemoved = 0;
-	for (const t of batch.values()) {
+	for (const t of items) {
 		if (t.kind === "new") created++;
 		else if (t.kind === "deleted") deleted++;
 		else edited++;
@@ -209,8 +246,11 @@ function formatStatus(batch: Map<string, BatchEntry>, theme?: any): string | und
 	if (created) parts.push(`+${created}`);
 	if (deleted) parts.push(`-${deleted}`);
 	const totals = totalAdded || totalRemoved ? `  (+${totalAdded}/-${totalRemoved})` : "";
-	const text = `last batch: ${parts.join("  ")}${totals}`;
-	return theme ? theme.fg("muted", text) : text;
+	const names = buildNamesSummary(items);
+	const summary = `${names}  ${parts.join("  ")}${totals}`;
+	const summaryText = theme ? theme.fg("muted", summary) : summary;
+	const openHint = rawKeyHint(OPEN_VSCODE_SHORTCUT, "open in VS Code");
+	return `${summaryText}  ${openHint}`;
 }
 
 function buildWidgetLines(batch: Map<string, BatchEntry>, theme?: any): string[] | undefined {
@@ -396,6 +436,20 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		batch.set(path, { path, absPath: baseline.absPath, kind, added, removed, binary, updatedAt: Date.now() });
+	}
+
+	async function openProjectRootInVSCode(ctx: ExtensionContext): Promise<void> {
+		const root = (await getRepoRoot(ctx.cwd)) ?? ctx.cwd;
+		try {
+			await pi.exec("code", [root]);
+			if (ctx.hasUI) ctx.ui.notify(`filechanges: opened ${root} in VS Code.`, "info");
+			else console.log(`[filechanges] opened ${root} in VS Code.`);
+		} catch (e: any) {
+			const msg = e?.message ?? String(e);
+			const text = `filechanges: could not open VS Code (${msg}). Is the "code" CLI on PATH?`;
+			if (ctx.hasUI) ctx.ui.notify(text, "error");
+			else console.error(text);
+		}
 	}
 
 	async function recordChange(ctx: ExtensionContext, path: string, absPath: string, beforeSnap: FileSnapshot): Promise<void> {
@@ -602,6 +656,20 @@ export default function (pi: ExtensionAPI) {
 			updateUi(ctx);
 			if (ctx.hasUI) ctx.ui.notify("filechanges: cleared.", "info");
 			else console.log("[filechanges] cleared.");
+		},
+	});
+
+	pi.registerCommand("filechanges-open", {
+		description: "Open the project root in VS Code",
+		handler: async (_args, ctx) => {
+			await openProjectRootInVSCode(ctx);
+		},
+	});
+
+	pi.registerShortcut(OPEN_VSCODE_SHORTCUT, {
+		description: "Open the project root in VS Code",
+		handler: async (ctx) => {
+			await openProjectRootInVSCode(ctx);
 		},
 	});
 }

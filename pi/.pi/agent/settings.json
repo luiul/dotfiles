@@ -88,7 +88,7 @@
     "npm:pi-mcp-adapter",
     "npm:context-mode",
     "npm:pi-hermes-memory",
-    "npm:ste-guard"
+    "npm:agent-ste"
   ],
   "markdown": {
     "codeBlockIndent": ""

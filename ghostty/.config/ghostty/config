@@ -5,7 +5,7 @@ font-feature = -liga
 font-feature = -dlig
 
 # Theme settings
-theme = Wez
+theme = Monokai Pro Spectrum
 
 # Cursor settings
 cursor-style-blink = false
@@ -19,8 +19,16 @@ clipboard-trim-trailing-spaces = true
 
 # Keybindings
 keybind = global:control+command+shift+option+r=toggle_quick_terminal
+
+# Unbind default keybindings for herdr
 keybind = cmd+n=unbind
 keybind = cmd+shift+n=new_window
+
+keybind = cmd+w=unbind
+keybind = cmd+shift+w=close_window
+
+keybind = cmd+t=unbind
+keybind = cmd+shift+t=new_tab
 
 # Padding
 window-padding-x = 8

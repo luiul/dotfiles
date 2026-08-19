@@ -1,6 +1,6 @@
 {
   "defaultProvider": "amazon-bedrock",
-  "defaultModel": "global.openai.gpt-5.6-luna",
+  "defaultModel": "eu.anthropic.claude-sonnet-5",
   "enabledModels": [
     "amazon.nova-lite-v1:0",
     "amazon.nova-micro-v1:0",

@@ -32,6 +32,7 @@ keybind = cmd+shift+t=new_tab
 
 keybind = cmd+d=unbind
 keybind = cmd+shift+d=new_split:right
+keybind = cmd+shift+f=new_split:down
 
 # Padding
 window-padding-x = 8

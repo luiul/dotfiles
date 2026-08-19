@@ -12,11 +12,5 @@ type = "shell"
 command = "~/.config/herdr/scripts/hunk-review.sh"
 description = "review current changes in a side pane"
 
-[[keys.command]]
-key = "prefix+a"
-type = "plugin_action"
-command = "luiul.agent-radar.open-radar"
-description = "open Agent Radar (agents running outside herdr)"
-
 [ui]
 agent_panel_sort = "spaces"

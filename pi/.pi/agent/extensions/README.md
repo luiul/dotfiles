@@ -39,6 +39,15 @@ It is lazy by construction, not just by a low duty cycle:
 - On a confirmed degrade, `scorer.ts#autofix()` applies only meaning-preserving mechanical fixes locally (dictionary word swap, or deleting a filler opener when it is the *entire* first sentence — never a partial prefix, which would leave a dangling fragment). Anything that needs judgment (sentence length, passive voice, hedging) is reported, never rewritten.
 - If the mechanical fixes are not enough, a single short (~40 word) reminder is queued and injected once via `before_agent_start` for the next turn only, then cleared. There is no per-turn rule-card injection.
 
+### Does it improve over time?
+
+The per-session baseline in `baseline.ts` alone does **not**: it resets to empty on every `session_start`, and the dictionary in `dictionary.ts` is a hardcoded, frozen list. Left as originally shipped, neither the writing-quality judgment nor the approved-word list would ever get better on their own. Two additions close that gap, both cross-session and both file-backed under `~/.pi/agent/data/ste-lite/`:
+
+- **`history.ts`** persists a running, count-weighted mean score per channel (`history.json`) across every session that ever ran (capped at a rolling window of 500 samples so it stays responsive rather than nearly immovable after months of use). A new session's baseline is seeded from that history (`seedBaselineFromHistory`), so a returning session needs far fewer real samples before it can tell degrading from normal-for-you, instead of re-learning from a cold start every time. `/ste-lite history` shows the current running mean and sample count per channel.
+- **`candidates.ts`** tallies recurring `style/hedge`, `style/puffery`, and `style/opener` findings across sessions (`candidates.json`), capped at 200 entries. These are the only rules with stable, repeatable excerpts; `length/sentence`, `verb/passive`, and `structure/prose-wall` excerpts are content-derived and would just be one-off noise. `/ste-lite candidates [n]` surfaces the most frequent recurring phrases. `/ste-lite promote <word> <replacement>` lets a human turn one of those into a hard, auto-fixed dictionary entry, stored in a small user-editable overlay (`custom-dictionary.json`) merged with the built-in list at runtime. The approved-word list only grows when a person decides it should — consistent with every rule in `scorer.ts` never rewriting a judgment call on its own.
+
+Both persist incrementally (every 15 scored samples) and on `session_shutdown`, so a crash loses at most a few samples of learning, never the accumulated history.
+
 ### Modes and safety
 
 - `~/.pi/agent/data/ste-lite/config.json` holds `enabled`, `mode` (`observe` | `nudge` | `strict`), and `scope` (`replies` / `edits`). It ships defaulting to `mode: "observe"`: logging only, zero visible behavior change, until thresholds are calibrated against real sessions (see rollout plan in issue #12).
@@ -51,11 +60,13 @@ It is lazy by construction, not just by a low duty cycle:
 ### Verification
 
 ```sh
-bunx vitest run pi/.pi/agent/extensions/ste-lite-tests/scorer.test.ts pi/.pi/agent/extensions/ste-lite-tests/baseline.test.ts
+bunx vitest run pi/.pi/agent/extensions/ste-lite-tests/
 pi --no-session --no-extensions -e pi/.pi/agent/extensions/ste-lite/index.ts -p 'Reply with exactly OK.'
 ```
 
-The unit tests cover the scorer (word/sentence rules, prose-span extraction for markdown vs. source-file comments, the autofix safety guards) and the baseline (warmup, degrade-streak detection, no upward drift on degrading samples, one-shot recovery). The print-mode check confirms the extension loads under pi's real extension loader and the `message_end` hook fires without error.
+The unit tests cover the scorer (word/sentence rules, prose-span extraction for markdown vs. source-file comments, the autofix safety guards, custom-dictionary overrides), the baseline (warmup, degrade-streak detection, no upward drift on degrading samples, one-shot recovery), the cross-session history merge (count-weighted averaging, the effective-weight cap, warmup seeding), and the candidate tracker (tracked-vs-ignored rules, cross-call accumulation, the entry cap). The print-mode check confirms the extension loads under pi's real extension loader and the `message_end` hook fires without error.
+
+All of the above was verified live, not just via vitest: two separate `pi -p` processes in sequence showed `history.json`'s count-weighted mean and `candidates.json`'s counts both persist and accumulate correctly across process boundaries, and `/ste-lite promote robust reliable` followed by a forced-degrade run showed the promoted word actually get auto-fixed (`robust` -> `reliable`) in a live reply, confirming the full recurring-finding-to-hard-dictionary loop end to end.
 
 ## Bedrock GPT 5.6 reasoning
 

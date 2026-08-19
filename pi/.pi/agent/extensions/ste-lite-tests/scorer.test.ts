@@ -127,6 +127,15 @@ describe("scoreText", () => {
 		const dirty = scoreText("We should utilize and facilitate this to commence the subsequent effort.");
 		expect(dirty.score).toBeGreaterThan(clean.score);
 	});
+
+	it("accepts a custom dictionary, on top of or instead of the built-in one", () => {
+		const withoutCustomWord = findViolations("Let's leverage the new API.");
+		expect(withoutCustomWord.some((f) => f.excerpt.toLowerCase() === "leverage")).toBe(false);
+
+		const withCustomWord = findViolations("Let's leverage the new API.", { leverage: "use" });
+		const hit = withCustomWord.find((f) => f.excerpt.toLowerCase() === "leverage");
+		expect(hit).toMatchObject({ rule: "dictionary/not-approved-word", severity: "hard", suggestion: "use" });
+	});
 });
 
 describe("autofix", () => {
@@ -170,5 +179,11 @@ describe("autofix", () => {
 		const result = autofix("Great, I'll refactor the auth module and add tests for it now.");
 		expect(result.text).toContain("Great, I'll refactor the auth module");
 		expect(result.changes.some((c) => c.rule === "style/opener")).toBe(false);
+	});
+
+	it("accepts a custom dictionary so a promoted word gets swapped too", () => {
+		const result = autofix("Let's leverage the new API for this.", { leverage: "use" });
+		expect(result.text).toContain("use the new API");
+		expect(result.changes.some((c) => c.rule === "dictionary/not-approved-word")).toBe(true);
 	});
 });

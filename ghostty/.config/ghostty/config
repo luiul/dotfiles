@@ -14,6 +14,9 @@ cursor-color = #B3B3B3
 cursor-style = bar
 adjust-cursor-thickness = 2
 
+# Clipboard
+clipboard-trim-trailing-spaces = true
+
 # Keybindings
 keybind = global:control+command+shift+option+r=toggle_quick_terminal
 

@@ -1,0 +1,34 @@
+id = "luiul.agent-radar"
+name = "Agent Radar"
+version = "0.1.0"
+min_herdr_version = "0.8.0"
+description = "Read-only visibility into agent CLI sessions running outside herdr (dotfiles#11, phases 0-2)"
+platforms = ["macos"]
+
+# One-shot per session-restore / live-handoff. Immediately backgrounds the
+# real watcher loop and exits, since herdr startup hooks are not supervised
+# daemons. See README.md for the lifecycle details.
+[[startup]]
+command = ["bash", "start-watcher.sh"]
+platforms = ["macos"]
+
+[[actions]]
+id = "start-watcher"
+title = "Start Agent Radar watcher now"
+contexts = ["workspace"]
+command = ["bash", "start-watcher.sh"]
+platforms = ["macos"]
+
+[[actions]]
+id = "open-radar"
+title = "Open Agent Radar"
+contexts = ["workspace"]
+command = ["bash", "open-radar.sh"]
+platforms = ["macos"]
+
+[[panes]]
+id = "radar"
+title = "Agent Radar"
+placement = "split"
+command = ["bash", "radar.sh"]
+platforms = ["macos"]

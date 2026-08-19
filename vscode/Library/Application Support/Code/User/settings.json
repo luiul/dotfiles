@@ -372,7 +372,6 @@
     },
     "claudeCode.preferredLocation": "panel",
     "python.terminal.useEnvFile": false,
-    "workbench.activityBar.location": "top",
     "window.commandCenter": false,
     "markdown-preview-github-styles.colorTheme": "light",
     "terminal.integrated.tabs.enabled": false,
@@ -387,5 +386,6 @@
     "workbench.layoutControl.enabled": false,
     "chat.titleBar.openInAgentsWindow.enabled": false,
     "workbench.browser.showInTitleBar": false,
-    "terminal.integrated.initialHint": false
+    "terminal.integrated.initialHint": false,
+    "workbench.activityBar.location": "bottom"
 }

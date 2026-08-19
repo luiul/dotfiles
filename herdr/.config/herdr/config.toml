@@ -1,2 +1,6 @@
 [keys]
+prefix = "f12"
 new_workspace = ["prefix+shift+n", "cmd+n"]
+close_workspace = ["prefix+shift+d", "cmd+w"]
+new_tab = ["prefix+c", "cmd+t"]
+close_tab = "prefix+shift+x"

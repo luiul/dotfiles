@@ -101,8 +101,6 @@ cask "obsidian"
 cask "qlmarkdown"
 # Pluggable Terraform linter
 cask "terraform-linters/tap/tflint", trusted: true
-# Multiplayer code editor
-cask "zed"
 vscode "adpyke.codesnap"
 vscode "altimateai.vscode-altimate-mcp-server"
 vscode "amazonwebservices.aws-toolkit-vscode"

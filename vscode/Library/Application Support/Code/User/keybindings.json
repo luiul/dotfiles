@@ -58,8 +58,13 @@
         "when": "!editorFocus"
     },
     {
-        "key": "shift+alt+cmd+f",
+        "key": "alt+cmd+f",
         "command": "copyRelativeFilePath",
+        "when": "editorFocus"
+    },
+    {
+        "key": "shift+alt+cmd+f",
+        "command": "copyFilePath",
         "when": "editorFocus"
     },
     {

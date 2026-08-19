@@ -1,0 +1,13 @@
+{
+  "extends": "default",
+  "max_blocks_per_message": 0,
+  "max_blocks_per_chain": 0,
+  "soft_block_threshold": 999,
+  "budget": {
+    "words": null,
+    "sentence_words": null
+  },
+  "write_guard": {
+    "mode": "warn"
+  }
+}

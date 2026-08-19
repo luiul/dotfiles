@@ -10,6 +10,14 @@ tap "snowflakedb/snowflake-cli"
 tap "terraform-linters/tap"
 # Clone of cat(1) with syntax highlighting and Git integration
 brew "bat"
+# Container runtimes on MacOS (and Linux) with minimal setup
+brew "colima"
+# Pack, ship and run any application as a lightweight container
+brew "docker"
+# Docker CLI plugin for extended build capabilities with BuildKit
+brew "docker-buildx"
+# Isolated development environments using Docker
+brew "docker-compose"
 # More intuitive version of du in rust
 brew "dust"
 # Modern, maintained replacement for ls
@@ -40,6 +48,8 @@ brew "go"
 brew "googleworkspace-cli"
 # Review-first terminal diff viewer for agent-authored changesets
 brew "hunk"
+# Command-line benchmarking tool
+brew "hyperfine"
 # Lightweight and flexible command-line JSON processor
 brew "jq"
 # Open-source, cross-platform JavaScript runtime environment
@@ -48,6 +58,8 @@ brew "node"
 brew "openjdk@17"
 # Drop-in replacement for Terraform. Infrastructure as Code Tool
 brew "opentofu"
+# Alternative to docker-compose using podman
+brew "podman-compose"
 # PDF rendering library (based on the xpdf-3.0 code base)
 brew "poppler"
 # Utility that provides fast incremental file transfer
@@ -62,6 +74,8 @@ brew "snowflake-cli"
 brew "stow"
 # Very fast implementation of tldr in Rust
 brew "tealdeer"
+# Terminal multiplexer
+brew "tmux"
 # Display directories as trees (with optional color/HTML output)
 brew "tree"
 # Extremely fast Python package installer and resolver, written in Rust
@@ -199,7 +213,6 @@ vscode "wenbopan.vscode-terminal-osc-notifier"
 vscode "yutengjing.open-in-external-app"
 vscode "yzane.markdown-pdf"
 vscode "yzhang.markdown-all-in-one"
-uv "canopy"
 uv "code-review-graph"
 uv "coppice"
 uv "dbts"

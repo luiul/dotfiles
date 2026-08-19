@@ -5,3 +5,9 @@ close_workspace = ["prefix+shift+d", "cmd+w"]
 new_tab = ["prefix+c", "cmd+t"]
 close_tab = "prefix+shift+x"
 split_vertical = ["prefix+v", "cmd+d"]
+
+[[keys.command]]
+key = "cmd+i"
+type = "shell"
+command = "~/.config/herdr/scripts/hunk-review.sh"
+description = "review current changes in a side pane"

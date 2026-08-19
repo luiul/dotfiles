@@ -12,5 +12,11 @@ type = "shell"
 command = "~/.config/herdr/scripts/hunk-review.sh"
 description = "review current changes in a side pane"
 
+[[keys.command]]
+key = "prefix+a"
+type = "shell"
+command = "~/.config/herdr/scripts/canopy-status.sh"
+description = "open canopy (agents running outside herdr) in a side pane"
+
 [ui]
 agent_panel_sort = "spaces"

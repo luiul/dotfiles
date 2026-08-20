@@ -1,23 +1,23 @@
 onboarding = false
 [keys]
 prefix = "f12"
-new_workspace = ["prefix+shift+n", "cmd+n"]
-close_workspace = ["prefix+shift+d", "cmd+w"]
-new_tab = ["prefix+c", "cmd+t"]
-close_tab = "prefix+shift+x"
-split_vertical = ["prefix+v", "cmd+d"]
+# new_workspace = ["prefix+shift+n", "cmd+n"]
+# close_workspace = ["prefix+shift+d", "cmd+w"]
+# new_tab = ["prefix+c", "cmd+t"]
+# close_tab = "prefix+shift+x"
+# split_vertical = ["prefix+v", "cmd+d"]
 
-[[keys.command]]
-key = "cmd+i"
-type = "shell"
-command = "~/.config/herdr/scripts/hunk-review.sh"
-description = "review current changes in a side pane"
+# [[keys.command]]
+# key = "cmd+i"
+# type = "shell"
+# command = "~/.config/herdr/scripts/hunk-review.sh"
+# description = "review current changes in a side pane"
 
-[[keys.command]]
-key = "prefix+a"
-type = "shell"
-command = "~/.config/herdr/scripts/canopy-status.sh"
-description = "open canopy (agent sessions on this machine) in a side pane"
+# [[keys.command]]
+# key = "prefix+a"
+# type = "shell"
+# command = "~/.config/herdr/scripts/canopy-status.sh"
+# description = "open canopy (agent sessions on this machine) in a side pane"
 
 [ui]
 agent_panel_sort = "priority"

@@ -1,3 +1,4 @@
+onboarding = false
 [keys]
 prefix = "f12"
 new_workspace = ["prefix+shift+n", "cmd+n"]
@@ -19,4 +20,4 @@ command = "~/.config/herdr/scripts/canopy-status.sh"
 description = "open canopy (agent sessions on this machine) in a side pane"
 
 [ui]
-agent_panel_sort = "spaces"
+agent_panel_sort = "priority"

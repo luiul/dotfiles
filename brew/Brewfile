@@ -53,6 +53,8 @@ brew "hunk"
 brew "hyperfine"
 # Lightweight and flexible command-line JSON processor
 brew "jq"
+# Modern and intuitive terminal-based text editor
+brew "micro"
 # Open-source, cross-platform JavaScript runtime environment
 brew "node"
 # Development kit for the Java programming language
@@ -216,6 +218,7 @@ vscode "wenbopan.vscode-terminal-osc-notifier"
 vscode "yutengjing.open-in-external-app"
 vscode "yzane.markdown-pdf"
 vscode "yzhang.markdown-all-in-one"
+go "github.com/luiul/understory/cmd/understory"
 uv "code-review-graph"
 uv "coppice"
 uv "dbts"

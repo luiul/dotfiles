@@ -1,6 +1,6 @@
 {
   "defaultProvider": "amazon-bedrock",
-  "defaultModel": "eu.anthropic.claude-sonnet-5",
+  "defaultModel": "global.anthropic.claude-sonnet-5",
   "enabledModels": [
     "amazon.nova-lite-v1:0",
     "amazon.nova-micro-v1:0",
@@ -79,7 +79,7 @@
   ],
   "enableInstallTelemetry": false,
   "enableAnalytics": false,
-  "lastChangelogVersion": "0.84.2",
+  "lastChangelogVersion": "0.84.3",
   "theme": "dark",
   "outputPad": 0,
   "packages": [

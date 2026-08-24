@@ -79,6 +79,7 @@
   ],
   "enableInstallTelemetry": false,
   "enableAnalytics": false,
+  "quietStartup": true,
   "lastChangelogVersion": "0.84.3",
   "theme": "dark",
   "outputPad": 0,

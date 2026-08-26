@@ -1,20 +1,23 @@
 /**
  * Enhanced status bar for pi (claude-hud inspired).
  *
- * Replaces the default footer with a two-line status bar:
+ * Replaces the default footer with a two-line status bar that labels every
+ * value with plain words instead of glyphs:
  *
- *   <project>  ⎇ <branch> ●<dirty> ↑<ahead> ↓<behind>     <model> <thinking>
- *   <session>  ↑<in> ↓<out> ⊕<cache>  $<cost>     [██████▏░░] <pct>%  <tok>/<win>  ▸<free>
+ *   <project>  branch <name>  changed <n>  ahead <n>  behind <n>     <model>  thinking <level>
+ *   <session>  in <tok>  out <tok>  cache <tok>  hit <pct>  $<cost>     [██████▏░░] <pct>%  context <tok>/<win>  free <tok>
  *
  * The context cluster on the right of line 2 is compaction-aware: the bar shows
  * a marker (▏) at the auto-compaction threshold (contextWindow - reserveTokens),
  * its colour tracks proximity to that threshold rather than the raw window, and
- * ▸<free> reports how many tokens remain before auto-compaction triggers.
+ * "free" reports how many tokens remain before auto-compaction triggers. The
+ * <tok>/<win> pair is the live context size estimate against the model's full
+ * context window, taken from pi's own getContextUsage() accounting.
  *
  * On narrow terminals it collapses to a single compact line. Toggle the bar on
  * and off with the /statusbar command.
  *
- * Git working-tree state (dirty count, ahead/behind) is polled on a timer and
+ * Git working-tree state (changed count, ahead/behind) is polled on a timer and
  * cached, since the footer render path must stay synchronous.
  */
 
@@ -77,15 +80,6 @@ const readCompactionConfig = (cwd: string): CompactionConfig => {
 		}
 	}
 	return { enabled, reserveTokens };
-};
-
-const THINKING_LABEL: Record<string, string> = {
-	off: "",
-	minimal: "min",
-	low: "low",
-	medium: "med",
-	high: "high",
-	xhigh: "xhigh",
 };
 
 export default function (pi: ExtensionAPI) {
@@ -203,23 +197,19 @@ export default function (pi: ExtensionAPI) {
 				return `[${out}]`;
 			};
 
-			// Format a percentage with exactly two decimal places.
-			const fmtPct = (n: number): string => n.toFixed(2);
-
 			const thinkingTag = (): string => {
 				const level = pi.getThinkingLevel();
-				const label = THINKING_LABEL[level] ?? "";
-				if (!label) return "";
-				return theme.getThinkingBorderColor(level)(`✦${label}`);
+				if (level === "off") return "";
+				return theme.getThinkingBorderColor(level)(`thinking ${level}`);
 			};
 
 			const gitTag = (compact: boolean): string => {
 				const branch = footerData.getGitBranch();
 				if (!branch) return "";
-				let s = theme.fg("dim", compact ? "⎇ " : "  ⎇ ") + theme.fg("muted", branch);
-				if (git.dirty > 0) s += " " + theme.fg("warning", `●${git.dirty}`);
-				if (git.ahead > 0) s += " " + theme.fg("dim", `↑${git.ahead}`);
-				if (git.behind > 0) s += " " + theme.fg("dim", `↓${git.behind}`);
+				let s = theme.fg("dim", compact ? "branch " : "  branch ") + theme.fg("muted", branch);
+				if (git.dirty > 0) s += " " + theme.fg("warning", `changed ${git.dirty}`);
+				if (git.ahead > 0) s += " " + theme.fg("dim", `ahead ${git.ahead}`);
+				if (git.behind > 0) s += " " + theme.fg("dim", `behind ${git.behind}`);
 				return s;
 			};
 
@@ -240,18 +230,20 @@ export default function (pi: ExtensionAPI) {
 					// friendly name ("moonshotai/Kimi-K3" -> "Kimi K3").
 					const m = ctx.model;
 					const model = !m
-						? "no-model"
+						? "no model"
 						: m.provider === "amazon-bedrock"
 							? m.id
 							: (m.name ?? m.id);
 					const think = thinkingTag();
-					const pct = usage?.percent ?? null;
+					// Live context size estimate and the model's full context window.
+					const contextTokens = usage?.tokens ?? null;
+					const contextWindow = usage?.contextWindow ?? 0;
 					// Usable window before auto-compaction triggers.
 					const usableWindow = usage
-						? Math.max(0, usage.contextWindow - (compaction.enabled ? compaction.reserveTokens : 0))
+						? Math.max(0, contextWindow - (compaction.enabled ? compaction.reserveTokens : 0))
 						: 0;
 					const untilCompact =
-						usage && usage.tokens != null ? Math.max(0, usableWindow - usage.tokens) : null;
+						contextTokens != null ? Math.max(0, usableWindow - contextTokens) : null;
 
 					// --- Narrow terminals: single compact line ---
 					if (width < NARROW_WIDTH) {
@@ -259,47 +251,53 @@ export default function (pi: ExtensionAPI) {
 							.filter(Boolean)
 							.join(" ");
 						const rightBits = [
-							usage && usage.tokens != null
-								? theme.fg("dim", `${fmtTokens(usage.tokens)}/${fmtTokens(usage.contextWindow)}`)
+							contextTokens != null
+								? theme.fg("dim", "context ") +
+									theme.fg("muted", `${fmtTokens(contextTokens)}/${fmtTokens(contextWindow)}`)
 								: "",
-							pct != null ? theme.fg("muted", `${fmtPct(pct)}%`) : "",
+							usage?.percent != null ? theme.fg("muted", `${Math.round(usage.percent)}%`) : "",
 							theme.fg("success", `$${cost.toFixed(2)}`),
 							theme.fg("dim", model),
 						].filter(Boolean);
-						return [join(left, rightBits.join(theme.fg("dim", " · ")), width)];
+						return [join(left, rightBits.join("  "), width)];
 					}
 
 					// --- Line 1: project + git  |  model + thinking ---
 					const l1 = theme.fg("accent", theme.bold(project)) + gitTag(false);
-					const r1 = [theme.fg("dim", model), think].filter(Boolean).join(" ");
+					const r1 = [theme.fg("dim", model), think].filter(Boolean).join("  ");
 
 					// --- Line 2: session + tokens + cost  |  context ---
 					const parts2: string[] = [];
 					if (name) parts2.push(theme.fg("accent", name));
+					// Cumulative session traffic: fresh input tokens, generated output
+					// tokens, and tokens served from (or written to) the prompt cache.
 					parts2.push(
-						theme.fg("dim", "↑") +
+						theme.fg("dim", "in ") +
 							theme.fg("muted", fmtTokens(input)) +
-							theme.fg("dim", " ↓") +
+							theme.fg("dim", "  out ") +
 							theme.fg("muted", fmtTokens(output)) +
-							theme.fg("dim", " ⊕") +
+							theme.fg("dim", "  cache ") +
 							theme.fg("muted", fmtTokens(cache)),
 					);
 					// Last-turn cache reuse: high values mean most of the prompt was cached.
 					if (lastHitRate != null) {
 						const hitColor =
 							lastHitRate >= 80 ? "success" : lastHitRate >= 50 ? "warning" : "dim";
-						parts2.push(theme.fg("dim", "≡") + theme.fg(hitColor, `${lastHitRate.toFixed(0)}%`));
+						parts2.push(
+							theme.fg("dim", "hit ") + theme.fg(hitColor, `${Math.round(lastHitRate)}%`),
+						);
 					}
 					parts2.push(theme.fg("success", `$${cost.toFixed(3)}`));
-					const l2 = parts2.join(theme.fg("dim", "  ·  "));
+					const l2 = parts2.join("  ");
 
 					let r2: string;
-					if (usage && usage.tokens != null && usage.percent != null) {
+					if (usage && contextTokens != null && usage.percent != null) {
 						r2 =
-							contextBar(usage.tokens, usage.contextWindow, usableWindow, 10) +
+							contextBar(contextTokens, contextWindow, usableWindow, 10) +
 							" " +
-							theme.fg("muted", `${fmtPct(usage.percent)}%`) +
-							theme.fg("dim", `  ${fmtTokens(usage.tokens)}/${fmtTokens(usage.contextWindow)}`);
+							theme.fg("muted", `${Math.round(usage.percent)}%`) +
+							theme.fg("dim", "  context ") +
+							theme.fg("muted", `${fmtTokens(contextTokens)}/${fmtTokens(contextWindow)}`);
 						// Free tokens before auto-compaction fires.
 						if (untilCompact != null && compaction.enabled) {
 							const freeColor =
@@ -308,13 +306,16 @@ export default function (pi: ExtensionAPI) {
 									: untilCompact <= usableWindow * 0.25
 										? "warning"
 										: "dim";
-							r2 += theme.fg("dim", "  ▸") + theme.fg(freeColor, fmtTokens(untilCompact));
+							r2 += theme.fg("dim", "  free ") + theme.fg(freeColor, fmtTokens(untilCompact));
 						}
 					} else if (usage) {
 						// Post-compaction: token count unknown until the next response.
-						r2 = theme.fg("dim", `~/${fmtTokens(usage.contextWindow)} (post-compact)`);
+						r2 = theme.fg(
+							"dim",
+							`context unknown of ${fmtTokens(contextWindow)} (post-compaction)`,
+						);
 					} else {
-						r2 = theme.fg("dim", "context n/a");
+						r2 = theme.fg("dim", "context unavailable");
 					}
 
 					return [join(l1, r1, width), join(l2, r2, width)];

@@ -235,7 +235,15 @@ export default function (pi: ExtensionAPI) {
 					const name = sm.getSessionName();
 					const { input, output, cache, cost, lastHitRate } = tally(ctx);
 					const usage = ctx.getContextUsage();
-					const model = ctx.model?.id ?? "no-model";
+					// Bedrock keeps the raw id (its eu./us./global. prefix encodes the
+					// invocation region, which matters here); other providers show the
+					// friendly name ("moonshotai/Kimi-K3" -> "Kimi K3").
+					const m = ctx.model;
+					const model = !m
+						? "no-model"
+						: m.provider === "amazon-bedrock"
+							? m.id
+							: (m.name ?? m.id);
 					const think = thinkingTag();
 					const pct = usage?.percent ?? null;
 					// Usable window before auto-compaction triggers.

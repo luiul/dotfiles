@@ -53,7 +53,12 @@ function regionFor(map: BedrockModelsMap, modelId: string): string {
 }
 
 function syncRegion(provider: string, modelId: string, ctx: ExtensionContext): void {
-	if (provider !== "amazon-bedrock") return;
+	if (provider !== "amazon-bedrock") {
+		// Switching to a non-Bedrock model (e.g. ai-model-router): clear any
+		// stale aws:<region> badge left by a previously selected Bedrock model.
+		ctx.ui.setStatus("bedrock-region", undefined);
+		return;
+	}
 	const map = loadMap();
 	if (!map) return;
 

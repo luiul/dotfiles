@@ -547,6 +547,89 @@ gbranch() {
 	fi
 }
 
+gunlock() {
+	if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+		echo "Usage: gunlock"
+		echo
+		echo "Finds *.lock files under the current repo/worktree's git dirs"
+		echo "(e.g. index.lock after a killed/crashed git command), checks via"
+		echo "lsof whether a live process actually still holds each one open,"
+		echo "and only if none does, asks before deleting it."
+		return 0
+	fi
+
+	if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+		echo "Not inside a Git repository."
+		return 1
+	fi
+
+	local RED=$(tput setaf 1)
+	local GREEN=$(tput setaf 2)
+	local YELLOW=$(tput setaf 3)
+	local CYAN=$(tput setaf 6)
+	local RESET=$(tput sgr0)
+
+	# Resolve both the worktree-private git dir and the shared common dir —
+	# index.lock lives in the former, ref/config locks can live in the latter.
+	local git_dir common_dir
+	git_dir=$(git rev-parse --git-dir) || return 1
+	common_dir=$(git rev-parse --git-common-dir) || return 1
+	git_dir=$(cd "$git_dir" && pwd)
+	common_dir=$(cd "$common_dir" && pwd)
+
+	local -a lock_files
+	lock_files=("${(@f)$(find "$git_dir" "$common_dir" -name '*.lock' -type f 2>/dev/null | sort -u)}")
+
+	if [[ ${#lock_files[@]} -eq 0 ]]; then
+		echo "${GREEN}No lock files found. Nothing to clean up.${RESET}"
+		return 0
+	fi
+
+	if ! command -v lsof >/dev/null 2>&1; then
+		echo "${YELLOW}Warning: lsof not found — cannot verify the lock files are unheld.${RESET}"
+		echo "Refusing to guess. Found:"
+		printf '  %s\n' "${lock_files[@]}"
+		return 1
+	fi
+
+	local lock owner_info deleted_any=false
+	for lock in "${lock_files[@]}"; do
+		echo
+		echo "${CYAN}Found lock file:${RESET} $lock"
+		stat -f '  size: %z bytes, modified: %Sm' -t '%Y-%m-%d %H:%M:%S' "$lock" 2>/dev/null
+
+		owner_info=$(lsof -- "$lock" 2>/dev/null)
+
+		if [[ -n "$owner_info" ]]; then
+			echo "${RED}NOT safe to delete — currently held open by a running process:${RESET}"
+			echo "$owner_info"
+			continue
+		fi
+
+		echo "${GREEN}Safe: no process currently holds this file open.${RESET}"
+
+		local git_pids
+		git_pids=$(pgrep -x git 2>/dev/null)
+		if [[ -n "$git_pids" ]]; then
+			echo "${YELLOW}Note: other 'git' processes are running elsewhere (may be unrelated to this lock):${RESET}"
+			ps -o pid,etime,command -p ${(f)git_pids} 2>/dev/null
+		fi
+
+		echo -n "Delete this stale lock file? (y/N): "
+		read -r confirm
+		if [[ "$confirm" =~ ^[Yy]$ ]]; then
+			rm -f "$lock" && echo "${GREEN}Deleted: $lock${RESET}" && deleted_any=true
+		else
+			echo "${YELLOW}Skipped: $lock${RESET}"
+		fi
+	done
+
+	if [[ "$deleted_any" == true ]]; then
+		echo
+		echo "${CYAN}Done. Retry your git command.${RESET}"
+	fi
+}
+
 gurl() {
 	local remote="${1:-origin}"
 

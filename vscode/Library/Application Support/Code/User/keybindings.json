@@ -1,4 +1,4 @@
-// Place your key bindings in this file to override the defaultsauto[]
+// Place your key bindings in this file to override the defaults
 [
     {
         "key": "ctrl+enter",
@@ -46,16 +46,24 @@
     // Markdown All in One — Remove default keybindings that conflict with macOS shortcuts
     {
         "key": "cmd+b",
-        "command": "-markdown.extension.editing.toggleBold",
+        "command": "-markdown.extension.editing.toggleBold"
     },
     {
         "key": "cmd+m",
-        "command": "-markdown.extension.editing.toggleMath",
+        "command": "-markdown.extension.editing.toggleMath"
     },
+    // Copy filename / relative path / absolute path
+    // (default Explorer bindings for copyRelativeFilePath disabled below; both
+    // are remapped to the F family, scoped to editorFocus like the rest of the group)
     {
         "key": "shift+alt+cmd+c",
         "command": "-copyRelativeFilePath",
         "when": "!editorFocus"
+    },
+    {
+        "key": "cmd+k shift+alt+cmd+c",
+        "command": "-copyRelativeFilePath",
+        "when": "editorFocus"
     },
     {
         "key": "alt+cmd+f",
@@ -72,15 +80,10 @@
         "command": "copy-file-name.copyFileName",
         "when": "editorFocus"
     },
-    {
-        "key": "cmd+k shift+alt+cmd+c",
-        "command": "-copyRelativeFilePath",
-        "when": "editorFocus"
-    },
     // Disable external terminal (keeps accidentally opening)
     {
         "key": "shift+cmd+c",
         "command": "-workbench.action.terminal.openNativeConsole",
         "when": "!terminalFocus"
-    },
+    }
 ]

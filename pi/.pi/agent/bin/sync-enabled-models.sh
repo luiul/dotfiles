@@ -9,7 +9,10 @@
 #      /model and Ctrl+P show in a normal interactive session. This is safe
 #      because of (2) below: an extension keeps AWS_REGION in sync with
 #      whichever model is actually selected, so a non-default-region entry
-#      doesn't 400 when picked.
+#      doesn't 400 when picked. Entries this script does not manage (ids
+#      absent from pi's Bedrock catalog, e.g. ai-model-router provider
+#      models such as "moonshotai/Kimi-K3" or "claude-opus-5") are
+#      PRESERVED, not wiped.
 #   2. write pi/.pi/agent/bedrock-models.json, a full { modelId: region } map
 #      of EVERY usable model across ALL scanned regions. Two consumers read
 #      it: the pi extension pi/.pi/agent/extensions/bedrock-region-sync.ts
@@ -139,7 +142,7 @@ for arg in "$@"; do
     --dry-run)  dry_run=true ;;
     --no-probe) probe=false ;;
     --help|-h)
-      sed -n '1,112p' "$0"
+      sed -n '1,116p' "$0"
       exit 0
       ;;
     *) echo "Unknown arg: $arg" >&2; exit 2 ;;
@@ -389,7 +392,14 @@ echo "Wrote $(echo "$usable_tsv" | wc -l | tr -d ' ') model(s) to $BEDROCK_MODEL
 # active. With ENABLED_MODELS_SCOPE=default-region, it's scoped down to just
 # $DEFAULT_REGION so a plain interactive session never offers a model that
 # would 400 even without that extension installed.
-enabled_models_json=$(echo "$enabled_ids" | sed '/^$/d' | jq -R . | jq -s .)
+# Merge, don't clobber: keep existing enabledModels entries that are not
+# Bedrock-catalog ids (the ai-model-router provider models added by hand),
+# while replacing the Bedrock subset wholesale with the fresh probe-verified
+# set. grep -vxF does exact whole-line matching against the catalog; || true
+# because grep exits 1 when there is nothing foreign to keep (set -o
+# pipefail would otherwise abort here).
+foreign_ids=$(jq -r '.enabledModels // [] | .[]' "$PI_SETTINGS" | grep -vxF -f <(echo "$catalog") || true)
+enabled_models_json=$(printf '%s\n%s\n' "$enabled_ids" "$foreign_ids" | sed '/^$/d' | sort -u | jq -R . | jq -s .)
 tmp=$(mktemp)
 jq --argjson models "$enabled_models_json" '.enabledModels = $models' "$PI_SETTINGS" > "$tmp"
 mv "$tmp" "$PI_SETTINGS"

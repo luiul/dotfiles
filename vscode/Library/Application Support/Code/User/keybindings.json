@@ -57,13 +57,24 @@
         "command": "-copyRelativeFilePath",
         "when": "!editorFocus"
     },
+    // Copy filename / relative path / absolute path
     {
         "key": "alt+cmd+f",
+        "command": "copy-file-name.copyFileNameWithExtension",
+        "when": "editorFocus"
+    },
+    {
+        "key": "shift+cmd+f",
+        "command": "-workbench.action.findInFiles",
+        "when": "editorFocus"
+    },
+    {
+        "key": "shift+cmd+f",
         "command": "copyRelativeFilePath",
         "when": "editorFocus"
     },
     {
-        "key": "shift+alt+cmd+f",
+        "key": "ctrl+alt+cmd+f",
         "command": "copyFilePath",
         "when": "editorFocus"
     },

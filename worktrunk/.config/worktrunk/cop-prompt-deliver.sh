@@ -141,14 +141,20 @@ try
 	set savedClip to the clipboard as text
 end try
 set the clipboard to ("pi " & quoted form of p)
-tell application "System Events" to tell process "Code"
-	if name of front window is not t then error "front window mismatch"
-	keystroke "v" using command down
-	delay 0.15
-	key code 36
-end tell
+set driveErr to missing value
+try
+	tell application "System Events" to tell process "Code"
+		if name of front window is not t then error "front window mismatch"
+		keystroke "v" using command down
+		delay 0.15
+		key code 36
+	end tell
+on error errMsg
+	set driveErr to errMsg
+end try
 delay 0.2
 if savedClip is not missing value then set the clipboard to savedClip
+if driveErr is not missing value then error driveErr
 OSA
 }
 
@@ -213,8 +219,11 @@ if [ -n "$WIN_TITLE" ]; then
 		# not alive before it AND runs inside the worktree. The cwd check
 		# rejects unrelated pi sessions started at the same moment, and
 		# drives that landed in the wrong window when the user pulled focus
-		# mid-drive. Both fall through to the fallback below.
-		for _ in $(seq 1 80); do
+		# mid-drive. Both fall through to the fallback below. Bounded at ~4s
+		# (pi shows up within a second of the Return keystroke) so a failed
+		# drive's fallback write stays inside the task system's config-change
+		# pickup window.
+		for _ in $(seq 1 40); do
 			for pid in $(comm -13 <(printf '%s\n' "$PIDS_BEFORE") <(pi_pids)); do
 				cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')
 				if [ "$cwd" = "$WT" ]; then

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Create (or reopen) a coppice worktree named after a Jira ticket, and open its
-# VS Code window with pi already running a plan-only prompt for the ticket.
+# Create (or reopen) a coppice worktree named after a Jira ticket and open its
+# VS Code window. Asks whether pi should also start with a plan-only prompt for
+# the ticket (default yes); declining opens just the VS Code window: with no
+# --prompt, COP_PROMPT is empty, wt's pi-prompt post-switch hook no-ops, and
+# the post-start hook opens the window with `code -n`.
 #
 # This is a script, not a zsh function, because jira-today's fzf `execute`
 # binding spawns a non-interactive `$SHELL -c`, which never sources
@@ -66,4 +69,22 @@ if [ -z "$selection" ]; then
 	exit 1
 fi
 
-cop new "$REPOS_ROOT/$selection" --branch "$BRANCH" --yes --prompt "$PROMPT"
+# Single-keystroke confirm, default yes (Enter, or any key but n/N). The
+# answer MUST come from /dev/tty, not fd 0: when jira-today's fzf `become`
+# execs this script, fd 0 is the exhausted ticket-list pipe, and fzf leaves
+# O_NONBLOCK set on it, so reading fd 0 fails with EAGAIN ("Resource
+# temporarily unavailable"). reply is pre-initialized and read gets `|| true`
+# because a failed read (no tty, EOF) exits non-zero (set -e) and leaves the
+# variable unset (set -u); both failure paths then mean yes, preserving the
+# original unconditional-prompt behavior. ${arr[@]+...} because bash 3.2 +
+# set -u errors on expanding an empty array.
+prompt_args=()
+reply=''
+printf 'jira-worktree: inject pi plan prompt for %s? [Y/n] ' "$TICKET"
+read -n 1 -r reply </dev/tty || true
+echo
+if [[ ! "$reply" =~ ^[Nn]$ ]]; then
+	prompt_args=(--prompt "$PROMPT")
+fi
+
+cop new "$REPOS_ROOT/$selection" --branch "$BRANCH" --yes ${prompt_args[@]+"${prompt_args[@]}"}

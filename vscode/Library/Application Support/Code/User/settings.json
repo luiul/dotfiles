@@ -387,5 +387,6 @@
     "chat.titleBar.openInAgentsWindow.enabled": false,
     "workbench.browser.showInTitleBar": false,
     "terminal.integrated.initialHint": false,
-    "workbench.activityBar.location": "top"
+    "workbench.activityBar.location": "top",
+    "task.allowAutomaticTasks": "on"
 }

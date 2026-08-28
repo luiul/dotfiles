@@ -1,6 +1,6 @@
 {
   "reviewTransport": "subprocess",
-  "llmModelOverride": "amazon-bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "llmModelOverride": "ai-model-router/gpt-5.6-luna",
   "llmThinkingOverride": "off",
   "childExtensionPaths": [
     "/Users/luis.aceituno/.pi/agent/extensions/aws-sso-refresh.ts"

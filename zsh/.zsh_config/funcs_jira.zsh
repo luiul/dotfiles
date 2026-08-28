@@ -17,6 +17,14 @@
 # already running a plan-only prompt for the ticket. It has to call a script,
 # not a function: fzf `execute` spawns a non-interactive `$SHELL -c`, which
 # never sources .zsh_config.
+#
+# Every exit leaves a stdout trace: enter/ctrl-w print what they are doing
+# before running, and exiting with Esc prints a confirmation from the
+# function itself. The action bindings use `become` (not `execute`+`abort`)
+# for two reasons: `abort` exits 130, indistinguishable from Esc, while
+# `become` replaces fzf with the action so its own exit code surfaces (0 on
+# success, 130 only on Esc); and since fzf is gone before the action runs,
+# the echo is guaranteed to stay on screen instead of being redrawn away.
 jira-today() {
 	local base='project = ISA AND assignee = currentUser() AND statusCategory != Done AND issuetype != Epic'
 	local cols='key,type,status,updated,summary'
@@ -53,7 +61,12 @@ jira-today() {
 			--height=90% --layout=reverse --border --info=inline \
 			--preview 'jira issue view {2} --plain' \
 			--preview-window='down,50%,wrap,border-top' \
-			--bind 'enter:execute(jira open {2})+abort' \
-			--bind 'ctrl-w:execute(jira-worktree {2})+abort' \
+			--bind 'enter:become(echo "jira-today: opening {2} in the browser"; jira open {2})' \
+			--bind 'ctrl-w:become(echo "jira-today: worktree setup for {2} in progress (pick a repo next)"; jira-worktree {2})' \
 			--bind 'ctrl-v:execute(jira issue view {2} | less -R)'
+	local rc=$?
+	if [[ $rc -eq 130 ]]; then
+		echo "jira-today: exited, no action taken"
+	fi
+	return $rc
 }

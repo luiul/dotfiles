@@ -13,7 +13,11 @@
 # bucket as the main checkout, so memory/skills stay unified across the whole repo regardless of
 # which branch/worktree pi was launched from. VS Code's title bar (below) carries the branch
 # distinction instead, since the folder name no longer does.
-worktree-path = "~/worktrees/{{ owner }}/{{ branch | sanitize }}/{{ repo }}"
+# `owner` comes from the repo's remote URL (github.com/<owner>/<repo>), so it is UNDEFINED
+# for remote-less repos and the template fails to expand there. `default('local')` buckets
+# those under ~/worktrees/local/ instead (today only ~/projects/hellofresh/research and
+# ~/projects/personal/sandbox). Repos with a remote are unaffected.
+worktree-path = "~/worktrees/{{ owner | default('local') }}/{{ branch | sanitize }}/{{ repo }}"
 
 # Keep the default branch fresh before it becomes the base of a new worktree/branch -- the same
 # habit as `gpull` (fetch + fast-forward), but scoped to worktree creation instead of a manual

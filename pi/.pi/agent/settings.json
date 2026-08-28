@@ -1,6 +1,6 @@
 {
-  "defaultProvider": "amazon-bedrock",
-  "defaultModel": "global.anthropic.claude-sonnet-5",
+  "defaultProvider": "ai-model-router",
+  "defaultModel": "moonshotai/Kimi-K3",
   "enabledModels": [
     "amazon.nova-lite-v1:0",
     "amazon.nova-micro-v1:0",

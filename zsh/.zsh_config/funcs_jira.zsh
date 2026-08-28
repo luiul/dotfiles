@@ -13,8 +13,9 @@
 # Enter opens the highlighted ticket in the browser. Ctrl-V shows its full
 # detail (description + comments) in a pager without leaving the picker.
 # Ctrl-W creates (or reopens) a coppice worktree named after the ticket via
-# the jira-worktree script (~/.local/bin), opening its VS Code window with pi
-# already running a plan-only prompt for the ticket. It has to call a script,
+# the jira-worktree script (~/.local/bin) and opens its VS Code window; the
+# script asks whether pi should also start with a plan-only prompt for the
+# ticket (default yes, decline for just the window). It has to call a script,
 # not a function: fzf `execute` spawns a non-interactive `$SHELL -c`, which
 # never sources .zsh_config.
 #
@@ -57,7 +58,7 @@ jira-today() {
 		} |
 		column -t -s '|' |
 		fzf --header-lines=1 \
-			--header 'enter: open ticket · ctrl-w: worktree + pi plan · ctrl-v: view' \
+			--header 'enter: open ticket · ctrl-w: worktree (asks re: pi plan) · ctrl-v: view' \
 			--height=90% --layout=reverse --border --info=inline \
 			--preview 'jira issue view {2} --plain' \
 			--preview-window='down,50%,wrap,border-top' \

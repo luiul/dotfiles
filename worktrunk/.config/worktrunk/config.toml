@@ -31,12 +31,16 @@ worktree-path = "~/worktrees/{{ owner | default('local') }}/{{ branch | sanitize
 # the main checkout, but not necessarily) and fast-forwards it there; falls back to updating the
 # ref directly when nobody has it checked out. Best-effort (`|| true`): a flaky/offline fetch
 # should never block creating a worktree, just skip the freshen.
+# The fast-forward is `merge --ff-only origin/<default>`, NOT `pull --ff-only`: pull runs its
+# own internal fetch, a second network round trip right after the explicit `fetch --prune`
+# (~0.9s each against github.com, measured). Merging the just-fetched remote-tracking ref is
+# the identical fast-forward with a single round trip, and it needs no upstream config.
 [pre-switch]
 sync-default = '''
 {% if not target_worktree_path %}
 {% set p = worktree_path_of_branch(default_branch) %}
 {% if p %}
-git -C "{{ p }}" fetch --prune && git -C "{{ p }}" pull --ff-only || true
+git -C "{{ p }}" fetch --prune && git -C "{{ p }}" merge --ff-only "origin/{{ default_branch }}" || true
 {% else %}
 git fetch origin "{{ default_branch }}:{{ default_branch }}" || true
 {% endif %}

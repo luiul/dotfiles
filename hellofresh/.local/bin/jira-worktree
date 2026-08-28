@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Create (or reopen) a coppice worktree named after a Jira ticket, and open its
+# VS Code window with pi already running a plan-only prompt for the ticket.
+#
+# This is a script, not a zsh function, because jira-today's fzf `execute`
+# binding spawns a non-interactive `$SHELL -c`, which never sources
+# .zsh_config (it does inherit the exported PATH, so ~/.local/bin is visible).
+#
+# Branch name: the bare ticket key (ISA-1234), which is Mergeable-valid
+# ([A-Z][A-Z0-9]+-\d+). wt's worktree-path template turns it into
+# ~/worktrees/hellofresh/ISA-1234/<repo>. Reopening an existing ticket's
+# worktree needs no special casing: `cop new --yes` switches to it without
+# confirming, and wt's pi-prompt post-switch hook re-injects the prompt.
+#
+# Usage: jira-worktree <TICKET-KEY>        e.g. jira-worktree ISA-1234
+#
+# Env knobs:
+#   JIRA_TODAY_REPOS_ROOT      dir to pick the target repo from
+#                              (default: ~/projects/hellofresh)
+#   JIRA_TODAY_BRANCH_PREFIX   optional branch prefix, e.g. "feature/"
+#                              (default: none)
+set -euo pipefail
+
+TICKET="${1:-}"
+if [ -z "$TICKET" ]; then
+	echo "usage: jira-worktree <TICKET-KEY> (e.g. ISA-1234)" >&2
+	exit 1
+fi
+
+REPOS_ROOT="${JIRA_TODAY_REPOS_ROOT:-$HOME/projects/hellofresh}"
+BRANCH="${JIRA_TODAY_BRANCH_PREFIX:-}$TICKET"
+PROMPT="Plan only jira ticket $TICKET, do not implement"
+
+command -v cop >/dev/null || {
+	echo "jira-worktree: cop not on PATH" >&2
+	exit 1
+}
+command -v fzf >/dev/null || {
+	echo "jira-worktree: fzf not on PATH" >&2
+	exit 1
+}
+if [ ! -d "$REPOS_ROOT" ]; then
+	echo "jira-worktree: repos root not found: $REPOS_ROOT" >&2
+	exit 1
+fi
+
+# Immediate subdirs that are git repos (have a .git entry), which naturally
+# excludes non-repo dirs like findings/.
+repos=()
+for d in "$REPOS_ROOT"/*/; do
+	[ -e "$d/.git" ] && repos+=("$(basename "$d")")
+done
+if [ ${#repos[@]} -eq 0 ]; then
+	echo "jira-worktree: no git repos found under $REPOS_ROOT" >&2
+	exit 1
+fi
+
+# Pick by basename; the full path is just $REPOS_ROOT/<basename>. Esc (fzf
+# non-zero) or an empty selection aborts.
+if ! selection=$(printf '%s\n' "${repos[@]}" | fzf --prompt="repo for $TICKET> " --height=40% --layout=reverse --border); then
+	echo "jira-worktree: aborted" >&2
+	exit 1
+fi
+if [ -z "$selection" ]; then
+	echo "jira-worktree: no repo selected" >&2
+	exit 1
+fi
+
+cop new "$REPOS_ROOT/$selection" --branch "$BRANCH" --yes --prompt "$PROMPT"

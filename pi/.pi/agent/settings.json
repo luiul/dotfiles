@@ -1,6 +1,6 @@
 {
   "defaultProvider": "ai-model-router",
-  "defaultModel": "moonshotai/Kimi-K3",
+  "defaultModel": "gpt-5.6-luna",
   "enabledModels": [
     "amazon.nova-lite-v1:0",
     "amazon.nova-micro-v1:0",

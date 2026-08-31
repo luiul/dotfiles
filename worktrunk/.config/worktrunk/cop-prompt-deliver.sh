@@ -141,9 +141,15 @@ TASKS
 # restored afterwards. The front-window guards turn a lost focus race (user
 # clicked elsewhere mid-drive) into an error instead of a paste into the
 # wrong window; the caller then retries before falling back to the task
-# delivery. The 2s settle after opening the terminal (was 0.9s) absorbs slow
-# terminal creation under load, the observed cause of pastes landing before
-# the terminal had focus.
+# delivery. The front-window guard alone is NOT enough: `keystroke` goes to
+# the SYSTEM frontmost application, and Code's internal front window stays
+# correct even when the user has focused another app mid-drive (observed
+# 2026-09-02: the user opened a new Ghostty window during the 2s settle and
+# the paste + Return landed in it, executing pi there). Both guards
+# therefore also require ownerProc to be frontmost, turning that race into
+# an error (retry, then task fallback) instead of a misfire. The 2s settle
+# after opening the terminal (was 0.9s) absorbs slow terminal creation under
+# load, the observed cause of pastes landing before the terminal had focus.
 drive_window() {
 	TITLE_FILE="$1" PROMPT_FILE="$2" osascript <<'OSA'
 set t to read POSIX file (system attribute "TITLE_FILE") as «class utf8»
@@ -166,6 +172,9 @@ tell application "System Events"
 		perform action "AXRaise" of (first window whose name is t)
 		delay 0.3
 		if name of front window is not t then error "front window mismatch"
+		-- keystrokes go to the system frontmost app, so refuse to drive unless
+		-- Code actually holds focus, not just has the right front window.
+		if frontmost is not true then error "Code is not frontmost"
 		click menu item "New Terminal" of menu 1 of menu bar item "Terminal" of menu bar 1
 	end tell
 end tell
@@ -178,6 +187,10 @@ set the clipboard to ("pi " & quoted form of p)
 set driveErr to missing value
 try
 	tell application "System Events"
+		-- Re-check immediately before pasting (no delay between the check and
+		-- the keystroke): the user may have pulled focus to another app during
+		-- the 2s settle, and the paste would land there.
+		if frontmost of ownerProc is not true then error "Code is not frontmost"
 		if name of front window of ownerProc is not t then error "front window mismatch"
 		keystroke "v" using command down
 		delay 0.15
@@ -259,10 +272,10 @@ deadline=$((SECONDS + 45))
 PIDS_BEFORE=$(pi_pids)
 # Up to three drive attempts, re-resolving the window title each time (it
 # can transition from the bare repo name to the branch-qualified form while
-# waiting). A guarded drive failure (front-window mismatch: the user pulled
-# focus mid-drive) never pasted anything, and a false success (paste fired
-# before the terminal had focus, seen under load) is caught by the pi check
-# below, so retrying is safe.
+# waiting). A guarded drive failure (front-window mismatch or Code not
+# frontmost: the user pulled focus mid-drive) never pasted anything, and a
+# false success (paste fired before the terminal had focus, seen under load)
+# is caught by the pi check below, so retrying is safe.
 for _attempt in 1 2 3; do
 	WIN_TITLE=$(resolve_title) || break
 	TITLE_FILE=$(mktemp)

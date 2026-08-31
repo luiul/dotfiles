@@ -79,6 +79,10 @@ Claude Code rewrites `~/.claude/settings.json` in place at runtime (managed hook
 
 The `aws` package stows `~/.aws/config` (used by the `aws-sso-refresh` pi extension via `AWS_PROFILE=sso-bedrock`). The real `aws/.aws/config` is gitignored because it contains an AWS account ID and the corporate SSO portal URL; only `aws/.aws/config.example` (placeholders) is tracked. On a fresh machine, copy the example to `aws/.aws/config`, fill in real values, then stow. See `aws/README.md`.
 
+## VS Code
+
+The `vscode` package stows `settings.json`, `keybindings.json`, and `extensions.json` (recommendations) into `~/Library/Application Support/Code/User/`. Installed extensions are tracked as `vscode` entries in the Brewfile, which the pre-commit hook regenerates from the live system, so uninstalling an extension locally drops it from the Brewfile on the next commit. Extensions removed in the 2026-08-31 performance prune (with reinstall commands) and the performance-tuned settings are documented in `vscode/README.md`.
+
 ## Pi Memory (Hermes)
 
 `pi-hermes-memory`'s background auto-review LLM calls are configured via `pi/.pi/agent/hermes-memory-config.json` (stowed to `~/.pi/agent/hermes-memory-config.json`). Since pi's only configured provider is `amazon-bedrock` authenticated via ambient AWS SSO (`AWS_PROFILE=sso-bedrock`, no `/login`-stored API key), the extension's in-process "Direct" review transport always fails (`no_auth: No API key for amazon-bedrock` — its auth resolver only recognizes a persisted API-key credential), falling through to a "Subprocess" transport that spawns an isolated `pi -p --no-extensions` child. That child previously had no path to the `aws-sso-refresh` extension (stripped by `--no-extensions`), so a stale SSO token at review time could hang the child until pi's hard 120s kill fired ("Memory auto-review failed in both transports ... child timed out after 120000ms").

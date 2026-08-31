@@ -108,13 +108,16 @@ fi
 
 [post-switch]
 # cop new --prompt (coppice#23): COP_PROMPT is set in wt's environment by `cop new -p`.
-# Delivery lives in cop-prompt-deliver.sh (next to this config): it opens the window with
-# `code -n` and drives the integrated terminal directly via AppleScript (Terminal > New
-# Terminal, paste `pi '<prompt>'`, Return), starting pi ~1.5s after the window appears
-# instead of waiting ~3s for VS Code's task system, which gates folderOpen tasks on the
-# extension host having started. Falls back to the previous .cop-prompt + runOn:folderOpen
-# tasks.json mechanism when AppleScript is unavailable or the drive fails. post-switch (not
-# post-start) so this fires on create AND on switching to an existing worktree.
+# Delivery lives in cop-prompt-deliver.sh (next to this config): it writes the prompt to
+# <worktree>/.cop-prompt, opens the window with `code -n` and drives the integrated terminal
+# directly via AppleScript (Terminal > New Terminal, paste `pi`, Return), starting pi ~1.5s
+# after the window appears instead of waiting ~3s for VS Code's task system, which gates
+# folderOpen tasks on the extension host having started. pi's cop-draft-prompt extension
+# (~/.pi/agent/extensions/cop-draft-prompt.ts) then loads .cop-prompt into the editor as an
+# unsubmitted draft (review, then Enter to send) and deletes the file. Falls back to a
+# self-cleaning runOn:folderOpen tasks.json launching bare pi when AppleScript is unavailable
+# or the drive fails. post-switch (not post-start) so this fires on create AND on switching
+# to an existing worktree.
 pi-prompt = '[ -n "$COP_PROMPT" ] && "$HOME/.config/worktrunk/cop-prompt-deliver.sh" "{{ worktree_path }}" "{{ repo }}" "{{ branch }}"'
 
 # Refuse to remove protected branches. pre-* hooks abort on non-zero exit.

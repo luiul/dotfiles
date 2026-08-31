@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# List my open ISA tickets in an interactive fzf picker. The ticket rows come
+# from the jira-today-list script (~/.local/bin), which groups tickets into
+# Sprint/Backlog buckets and orders them by workflow state; see its header
+# comment for the details.
+#
+# This is a script, not a zsh function (it replaced the jira-today function in
+# zsh/.zsh_config/funcs_jira.zsh), so that jira-today-move can exec back into
+# the picker after a state change: fzf's `become` replaces the picker process
+# with the action, and only a real executable on PATH can be re-invoked from
+# there (a shell function does not exist in the non-interactive `$SHELL -c`
+# that `become` spawns). Same family of reasons jira-today-list, jira-worktree
+# and jira-today-move are scripts.
+#
+# The picker is modal, lazygit-style. It starts with fzf's search DISABLED
+# (--disabled), so plain letters are action keys instead of query input:
+# enter opens the highlighted ticket in the browser, w creates (or reopens) a
+# coppice worktree named after the ticket via jira-worktree (which asks
+# whether pi should start with a plan-only prompt), t moves the ticket to
+# another workflow state via jira-today-move --back (which execs this script
+# again when it finishes, so a state change returns to a freshly loaded
+# overview), v shows the full ticket detail in a pager, y yanks the ticket
+# key to the clipboard, r reloads the ticket list, c clears an active filter,
+# q quits. `/` enters filter mode: search is enabled and the letter actions
+# are unbound, so typing goes into the fuzzy query; esc leaves filter mode
+# (the query stays applied until c clears it) and restores the action keys.
+# rebind(...) needs the explicit key list: bare `rebind` is a parse error.
+# The c binding needs its whole ceremony: with search disabled fzf does not
+# re-match, and the matcher is async, so plain clear-query (or dropping the
+# trailing disable-search) leaves the stale filtered list; the empty search()
+# forces a re-match before search is disabled again.
+# The current mode is visible in the prompt: "> " vs "filter> ". esc never
+# quits (it only exits filter mode); use q or ctrl-c to quit. The old ctrl-
+# bindings (ctrl-w/t/v/y/r) remain as aliases and also work mid-filter.
+#
+# Every exit leaves a stdout trace: enter/w print what they are doing before
+# running, and quitting prints a confirmation from the script itself. The
+# action bindings use `become` (not `execute`+`abort`) for two reasons:
+# `abort` exits 130, indistinguishable from a plain quit, while `become`
+# replaces fzf with the action so its own exit code surfaces (0 on success,
+# 130 only on q/ctrl-c); and since fzf is gone before the action runs, the
+# echo is guaranteed to stay on screen instead of being redrawn away.
+set -uo pipefail
+
+jira-today-list |
+	fzf --header-lines=1 \
+		--header 'enter: open · w: worktree · t: move · v: view · y: copy · r: reload · /: filter · c: clear · q: quit' \
+		--height=90% --layout=reverse --border --info=inline \
+		--disabled \
+		--preview 'jira issue view {2} --plain' \
+		--preview-window='down,50%,wrap,border-top' \
+		--bind 'j:down' \
+		--bind 'k:up' \
+		--bind 'enter:become(echo "jira-today: opening {2} in the browser"; jira open {2})' \
+		--bind 'w:become(echo "jira-today: worktree setup for {2} in progress (pick a repo next)"; jira-worktree {2})' \
+		--bind 't:become(echo "jira-today: move {2} to another state"; jira-today-move --back {2})' \
+		--bind 'v:execute(jira issue view {2} | less -R)' \
+		--bind 'y:execute-silent(echo -n {2} | pbcopy)+transform-prompt(echo jira-today: copied {2} ·)' \
+		--bind 'r:reload(jira-today-list)+transform-prompt(echo -n "> ")' \
+		--bind 'c:enable-search+clear-query+search()+disable-search' \
+		--bind '/:enable-search+unbind(j,k,w,t,v,y,r,c,q,/)+change-prompt(filter> )' \
+		--bind 'esc:disable-search+rebind(j,k,w,t,v,y,r,c,q,/)+change-prompt(> )' \
+		--bind 'q:abort' \
+		--bind 'ctrl-w:become(echo "jira-today: worktree setup for {2} in progress (pick a repo next)"; jira-worktree {2})' \
+		--bind 'ctrl-t:become(echo "jira-today: move {2} to another state"; jira-today-move --back {2})' \
+		--bind 'ctrl-v:execute(jira issue view {2} | less -R)' \
+		--bind 'ctrl-y:execute-silent(echo -n {2} | pbcopy)+transform-prompt(echo jira-today: copied {2} ·)' \
+		--bind 'ctrl-r:reload(jira-today-list)+transform-prompt(echo -n "> ")'
+rc=$?
+if [[ $rc -eq 130 ]]; then
+	echo "jira-today: exited, no action taken"
+fi
+exit $rc

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Create (or reopen) a coppice worktree named after a Jira ticket and open its
 # VS Code window. Asks whether pi should also start with a plan-only prompt for
-# the ticket (default yes); declining opens just the VS Code window: with no
-# --prompt, COP_PROMPT is empty, wt's pi-prompt post-switch hook no-ops, and
-# the post-start hook opens the window with `code -n`.
+# the ticket loaded into its editor as an unsubmitted draft (default yes);
+# declining opens just the VS Code window: with no --prompt, COP_PROMPT is
+# empty, wt's pi-prompt post-switch hook no-ops, and the post-start hook opens
+# the window with `code -n`.
 #
 # This is a script, not a zsh function, because jira-today's fzf `execute`
 # binding spawns a non-interactive `$SHELL -c`, which never sources

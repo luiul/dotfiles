@@ -2,23 +2,27 @@
 # cop-prompt-deliver.sh <worktree_path> <repo> <branch>
 #
 # Delivers $COP_PROMPT (set in wt's environment by `cop new --prompt`,
-# coppice#23) to the worktree's VS Code window with pi already running it in
-# the integrated terminal, on create and on reuse of an existing worktree
-# alike. Two delivery paths:
+# coppice#23) to the worktree's VS Code window as a DRAFT in pi's editor, on
+# create and on reuse of an existing worktree alike. The prompt is written to
+# `<worktree>/.cop-prompt` and bare `pi` is launched; pi's cop-draft-prompt
+# extension (~/.pi/agent/extensions/cop-draft-prompt.ts) loads the file into
+# the editor via setEditorText and deletes it, so the prompt is reviewed and
+# submitted manually with Enter instead of auto-running. Two delivery paths:
 #
 # Fast path (AppleScript): `code -n` opens (or focuses, on reuse) the window,
 # then the integrated terminal is driven directly: Terminal > New Terminal,
-# paste `pi '<prompt>'`, Return. The terminal does not wait for VS Code's
-# extension host, unlike a `runOn: folderOpen` task, which the task service
-# only runs once it has task system info (measured on this machine: ~3.2s
-# after the window is visible with ~90 extensions, vs ~2.5s on this path).
+# paste `pi`, Return. The terminal does not wait for VS Code's extension
+# host, unlike a `runOn: folderOpen` task, which the task service only runs
+# once it has task system info (measured on this machine: ~3.2s after the
+# window is visible with ~90 extensions, vs ~2.5s on this path).
 #
 # Fallback (folderOpen task): when AppleScript is unavailable (no
 # Accessibility permission for the calling terminal app, or VS Code not
-# running yet) or the drive fails, write `.cop-prompt` plus a self-cleaning
-# `.vscode/tasks.json` and let VS Code's folder-open task run pi instead.
-# That path needs "task.allowAutomaticTasks": "on" and a trusted workspace;
-# the fast path needs neither.
+# running yet) or the drive fails, write a self-cleaning
+# `.vscode/tasks.json` and let VS Code's folder-open task launch bare pi
+# instead (the extension still reads `.cop-prompt`). That path needs
+# "task.allowAutomaticTasks": "on" and a trusted workspace; the fast path
+# needs neither.
 #
 # Window matching relies on this machine's window.title setting
 # ("${rootName} — ${activeRepositoryBranchName} — ${activeEditorShort}"): a
@@ -96,8 +100,10 @@ write_task_fallback() {
 	if [ -f "$tj" ] && command -v jq >/dev/null 2>&1 && jq -e . "$tj" >/dev/null 2>&1; then
 		# Merge into the repo's own (plain-JSON) tasks.json: drop any previous
 		# task with our label, append a fresh one. The file predates us and
-		# stays, so this command only deletes the prompt file, not tasks.json.
-		local cmd='p=$(cat "${workspaceFolder}/.cop-prompt" 2>/dev/null) || exit 0; [ -n "$p" ] || exit 0; rm -f "${workspaceFolder}/.cop-prompt"; pi "$p"'
+		# stays, so the task must no-op on later folder opens once the prompt
+		# is gone: only run pi while a .cop-prompt exists (the cop-draft-prompt
+		# extension consumes and deletes it).
+		local cmd='[ -f "${workspaceFolder}/.cop-prompt" ] || exit 0; pi'
 		local tmp
 		tmp=$(mktemp)
 		jq --arg cmd "$cmd" '
@@ -110,8 +116,9 @@ write_task_fallback() {
         problemMatcher: []
       }])' "$tj" >"$tmp" && mv "$tmp" "$tj" || echo "cop: could not merge into $tj; prompt left at $WT/.cop-prompt" >&2
 	elif [ ! -f "$tj" ]; then
-		# Fresh write: the task deletes this tasks.json again after reading the
-		# prompt, so reopening the folder later runs nothing at all.
+		# Fresh write: the task deletes this tasks.json again when it runs, so
+		# reopening the folder later runs nothing at all. Bare pi; the
+		# cop-draft-prompt extension reads and deletes .cop-prompt.
 		cat >"$tj" <<'TASKS'
 {
   "version": "2.0.0",
@@ -119,7 +126,7 @@ write_task_fallback() {
     {
       "label": "cop: pi prompt",
       "type": "shell",
-      "command": "p=$(cat \"${workspaceFolder}/.cop-prompt\" 2>/dev/null) || exit 0; [ -n \"$p\" ] || exit 0; rm -f \"${workspaceFolder}/.cop-prompt\" \"${workspaceFolder}/.vscode/tasks.json\"; pi \"$p\"",
+      "command": "rm -f \"${workspaceFolder}/.vscode/tasks.json\"; [ -f \"${workspaceFolder}/.cop-prompt\" ] || exit 0; pi",
       "runOptions": { "runOn": "folderOpen" },
       "presentation": { "reveal": "always", "focus": true, "panel": "dedicated" },
       "problemMatcher": []
@@ -136,8 +143,9 @@ TASKS
 
 # Raise the window (looked up by exact name at click time, see the header
 # comment), open a terminal via the menu bar (keybinding independent), paste
-# the command from the clipboard (handles arbitrary prompt text, unlike
-# per-character keystrokes), and hit Return. The clipboard's previous text is
+# `pi` from the clipboard, and hit Return. The prompt itself is NOT pasted:
+# it travels via .cop-prompt and the cop-draft-prompt extension, so it lands
+# in pi's editor as an unsubmitted draft. The clipboard's previous text is
 # restored afterwards. The front-window guards turn a lost focus race (user
 # clicked elsewhere mid-drive) into an error instead of a paste into the
 # wrong window; the caller then retries before falling back to the task
@@ -151,9 +159,8 @@ TASKS
 # after opening the terminal (was 0.9s) absorbs slow terminal creation under
 # load, the observed cause of pastes landing before the terminal had focus.
 drive_window() {
-	TITLE_FILE="$1" PROMPT_FILE="$2" osascript <<'OSA'
+	TITLE_FILE="$1" osascript <<'OSA'
 set t to read POSIX file (system attribute "TITLE_FILE") as «class utf8»
-set p to read POSIX file (system attribute "PROMPT_FILE") as «class utf8»
 tell application "System Events"
 	-- Resolve the Code process that actually owns the target window (there
 	-- can be more than one main "Code" process, see list_windows).
@@ -183,7 +190,7 @@ set savedClip to missing value
 try
 	set savedClip to the clipboard as text
 end try
-set the clipboard to ("pi " & quoted form of p)
+set the clipboard to "pi"
 set driveErr to missing value
 try
 	tell application "System Events"
@@ -217,18 +224,22 @@ if ! list_windows >"$TITLES_BEFORE"; then
 	exit 0
 fi
 
+# The prompt travels out of band: the cop-draft-prompt extension reads and
+# deletes this file once pi's editor is up, then the user submits manually.
+printf '%s' "$PROMPT" >"$WT/.cop-prompt"
+
 code -n "$WT"
 
 # pi PIDs currently alive, both lifecycle phases: at spawn the process is
-# `node .../cli.js <prompt>` (argv match), a second or two later pi rewrites
-# its process title to bare `pi` (name match). Matching only the argv races
-# the rewrite and can false-report a delivered prompt as failed. The argv
-# pattern covers both entry-point layouts: `bin/pi` up to pi 0.84.x and
+# `node .../cli.js` (argv match), a second or two later pi rewrites its
+# process title to bare `pi` (name match). Matching only the argv races the
+# rewrite and can false-report a delivered prompt as failed. The argv pattern
+# covers both entry-point layouts: `bin/pi` up to pi 0.84.x and
 # `dist/bundle/cli.js` since the bundle split (0.84.4).
 pi_pids() {
 	{
 		pgrep -x pi
-		pgrep -f "bin/pi "
+		pgrep -f "bin/pi"
 		pgrep -f "pi-coding-agent/dist/bundle/cli.js"
 	} | sort -u
 }
@@ -279,10 +290,8 @@ PIDS_BEFORE=$(pi_pids)
 for _attempt in 1 2 3; do
 	WIN_TITLE=$(resolve_title) || break
 	TITLE_FILE=$(mktemp)
-	PROMPT_FILE=$(mktemp)
 	printf '%s' "$WIN_TITLE" >"$TITLE_FILE"
-	printf '%s' "$PROMPT" >"$PROMPT_FILE"
-	if drive_window "$TITLE_FILE" "$PROMPT_FILE"; then
+	if drive_window "$TITLE_FILE"; then
 		# Confirm the drive actually delivered: a pi process appears that was
 		# not alive before it AND runs inside the worktree. The cwd check
 		# rejects unrelated pi sessions started at the same moment, and
@@ -294,14 +303,14 @@ for _attempt in 1 2 3; do
 			for pid in $(comm -13 <(printf '%s\n' "$PIDS_BEFORE") <(pi_pids)); do
 				cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')
 				if [ "$cwd" = "$WT" ]; then
-					rm -f "$TITLES_BEFORE" "$TITLE_FILE" "$PROMPT_FILE"
+					rm -f "$TITLES_BEFORE" "$TITLE_FILE"
 					exit 0
 				fi
 			done
 			sleep 0.1
 		done
 	fi
-	rm -f "$TITLE_FILE" "$PROMPT_FILE"
+	rm -f "$TITLE_FILE"
 done
 rm -f "$TITLES_BEFORE"
 

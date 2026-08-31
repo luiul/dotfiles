@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Produce the ticket list for jira-today's fzf picker: one row per ticket,
+# header row first, columns BUCKET, KEY, TYPE, STATUS, SUMMARY.
+#
+# This is a script, not inline in the jira-today zsh function, because fzf's
+# ctrl-r `reload` binding re-runs the producer in a non-interactive
+# `$SHELL -c`, which never sources .zsh_config (it does inherit the exported
+# PATH, so ~/.local/bin is visible). Same reason jira-worktree is a script.
+#
+# Tickets are my open ISA issues, grouped into Sprint (current sprint, or the
+# upcoming one if it hasn't started yet: openSprints() only matches active
+# sprints, so futureSprints() is needed too) and Backlog (no sprint
+# assigned), so it is visually clear which bucket each ticket sits in, then
+# by a fixed workflow order (not alphabetical), then by most recently
+# updated within each group (not shown, to leave more room for the summary).
+# Excludes Done items and Epics.
+#
+# A bucket with no tickets is omitted entirely: jira-cli prints a bare
+# newline on stdout for an empty result, which the prefixing awk skips via
+# its NF guard (otherwise it would render as a bogus row saying just
+# "Sprint"/"Backlog"), and jira-cli's benign "No result found" stderr
+# notice is filtered out so only real errors (e.g. API failures like a
+# 405) reach the terminal.
+#
+# Workflow order: Open, Ready, Selected for Dev, In Progress,
+# Internal Review, then anything else.
+#
+# No `set -e`: if one of the two jira queries fails, the other should still
+# run and its rows still print (the pre-script inline version behaved the
+# same way); fzf's reload ignores the exit status and just takes stdout.
+set -uo pipefail
+
+base='project = ISA AND assignee = currentUser() AND statusCategory != Done AND issuetype != Epic'
+cols='key,type,status,updated,summary'
+
+{
+	jira issue list -q "$base AND (sprint in openSprints() OR sprint in futureSprints())" \
+		--plain --no-headers --columns "$cols" --delimiter '|' \
+		2> >(grep -v 'No result found for given query' >&2) |
+		awk -F'|' -v OFS='|' 'NF { print "Sprint", $0 }'
+	jira issue list -q "$base AND sprint is EMPTY" \
+		--plain --no-headers --columns "$cols" --delimiter '|' \
+		2> >(grep -v 'No result found for given query' >&2) |
+		awk -F'|' -v OFS='|' 'NF { print "Backlog", $0 }'
+} | awk -F'|' -v OFS='|' '
+	{
+		bucket_rank = ($1 == "Sprint") ? 0 : 1
+		status_rank = 99
+		if ($4 == "Open") status_rank = 1
+		else if ($4 == "Ready") status_rank = 2
+		else if ($4 == "Selected for Dev") status_rank = 3
+		else if ($4 == "In Progress") status_rank = 4
+		else if ($4 == "Internal Review") status_rank = 5
+		print bucket_rank, status_rank, $0
+	}
+' |
+	sort -t'|' -k1,1n -k2,2n -k7,7r |
+	cut -d'|' -f3- |
+	awk -F'|' -v OFS='|' '{ print $1, $2, $3, $4, $6 }' |
+	{
+		printf 'BUCKET|KEY|TYPE|STATUS|SUMMARY\n'
+		cat
+	} |
+	column -t -s '|'

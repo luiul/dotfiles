@@ -26,10 +26,10 @@
     "editor.fontFamily": "'MesloLGS Nerd Font Mono', Menlo, DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
     "editor.fontSize": 12,
     "editor.wordWrap": "on",
-    "editor.smoothScrolling": true,
+    "editor.smoothScrolling": false,
     "editor.cursorBlinking": "solid",
     "editor.guides.bracketPairs": true,
-    "editor.bracketPairColorization.enabled": true,
+    "editor.bracketPairColorization.enabled": false,
     "editor.inlineSuggest.enabled": true,
     "editor.copyWithSyntaxHighlighting": false,
     "editor.minimap.enabled": false,
@@ -86,7 +86,7 @@
     // === Editor hygiene ===
     "files.trimTrailingWhitespace": true,
     "files.insertFinalNewline": true,
-    "editor.renderWhitespace": "all",
+    "editor.renderWhitespace": "boundary",
     "editor.tabSize": 4,
     // === Format on Save (global & per-language)
     "editor.formatOnSave": true,
@@ -222,7 +222,7 @@
     },
     "terraform.languageServer.enable": true,
     "terraform.languageServer.path": "/opt/homebrew/bin/tofu",
-    "terraform.codelens.referenceCount": true,
+    "terraform.codelens.referenceCount": false,
     "[jinja-yaml]": {
         "editor.formatOnSave": true
     },
@@ -230,7 +230,7 @@
     "python.analysis.inlayHints.functionReturnTypes": true,
     "python.analysis.inlayHints.variableTypes": true,
     "python.analysis.autoFormatStrings": true,
-    "python.analysis.typeCheckingMode": "standard",
+    "python.analysis.typeCheckingMode": "basic",
     "python.analysis.exclude": [
         "**/venv/**",
         "**/.venv/**",
@@ -258,7 +258,7 @@
     "extensions.autoCheckUpdates": true,
     "telemetry.telemetryLevel": "off",
     "redhat.telemetry.enabled": false,
-    "window.openFilesInNewWindow": "on",
+    "window.openFilesInNewWindow": "off",
     "window.confirmBeforeClose": "always",
     // === Files/Housekeeping ===
     "files.autoSave": "onWindowChange",
@@ -300,9 +300,6 @@
     },
     // === Debug/Other ===
     "debug.toolBarLocation": "docked",
-    "yaml.schemas": {
-        "file:///Users/luis.aceituno/.vscode/extensions/docsmsft.docs-yaml-1.0.6/dist/toc.schema.json": "/toc\\.yml/i"
-    },
     "workbench.colorTheme": "Monokai Night",
     "python.languageServer": "Pylance",
     "editor.inlayHints.enabled": "offUnlessPressed",
@@ -324,7 +321,7 @@
             {
                 "match": ".*\\.sql(\\.jinja)?$",
                 "notMatch": ".*/dbt/.*",
-                "isAsync": false,
+                "isAsync": true,
                 "cmd": "echo 'Running sqlfmt on: ${file}' && $HOME/.local/bin/sqlfmt --line-length 120 '${file}'"
             },
             {
@@ -337,8 +334,8 @@
     "dbt.sqlFmtPath": "${env:HOME}/.local/bin/sqlfmt",
     // === UI & Misc ===
     "workbench.productIconTheme": "fluent-icons",
-    "makefile.configureOnOpen": true,
-    "git.blame.editorDecoration.enabled": true,
+    "makefile.configureOnOpen": false,
+    "git.blame.editorDecoration.enabled": false,
     "macros": {
         "refreshTerminal": [
             "workbench.action.terminal.kill",

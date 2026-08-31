@@ -8,10 +8,9 @@
 #
 # Enter opens the highlighted ticket in the browser. Ctrl-V shows its full
 # detail (description + comments) in a pager without leaving the picker.
-# Ctrl-C copies the ticket key to the clipboard (pbcopy) and stays in the
-# picker, confirming via the prompt line; since ctrl-c is remapped, plain
-# aborting is Esc only. Ctrl-R reloads the ticket list and resets the
-# prompt. Ctrl-W creates (or reopens) a coppice worktree named after the
+# Ctrl-Y (yank) copies the ticket key to the clipboard (pbcopy) and stays
+# in the picker, confirming via the prompt line. Ctrl-R reloads the ticket
+# list and resets the prompt. Ctrl-W creates (or reopens) a coppice worktree named after the
 # ticket via the jira-worktree script (~/.local/bin) and opens its VS Code
 # window; the script asks whether pi should also start with a plan-only
 # prompt for the ticket (default yes, decline for just the window).
@@ -26,14 +25,14 @@
 jira-today() {
 	jira-today-list |
 		fzf --header-lines=1 \
-			--header 'enter: open ticket · ctrl-w: worktree (asks re: pi plan) · ctrl-v: view · ctrl-c: copy key · ctrl-r: reload' \
+			--header 'enter: open ticket · ctrl-w: worktree (asks re: pi plan) · ctrl-v: view · ctrl-y: copy key · ctrl-r: reload' \
 			--height=90% --layout=reverse --border --info=inline \
 			--preview 'jira issue view {2} --plain' \
 			--preview-window='down,50%,wrap,border-top' \
 			--bind 'enter:become(echo "jira-today: opening {2} in the browser"; jira open {2})' \
 			--bind 'ctrl-w:become(echo "jira-today: worktree setup for {2} in progress (pick a repo next)"; jira-worktree {2})' \
 			--bind 'ctrl-v:execute(jira issue view {2} | less -R)' \
-			--bind 'ctrl-c:execute-silent(echo -n {2} | pbcopy)+transform-prompt(echo jira-today: copied {2} ·)' \
+			--bind 'ctrl-y:execute-silent(echo -n {2} | pbcopy)+transform-prompt(echo jira-today: copied {2} ·)' \
 			--bind 'ctrl-r:reload(jira-today-list)+transform-prompt(echo -n "> ")'
 	local rc=$?
 	if [[ $rc -eq 130 ]]; then

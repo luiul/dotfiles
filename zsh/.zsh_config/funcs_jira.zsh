@@ -1,8 +1,17 @@
 # List my open ISA tickets in an interactive fzf picker. Groups tickets into
-# Sprint (current sprint) and Backlog, so it is visually clear which bucket
+# Sprint (current sprint, or the upcoming one if it hasn't started yet:
+# openSprints() only matches active sprints, so futureSprints() is needed
+# too) and Backlog (no sprint assigned), so it is visually clear which bucket
 # each ticket sits in, then by a fixed workflow order (not alphabetical),
 # then by most recently updated within each group (not shown, to leave more
 # room for the summary). Excludes Done items and Epics.
+#
+# A bucket with no tickets is omitted entirely: jira-cli prints a bare
+# newline on stdout for an empty result, which the prefixing awk skips via
+# its NF guard (otherwise it would render as a bogus row saying just
+# "Sprint"/"Backlog"), and jira-cli's benign "No result found" stderr
+# notice is filtered out so only real errors (e.g. API failures like a
+# 405) reach the terminal.
 #
 # Workflow order: Open, Ready, Selected for Dev, In Progress,
 # Internal Review, then anything else.
@@ -31,12 +40,14 @@ jira-today() {
 	local cols='key,type,status,updated,summary'
 
 	{
-		jira issue list -q "$base AND sprint in openSprints()" \
-			--plain --no-headers --columns "$cols" --delimiter '|' |
-			awk -F'|' -v OFS='|' '{ print "Sprint", $0 }'
+		jira issue list -q "$base AND (sprint in openSprints() OR sprint in futureSprints())" \
+			--plain --no-headers --columns "$cols" --delimiter '|' \
+			2> >(grep -v 'No result found for given query' >&2) |
+			awk -F'|' -v OFS='|' 'NF { print "Sprint", $0 }'
 		jira issue list -q "$base AND sprint is EMPTY" \
-			--plain --no-headers --columns "$cols" --delimiter '|' |
-			awk -F'|' -v OFS='|' '{ print "Backlog", $0 }'
+			--plain --no-headers --columns "$cols" --delimiter '|' \
+			2> >(grep -v 'No result found for given query' >&2) |
+			awk -F'|' -v OFS='|' 'NF { print "Backlog", $0 }'
 	} | awk -F'|' -v OFS='|' '
 		{
 			bucket_rank = ($1 == "Sprint") ? 0 : 1

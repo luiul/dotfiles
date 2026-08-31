@@ -70,6 +70,8 @@ brew "poppler"
 brew "rsync"
 # CLI proxy to minimize LLM token consumption
 brew "rtk"
+# Static analysis and lint tool, for (ba)sh scripts
+brew "shellcheck"
 # Autoformat shell script source code
 brew "shfmt"
 # CLI for snowflake
@@ -154,12 +156,10 @@ vscode "emeraldwalk.runonsave"
 vscode "esbenp.prettier-vscode"
 vscode "fabiospampinato.vscode-monokai-night"
 vscode "geddski.macros"
-vscode "gerane.theme-flatlandmonokai"
 vscode "github.vscode-github-actions"
 vscode "github.vscode-pull-request-github"
 vscode "hashicorp.terraform"
 vscode "hediet.vscode-drawio"
-vscode "iliazeus.vscode-ansi"
 vscode "innoverio.vscode-dbt-power-user"
 vscode "jaredly.background-terminal-notifier"
 vscode "johnpapa.vscode-peacock"

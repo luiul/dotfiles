@@ -32,7 +32,7 @@ fi
 
 REPOS_ROOT="${JIRA_TODAY_REPOS_ROOT:-$HOME/projects/hellofresh}"
 BRANCH="${JIRA_TODAY_BRANCH_PREFIX:-}$TICKET"
-PROMPT="Plan only jira ticket $TICKET, do not implement"
+PROMPT="Read jira ticket $TICKET (description and comments), explore the relevant code in this repo, and write an implementation plan. Do not implement anything yet."
 
 command -v cop >/dev/null || {
 	echo "jira-worktree: cop not on PATH" >&2

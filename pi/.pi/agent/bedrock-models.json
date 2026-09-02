@@ -1,6 +1,6 @@
 {
   "defaultRegion": "eu-west-1",
-  "generatedAt": "2026-08-19T09:45:12Z",
+  "generatedAt": "2026-09-02T07:26:00Z",
   "models": {
     "amazon.nova-lite-v1:0": "us-east-1",
     "amazon.nova-micro-v1:0": "us-east-1",
@@ -53,7 +53,9 @@
     "mistral.voxtral-small-24b-2507": "eu-west-1",
     "moonshot.kimi-k2-thinking": "us-east-1",
     "moonshotai.kimi-k2.5": "us-east-1",
+    "nvidia.nemotron-nano-12b-v2": "eu-west-1",
     "nvidia.nemotron-nano-3-30b": "eu-west-1",
+    "nvidia.nemotron-nano-9b-v2": "eu-west-1",
     "openai.gpt-oss-120b-1:0": "eu-west-1",
     "openai.gpt-oss-20b-1:0": "eu-west-1",
     "openai.gpt-oss-safeguard-120b": "eu-west-1",

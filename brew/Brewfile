@@ -10,6 +10,7 @@ tap "raine/workmux"
 tap "shaharia-lab/tap"
 tap "snowflakedb/snowflake-cli"
 tap "terraform-linters/tap"
+tap "xo/xo", trusted: { formulae: ["usql"] }
 # Clone of cat(1) with syntax highlighting and Git integration
 brew "bat"
 # Container runtimes on MacOS (and Linux) with minimal setup

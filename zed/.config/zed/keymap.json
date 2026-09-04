@@ -1,4 +1,26 @@
 // Zed keymap
 // Default bindings: https://zed.dev/docs/key-bindings
 [
+  {
+    // VSCode-style zoom: cmd +/-/0 scales the editor, terminal, and UI
+    // (file explorer, tabs, status bar) together. Zed has no single "zoom
+    // everything" action, so the zoom keys re-dispatch via
+    // workspace::SendKeystrokes to helper bindings on f19-f24 (keys no real
+    // keyboard sends): one adjusts the buffer font (the terminal tracks
+    // buffer font zoom automatically), the other adjusts the UI font.
+    // "persist": false keeps zoom session-only so settings.json (a stow
+    // symlink into this repo) is never rewritten by zooming.
+    "bindings": {
+      "cmd-=": ["workspace::SendKeystrokes", "f24 f23"],
+      "cmd-+": ["workspace::SendKeystrokes", "f24 f23"],
+      "cmd--": ["workspace::SendKeystrokes", "f22 f21"],
+      "cmd-0": ["workspace::SendKeystrokes", "f20 f19"],
+      "f24": ["zed::IncreaseBufferFontSize", { "persist": false }],
+      "f23": ["zed::IncreaseUiFontSize", { "persist": false }],
+      "f22": ["zed::DecreaseBufferFontSize", { "persist": false }],
+      "f21": ["zed::DecreaseUiFontSize", { "persist": false }],
+      "f20": ["zed::ResetBufferFontSize", { "persist": false }],
+      "f19": ["zed::ResetUiFontSize", { "persist": false }]
+    }
+  }
 ]

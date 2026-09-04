@@ -17,15 +17,15 @@
   "theme": {
     "mode": "system",
     "light": "One Light",
-    "dark": "One Dark"
+    "dark": "Monokai-og"
   },
   "project_panel": {
     "dock": "right",
-    "default_width": 240,
+    "default_width": 200,
     "entry_spacing": "standard",
-    "indent_size": 10,
+    "indent_size": 14,
     "indent_guides": { "show": "always" },
-    "auto_fold_dirs": true,
+    "auto_fold_dirs": false,
     "auto_reveal_entries": true,
     "file_icons": true,
     "folder_icons": true,
@@ -35,16 +35,42 @@
     "hide_root": false,
     "hide_hidden": false
   },
+  "file_scan_exclusions": [
+    "**/__pycache__",
+    "**/.pytest_cache",
+    "**/.mypy_cache",
+    "**/.ruff_cache",
+    "**/.ipynb_checkpoints",
+    "**/*.egg-info",
+    "..."
+  ],
   "confirm_quit": true,
-  "ui_font_size": 13,
+  "cursor_blink": false,
+  "ui_font_size": 12,
   "tab_bar": {
-    "show_nav_history_buttons": false
+    "show_nav_history_buttons": false,
+    "show_tab_bar_buttons": false
+  },
+  "title_bar": {
+    "show_onboarding_banner": false,
+    "show_sign_in": false,
+    "show_user_picture": false
+  },
+  "toolbar": {
+    "breadcrumbs": false,
+    "quick_actions": false,
+    "selections_menu": false,
+    "agent_review": false
+  },
+  "gutter": {
+    "min_line_number_digits": 1
   },
   "tabs": {
     "show_close_button": "hover"
   },
   "buffer_font_family": "MesloLGS Nerd Font Mono",
   "buffer_font_size": 12,
+  "buffer_line_height": "standard",
   "buffer_font_features": { "calt": false, "liga": false, "dlig": false },
   "terminal": {
     "font_family": "MesloLGS Nerd Font Mono",

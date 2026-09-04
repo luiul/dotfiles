@@ -115,6 +115,7 @@ cask "mlz11/tap/claude-notifier", trusted: true
 cask "codex"
 # Online diagram software
 cask "drawio"
+cask "font-jetbrains-mono-nerd-font"
 cask "font-meslo-lg-nerd-font"
 # Set of tools to manage resources and applications hosted on Google Cloud
 cask "gcloud-cli"

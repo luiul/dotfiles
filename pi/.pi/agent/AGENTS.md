@@ -8,6 +8,13 @@
 - Ask only when genuinely blocked: a decision only the user can make, input that can't be inferred, or an action that's destructive, hard to reverse, or visible to others (force-push, `rm -rf`, sending messages, posting publicly, etc.).
 - Don't ask "should I proceed?" or "want me to also do X?" when the answer is inferable from the request. Do it and report what changed.
 
+## Writing Style
+
+- Always use simple language, in chat replies and in files. Prefer common words: "use" not "utilize", "show" not "demonstrate", "start" not "initiate", "need" not "require".
+- Follow ASD-STE100 (Simplified Technical English), lighter variant: short sentences (aim for 20 words or fewer), one idea per sentence, active voice, no filler or hedging.
+- No hyphens (`-`) or em dashes (`—`) as punctuation in prose. Rewrite with commas, periods, parentheses, or colons instead. Hyphens are still fine in compound words (e.g. `well-formatted`), command flags (e.g. `--no-verify`), and markdown list markers.
+- Scope: chat replies, scratch files, docs, READMEs, tickets, commit messages. Code, identifiers, commands, and quoted text are exempt.
+
 ## Python
 
 - Always use `uv` for Python operations: `uv run` not `python`, `uv pip` not `pip`, `uv venv` not `python -m venv`, etc.
@@ -43,9 +50,3 @@
 
 - Read files over 2,000 lines in chunks via the read tool's `offset` and `limit` parameters, not all at once.
 
-## Writing Style
-
-- No hyphens (`-`) or em dashes (`—`) as punctuation in prose. Rewrite with commas, periods, parentheses, or colons instead.
-- Applies to all written output (responses, scratch files, commit messages, tickets, docs). Hyphens are still fine in compound words (e.g. `well-formatted`), command flags (e.g. `--no-verify`), and markdown list markers.
-- Follow ASD-STE100 (Simplified Technical English), lighter variant: short sentences (aim for 20 words or fewer), one idea per sentence, active voice, simple approved words, no filler or hedging.
-- STE applies to chat replies and to prose written into files (docs, READMEs, tickets, commit messages). Code, identifiers, commands, and quoted text are exempt.

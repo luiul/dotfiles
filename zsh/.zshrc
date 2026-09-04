@@ -64,3 +64,4 @@ alias claude-mem='bun "/Users/luis.aceituno/.claude/plugins/marketplaces/thedotm
 fpath+=~/.zfunc
 autoload -Uz compinit
 compinit
+export PATH="/Users/luis.aceituno/projects/hellofresh/global-ops/scripts:$PATH"  # global-ops: usql wrapper

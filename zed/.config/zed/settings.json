@@ -22,6 +22,9 @@
     "light": "One Light",
     "dark": "Monokai-og"
   },
+  "experimental.theme_overrides": {
+    "editor.active_line.background": "#008cff28"
+  },
   "project_panel": {
     "dock": "right",
     "default_width": 200,

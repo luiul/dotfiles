@@ -7,8 +7,50 @@
 // custom settings, run `zed: open default settings` from the
 // command palette (cmd-shift-p / ctrl-shift-p)
 {
-  "theme": "One Dark Pro",
+  "cli_default_open_behavior": "existing_window",
+  "diff_view_style": "split",
+  "icon_theme": {
+    "mode": "light",
+    "light": "Material Icon Theme",
+    "dark": "Material Icon Theme"
+  },
+  "theme": {
+    "mode": "system",
+    "light": "One Light",
+    "dark": "One Dark"
+  },
   "project_panel": {
-    "dock": "right"
+    "dock": "right",
+    "default_width": 240,
+    "entry_spacing": "standard",
+    "indent_size": 10,
+    "indent_guides": { "show": "always" },
+    "auto_fold_dirs": true,
+    "auto_reveal_entries": true,
+    "file_icons": true,
+    "folder_icons": true,
+    "git_status": true,
+    "sticky_scroll": true,
+    "sort_mode": "directories_first",
+    "hide_root": false,
+    "hide_hidden": false
+  },
+  "confirm_quit": true,
+  "ui_font_size": 13,
+  "tab_bar": {
+    "show_nav_history_buttons": false
+  },
+  "tabs": {
+    "show_close_button": "hover"
+  },
+  "buffer_font_family": "MesloLGS Nerd Font Mono",
+  "buffer_font_size": 12,
+  "buffer_font_features": { "calt": false, "liga": false, "dlig": false },
+  "terminal": {
+    "font_family": "MesloLGS Nerd Font Mono",
+    "font_size": 12,
+    "font_features": { "calt": false, "liga": false, "dlig": false },
+    "cursor_shape": "bar",
+    "blinking": "off"
   }
 }

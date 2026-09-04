@@ -47,3 +47,5 @@
 
 - No hyphens (`-`) or em dashes (`—`) as punctuation in prose. Rewrite with commas, periods, parentheses, or colons instead.
 - Applies to all written output (responses, scratch files, commit messages, tickets, docs). Hyphens are still fine in compound words (e.g. `well-formatted`), command flags (e.g. `--no-verify`), and markdown list markers.
+- Follow ASD-STE100 (Simplified Technical English), lighter variant: short sentences (aim for 20 words or fewer), one idea per sentence, active voice, simple approved words, no filler or hedging.
+- STE applies to chat replies and to prose written into files (docs, READMEs, tickets, commit messages). Code, identifiers, commands, and quoted text are exempt.

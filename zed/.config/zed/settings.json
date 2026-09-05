@@ -7,6 +7,184 @@
 // custom settings, run `zed: open default settings` from the
 // command palette (cmd-shift-p / ctrl-shift-p)
 {
+  "agent": {
+    "default_model": { "enable_thinking": false,
+                       "provider": "ai-model-router", "model": "gpt-5.6-luna" }
+  },
+  "language_models": {
+    "openai_compatible": {
+      "ai-model-router": {
+        "api_url": "https://ai-model-router-api.eu.foundations.prod.int.hellofresh.io/v1",
+        // Managed by ~/.config/zed/bin/sync-zed-router-models.sh, do not edit by hand.
+        "available_models": [
+          {
+            "name": "claude-haiku-4-5",
+            "display_name": "Claude Haiku 4.5 (Router)",
+            "max_tokens": 200000,
+            "max_output_tokens": 64000,
+            "capabilities": {
+              "tools": true,
+              "images": true,
+              "parallel_tool_calls": false,
+              "prompt_cache_key": false,
+              "chat_completions": true,
+              "interleaved_reasoning": false,
+              "max_tokens_parameter": false
+            }
+          },
+          {
+            "name": "claude-opus-4-8",
+            "display_name": "Claude Opus 4.8 (Router)",
+            "max_tokens": 1000000,
+            "max_output_tokens": 128000,
+            "capabilities": {
+              "tools": true,
+              "images": true,
+              "parallel_tool_calls": false,
+              "prompt_cache_key": false,
+              "chat_completions": true,
+              "interleaved_reasoning": false,
+              "max_tokens_parameter": false
+            }
+          },
+          {
+            "name": "claude-opus-5",
+            "display_name": "Claude Opus 5 (Router)",
+            "max_tokens": 1000000,
+            "max_output_tokens": 128000,
+            "capabilities": {
+              "tools": true,
+              "images": true,
+              "parallel_tool_calls": false,
+              "prompt_cache_key": false,
+              "chat_completions": true,
+              "interleaved_reasoning": false,
+              "max_tokens_parameter": false
+            }
+          },
+          {
+            "name": "claude-opus-5-1m",
+            "display_name": "Claude Opus 5 1M (Router)",
+            "max_tokens": 1000000,
+            "max_output_tokens": 128000,
+            "capabilities": {
+              "tools": true,
+              "images": true,
+              "parallel_tool_calls": false,
+              "prompt_cache_key": false,
+              "chat_completions": true,
+              "interleaved_reasoning": false,
+              "max_tokens_parameter": false
+            }
+          },
+          {
+            "name": "claude-sonnet-4-6",
+            "display_name": "Claude Sonnet 4.6 (Router)",
+            "max_tokens": 1000000,
+            "max_output_tokens": 64000,
+            "capabilities": {
+              "tools": true,
+              "images": true,
+              "parallel_tool_calls": false,
+              "prompt_cache_key": false,
+              "chat_completions": true,
+              "interleaved_reasoning": false,
+              "max_tokens_parameter": false
+            }
+          },
+          {
+            "name": "claude-sonnet-5",
+            "display_name": "Claude Sonnet 5 (Router)",
+            "max_tokens": 1000000,
+            "max_output_tokens": 128000,
+            "capabilities": {
+              "tools": true,
+              "images": true,
+              "parallel_tool_calls": false,
+              "prompt_cache_key": false,
+              "chat_completions": true,
+              "interleaved_reasoning": false,
+              "max_tokens_parameter": false
+            }
+          },
+          {
+            "name": "claude-sonnet-5-1m",
+            "display_name": "Claude Sonnet 5 1M (Router)",
+            "max_tokens": 1000000,
+            "max_output_tokens": 128000,
+            "capabilities": {
+              "tools": true,
+              "images": true,
+              "parallel_tool_calls": false,
+              "prompt_cache_key": false,
+              "chat_completions": true,
+              "interleaved_reasoning": false,
+              "max_tokens_parameter": false
+            }
+          },
+          {
+            "name": "deepseek-ai/DeepSeek-V4-Flash-0731",
+            "display_name": "DeepSeek V4 Flash (Router)",
+            "max_tokens": 131072,
+            "max_output_tokens": 65536
+          },
+          {
+            "name": "deepseek-ai/DeepSeek-V4-Pro-0813",
+            "display_name": "DeepSeek V4 Pro (Router)",
+            "max_tokens": 131072,
+            "max_output_tokens": 65536
+          },
+          {
+            "name": "gpt-5.6-luna",
+            "display_name": "GPT-5.6 Luna (Router)",
+            "max_tokens": 1000000,
+            "max_output_tokens": 128000,
+            "capabilities": {
+              "tools": true,
+              "images": true,
+              "parallel_tool_calls": false,
+              "prompt_cache_key": false,
+              "chat_completions": false,
+              "interleaved_reasoning": false,
+              "max_tokens_parameter": false
+            }
+          },
+          {
+            "name": "moonshotai/Kimi-K3",
+            "display_name": "Kimi K3 (Router)",
+            "max_tokens": 262144,
+            "max_output_tokens": 65536,
+            "capabilities": {
+              "tools": true,
+              "images": true,
+              "parallel_tool_calls": false,
+              "prompt_cache_key": false,
+              "chat_completions": true,
+              "interleaved_reasoning": false,
+              "max_tokens_parameter": false
+            }
+          },
+          {
+            "name": "zai-org/GLM-5.2",
+            "display_name": "GLM-5.2 (Router)",
+            "max_tokens": 204800,
+            "max_output_tokens": 131072
+          },
+          {
+            "name": "zai-org/GLM-5.3",
+            "display_name": "GLM-5.3 (Router)",
+            "max_tokens": 204800,
+            "max_output_tokens": 131072
+          }
+        ]
+      }
+    },
+    "bedrock": {
+      "authentication_method": "named_profile",
+      "profile": "sso-bedrock",
+      "region": "eu-west-1"
+    }
+  },
   "cli_default_open_behavior": "existing_window",
   "diff_view_style": "split",
   "icon_theme": {

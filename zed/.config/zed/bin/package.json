@@ -1,0 +1,8 @@
+{
+  "name": "zed-config-tools",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "jsonc-parser": "^3.3.1"
+  }
+}

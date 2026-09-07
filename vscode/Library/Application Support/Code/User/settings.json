@@ -276,6 +276,8 @@
     // Off: the python-envs extension otherwise injects activation into every new
     // terminal, which delays the prompt.
     "python.terminal.activateEnvInCurrentTerminal": false,
+    // Off: same reason as above. This is the newer python-envs extension's own hook.
+    "python-envs.terminal.autoActivationType": "off",
     // === Python Testing ===
     "python.testing.pytestEnabled": true,
     "python.testing.cwd": "${workspaceFolder}/tests",
@@ -420,6 +422,13 @@
     "workbench.activityBar.location": "top",
     "task.allowAutomaticTasks": "off",
     // "workbench.experimental.modernUI": true,
-    "terminal.integrated.gpuAcceleration": "on",
+    // Off: measured on this machine. The DOM renderer drains heavy output about 2x
+    // faster than WebGL (650-830ms vs 1650-1900ms per 300k lines of output).
+    "terminal.integrated.gpuAcceleration": "off",
+    // Off: default on, and its background command scanning can lag the terminal
+    // (microsoft/vscode#256746). zsh already covers completion via fzf + zsh-autocomplete.
+    "terminal.integrated.suggest.enabled": false,
+    // Off: measured about 33ms extra per terminal open, and nothing here uses it.
+    "terminal.integrated.shellIntegration.environmentReporting": false,
     "custom-ui-style.reloadWithoutPrompting": true
 }

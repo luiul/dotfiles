@@ -141,6 +141,23 @@ else
 	skip "Stow"
 fi
 
+# --- VS Code window registry extension ---
+step "VS Code window registry extension"
+# Sideload dashkit's vscode-window-registry extension by symlinking the checkout into
+# the extensions dir. The source of truth stays in the dashkit repo; no copy to drift.
+# Activates after a Code restart.
+VSC_EXT_DIR="$HOME/.vscode/extensions"
+VSC_EXT_SRC="$HOME/projects/personal/dashkit/vscode-window-registry"
+if [[ ! -d "$VSC_EXT_SRC" ]]; then
+	skip "dashkit checkout not found at $VSC_EXT_SRC"
+elif [[ -e "$VSC_EXT_DIR/luiul-window-registry" ]]; then
+	ok "window registry extension already installed"
+else
+	mkdir -p "$VSC_EXT_DIR"
+	ln -s "$VSC_EXT_SRC" "$VSC_EXT_DIR/luiul-window-registry"
+	ok "window registry extension linked (restart Code to activate)"
+fi
+
 # --- Shared agent scratch dir ---
 step "Agent scratch dir"
 # pi and Claude write review/proofread output to ~/scratch (canonical AGENTS.md)

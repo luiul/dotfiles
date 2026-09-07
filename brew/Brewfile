@@ -1,5 +1,5 @@
 tap "ankitpokhrel/jira-cli"
-tap "databricks/tap"
+tap "databricks/tap", trusted: true
 tap "felixkratz/formulae", "https://github.com/FelixKratz/homebrew-formulae"
 tap "hashicorp/tap"
 tap "hishamkaram/slacktokens"
@@ -99,6 +99,8 @@ brew "yt-dlp"
 brew "zoxide"
 # Fish shell like syntax highlighting for zsh
 brew "zsh-syntax-highlighting"
+# Command-line interface for the Databricks platform
+brew "databricks/tap/databricks"
 # A window border system for macOS
 brew "felixkratz/formulae/borders", trusted: true
 # Vault
@@ -163,6 +165,7 @@ vscode "github.vscode-pull-request-github"
 vscode "hashicorp.terraform"
 vscode "hediet.vscode-drawio"
 vscode "innoverio.vscode-dbt-power-user"
+vscode "jackiotyu.git-worktree-manager"
 vscode "jaredly.background-terminal-notifier"
 vscode "johnpapa.vscode-peacock"
 vscode "jozefchmelar.compare"
@@ -203,6 +206,7 @@ vscode "pkief.material-icon-theme"
 vscode "redhat.vscode-yaml"
 vscode "samuelcolvin.jinjahtml"
 vscode "sleistner.vscode-fileutils"
+vscode "subframe7536.custom-ui-style"
 vscode "tamasfe.even-better-toml"
 vscode "thinker.sort-json"
 vscode "timonwong.shellcheck"

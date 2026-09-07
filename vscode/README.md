@@ -7,6 +7,12 @@ Installed extensions are tracked in the Brewfile (`vscode "..."` entries). The p
 hook regenerates the Brewfile from the live system via `brew bundle dump --force`, so
 uninstalling an extension locally removes it from the Brewfile on the next commit.
 
+One extension is not from the Marketplace: `luiul-window-registry`, the window registry
+writer from [dashkit](https://github.com/luiul/dashkit) (`vscode-window-registry/`).
+`setup.sh` symlinks the dashkit checkout into `~/.vscode/extensions/`; the source of truth
+stays in dashkit, so there is no copy to drift. It activates after a Code restart and
+writes one small JSON file per window into `~/.local/state/vscode-windows/`.
+
 ## Removed Extensions (2026-08-31, performance prune)
 
 These were uninstalled to speed up startup and reduce background load. Reinstall any of

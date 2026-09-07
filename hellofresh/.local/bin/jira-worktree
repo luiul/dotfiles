@@ -1,18 +1,29 @@
 #!/usr/bin/env bash
-# Create (or reopen) a coppice worktree named after a Jira ticket and open its
-# VS Code window (via wt's post-start `code -n` hook). Also copies a plan-only
-# pi prompt for the ticket to the clipboard; starting pi and pasting it is the
+# Create (or reopen) a coppice worktree for a Jira ticket and open its VS Code
+# window (via wt's post-start `code -n` hook). Also copies a plan-only pi
+# prompt for the ticket to the clipboard; starting pi and pasting it is the
 # user's job.
 #
-# This is a script, not a zsh function, because jira-today's fzf `execute`
+# This is a script, not a zsh function, because jira-today's fzf `become`
 # binding spawns a non-interactive `$SHELL -c`, which never sources
 # .zsh_config (it does inherit the exported PATH, so ~/.local/bin is visible).
 #
-# Branch name: the bare ticket key (ISA-1234), which is Mergeable-valid
-# ([A-Z][A-Z0-9]+-\d+). wt's worktree-path template turns it into
-# ~/worktrees/hellofresh/ISA-1234/<repo>. Reopening an existing ticket's
-# worktree needs no special casing: `cop new --yes` switches to it without
-# confirming.
+# Branch name: TICKET-slug, where the slug comes from a short description
+# asked at a prompt, sanitized exactly like coppice's normalize_branch
+# (~/projects/personal/coppice/src/coppice/branch.py, keep in sync):
+# lowercase, runs of whitespace/underscores/slashes become dashes, anything
+# not [a-z0-9-] is stripped, leading/trailing dashes trimmed, capped at 40
+# chars on a dash boundary. An empty (or unsalvageable) description falls
+# back to the bare ticket key. The branch always starts with the ticket key,
+# so it stays Mergeable-valid ([A-Z][A-Z0-9]+-\d+) and Jira-linked. wt's
+# worktree-path template turns it into ~/worktrees/hellofresh/<branch>/<repo>.
+#
+# Reopen: existing worktrees for the ticket are globbed from
+# ~/worktrees/hellofresh/<TICKET>*/<repo> and listed in the picker above the
+# plain repo entries. Picking one reuses its branch and repo (no description
+# prompt); picking a repo asks for a description and creates a new worktree.
+# The owner segment is hardcoded to hellofresh: this tool only serves ISA
+# tickets, whose repos all live under github.com/hellofresh.
 #
 # Usage: jira-worktree <TICKET-KEY>        e.g. jira-worktree ISA-1234
 #
@@ -30,7 +41,7 @@ if [ -z "$TICKET" ]; then
 fi
 
 REPOS_ROOT="${JIRA_TODAY_REPOS_ROOT:-$HOME/projects/hellofresh}"
-BRANCH="${JIRA_TODAY_BRANCH_PREFIX:-}$TICKET"
+PREFIX="${JIRA_TODAY_BRANCH_PREFIX:-}"
 PROMPT="Read jira ticket $TICKET (description and comments), explore the relevant code in this repo, and write an implementation plan. Do not implement anything yet."
 
 command -v cop >/dev/null || {
@@ -46,6 +57,20 @@ if [ ! -d "$REPOS_ROOT" ]; then
 	exit 1
 fi
 
+# bash port of coppice's normalize_branch (see the header comment). Prints
+# the slug, empty when nothing usable survives; the caller then falls back to
+# the bare ticket key. bash 3.2-safe: tr/sed instead of ${var,,}.
+sanitize() {
+	local s
+	s=$(printf '%s' "$1" | tr 'A-Z' 'a-z' | sed -E 's/[[:space:]_/]+/-/g; s/[^a-z0-9-]//g; s/^-+//; s/-+$//')
+	if [ ${#s} -gt 40 ]; then
+		s=${s:0:40}
+		s=${s%-*} # cut at the last dash instead of mid-word; no-op without a dash
+		while [ "${s%-}" != "$s" ]; do s=${s%-}; done
+	fi
+	printf '%s' "$s"
+}
+
 # Immediate subdirs that are git repos (have a .git entry), which naturally
 # excludes non-repo dirs like findings/.
 repos=()
@@ -57,15 +82,62 @@ if [ ${#repos[@]} -eq 0 ]; then
 	exit 1
 fi
 
-# Pick by basename; the full path is just $REPOS_ROOT/<basename>. Esc (fzf
-# non-zero) or an empty selection aborts.
-if ! selection=$(printf '%s\n' "${repos[@]}" | fzf --prompt="repo for $TICKET> " --height=40% --layout=reverse --border); then
+# Picker lines: existing worktrees for the ticket first (reopen), then one
+# line per repo (new). Tab-separated tag/branch/repo fields so the selection
+# parses back unambiguously. wt sanitizes the branch for the worktree dir
+# name (/ becomes -), so the glob prefix is the sanitized branch prefix;
+# stripping it from a match yields the slug suffix, and the real branch name
+# is $PREFIX$TICKET$suffix.
+dirprefix="${PREFIX//\//-}$TICKET"
+lines=()
+for d in "$HOME/worktrees/hellofresh/$dirprefix" "$HOME/worktrees/hellofresh/$dirprefix"-*/; do
+	[ -d "$d" ] || continue
+	suffix=$(basename "$d")
+	suffix=${suffix#"$dirprefix"} # "" for the bare ticket, "-fix-thing" otherwise
+	for r in "$d"*/; do
+		[ -d "$r" ] || continue
+		repo=$(basename "$r")
+		# cop needs the repo's main checkout; skip worktrees whose repo is
+		# not under REPOS_ROOT anymore.
+		[ -e "$REPOS_ROOT/$repo/.git" ] || continue
+		lines+=("reopen"$'\t'"$PREFIX$TICKET$suffix"$'\t'"$repo")
+	done
+done
+for repo in "${repos[@]}"; do
+	lines+=("new"$'\t'"$repo")
+done
+
+# Esc (fzf non-zero) or an empty selection aborts.
+if ! selection=$(printf '%s\n' "${lines[@]}" | fzf --prompt="worktree for $TICKET> " --header='reopen: reuse the existing worktree · new: create one in that repo' --height=40% --layout=reverse --border); then
 	echo "jira-worktree: aborted" >&2
 	exit 1
 fi
 if [ -z "$selection" ]; then
-	echo "jira-worktree: no repo selected" >&2
+	echo "jira-worktree: no selection" >&2
 	exit 1
+fi
+
+if [ "$(printf '%s' "$selection" | cut -f1)" = reopen ]; then
+	BRANCH=$(printf '%s' "$selection" | cut -f2)
+	repo=$(printf '%s' "$selection" | cut -f3)
+else
+	repo=$(printf '%s' "$selection" | cut -f2)
+	# The description MUST come from /dev/tty, not fd 0: when jira-today's
+	# fzf `become` execs this script, fd 0 is the exhausted ticket-list pipe
+	# and fzf leaves O_NONBLOCK set on it, so reads from fd 0 fail with
+	# EAGAIN. A failed read (no tty, EOF) leaves desc empty, which falls
+	# back to the bare ticket key.
+	desc=''
+	printf 'jira-worktree: description for %s (enter for the bare ticket key)> ' "$TICKET"
+	read -r desc </dev/tty || true
+	slug=$(sanitize "$desc")
+	if [ -n "$slug" ]; then
+		BRANCH="$PREFIX$TICKET-$slug"
+	else
+		BRANCH="$PREFIX$TICKET"
+		[ -z "$(printf '%s' "$desc" | tr -d '[:space:]')" ] ||
+			echo "jira-worktree: no usable description in '$desc', using $BRANCH"
+	fi
 fi
 
 # Hand the plan prompt to the user via the clipboard before the possibly slow
@@ -73,4 +145,4 @@ fi
 printf '%s' "$PROMPT" | pbcopy
 echo "jira-worktree: plan prompt for $TICKET copied to clipboard (start pi and paste it yourself)"
 
-cop new "$REPOS_ROOT/$selection" --branch "$BRANCH" --yes
+cop new "$REPOS_ROOT/$repo" --branch "$BRANCH" --yes

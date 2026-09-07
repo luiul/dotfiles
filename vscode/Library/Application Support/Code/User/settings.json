@@ -101,8 +101,8 @@
     "terminal.integrated.fontFamily": "'JetBrainsMono Nerd Font Mono', Menlo, DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
     "terminal.integrated.fontSize": 12,
     "terminal.integrated.defaultProfile.osx": "zsh",
-    "terminal.integrated.persistentSessionScrollback": 1000,
-    "terminal.integrated.lineHeight": 1.5,
+    "terminal.integrated.persistentSessionScrollback": 100,
+    "terminal.integrated.lineHeight": 1.3,
     "terminal.integrated.tabs.hideCondition": "never",
     "terminal.integrated.cursorStyle": "line",
     "terminal.integrated.cursorStyleInactive": "none",
@@ -130,7 +130,11 @@
     "git.autoStash": true,
     "git.autoRepositoryDetection": "openEditors",
     "git.openRepositoryInParentFolders": "always",
-    "git.autofetch": true,
+    "git.autofetch": false,
+    // GitLens defaults are heavy: code lens runs `git log` per open file and
+    // current-line blame annotates every line. Keep GitLens for on-demand views only.
+    "gitlens.codeLens.enabled": false,
+    "gitlens.currentLine.enabled": false,
     // Worktrees share a leaf folder name per repo (~/worktrees/<owner>/<branch>/<repo>,
     // branch as parent so pi-hermes-memory's cwd-basename project detection resolves to the
     // repo, not the branch) — show the branch in the title bar so windows stay distinguishable.
@@ -255,7 +259,9 @@
     // === Python Virtual Environment ===
     "python.envFile": "${workspaceFolder}/.env",
     "python.terminal.activateEnvironment": false,
-    "python.terminal.activateEnvInCurrentTerminal": true,
+    // Off: the python-envs extension otherwise injects activation into every new
+    // terminal, which delays the prompt.
+    "python.terminal.activateEnvInCurrentTerminal": false,
     // === Python Testing ===
     "python.testing.pytestEnabled": true,
     "python.testing.cwd": "${workspaceFolder}/tests",
@@ -292,6 +298,8 @@
         "**/build": true,
         "**/.git": true
     },
+    // Do not follow symlink trees in search (dotfiles are stow-symlinked).
+    "search.followSymlinks": false,
     "files.watcherExclude": {
         "**/__pycache__/**": true,
         "**/.pytest_cache/**": true,
@@ -303,7 +311,11 @@
         "**/node_modules/**": true,
         "**/dist/**": true,
         "**/build/**": true,
-        "**/.git/objects/**": true
+        "**/.git/objects/**": true,
+        // Generated dirs that churn on every dbt run / terraform init.
+        "**/target/**": true,
+        "**/dbt_packages/**": true,
+        "**/.terraform/**": true
     },
     // === Debug/Other ===
     "debug.toolBarLocation": "docked",
@@ -392,7 +404,7 @@
     "workbench.browser.showInTitleBar": false,
     "terminal.integrated.initialHint": false,
     "workbench.activityBar.location": "top",
-    "task.allowAutomaticTasks": "on",
+    "task.allowAutomaticTasks": "off",
     // "workbench.experimental.modernUI": true,
     "terminal.integrated.gpuAcceleration": "on",
 }

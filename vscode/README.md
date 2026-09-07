@@ -32,6 +32,15 @@ them with `code --install-extension <id>` (or add back to the Brewfile and run
 The `aws.telemetry` / `aws.cloudformation.telemetry` settings in settings.json are
 harmless no-ops while the AWS toolkit is uninstalled; they apply again if it comes back.
 
+## Removed Extensions (2026-09-07, terminal notifier dedupe)
+
+Two terminal notification extensions did the same job; both were removed.
+
+| Extension | What it does | Reinstall |
+| --- | --- | --- |
+| `jaredly.background-terminal-notifier` | Notification when a background terminal command finishes | `code --install-extension jaredly.background-terminal-notifier` |
+| `wenbopan.vscode-terminal-osc-notifier` | Notifications via OSC 9 escape sequences | `code --install-extension wenbopan.vscode-terminal-osc-notifier` |
+
 ## Performance Settings
 
 These settings in `settings.json` are tuned for speed:
@@ -47,3 +56,17 @@ These settings in `settings.json` are tuned for speed:
   `editor.smoothScrolling: false`: less rendering work in large files.
 - `window.openFilesInNewWindow: "off"`: files opened from Finder/CLI reuse the current
   window instead of spawning a new one (each window runs its own extension hosts).
+- `terminal.integrated.gpuAcceleration: "on"`: renders the integrated terminal with
+  WebGL on the GPU instead of the CPU.
+- `terminal.integrated.persistentSessionScrollback: 100`: less scrollback to serialize
+  and restore on every window reload.
+- `terminal.integrated.lineHeight: 1.3`: fewer pixels per terminal line than 1.5.
+- `python.terminal.activateEnvInCurrentTerminal: false`: new terminals reach a prompt
+  without waiting for the Python envs extension to inject activation.
+- `git.autofetch: false`: no background `git fetch` every 3 minutes per open repo.
+- `gitlens.codeLens.enabled: false` and `gitlens.currentLine.enabled: false`: GitLens
+  defaults run `git log` per open file and annotate every line.
+- `task.allowAutomaticTasks: "off"`: opening a folder no longer runs workspace tasks.
+- `files.watcherExclude` also covers `target/`, `dbt_packages/`, and `.terraform/`
+  (generated dirs that churn on every dbt run or terraform init).
+- `search.followSymlinks: false`: search does not follow symlink trees (stow).

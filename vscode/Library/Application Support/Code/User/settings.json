@@ -214,6 +214,9 @@
     ],
     "ruff.importStrategy": "fromEnvironment",
     "ruff.configuration": "${env:HOME}/.config/ruff/ruff.toml",
+    // Repos that declare their own ruff config (e.g. pyproject [tool.ruff]) win over
+    // the personal global config above; the global one only applies to config-less repos.
+    "ruff.configurationPreference": "filesystemFirst",
     //
     // Ty
     //
@@ -347,17 +350,15 @@
         "editor.defaultFormatter": "innoverio.vscode-dbt-power-user",
         "editor.formatOnSave": true
     },
-    "dbt.sqlFmtAdditionalParams": [
-        "--line-length",
-        "120"
-    ],
+    // No dbt.sqlFmtAdditionalParams line-length override: sqlfmt reads the repo's
+    // pyproject [tool.sqlfmt] (line_length = 88); its built-in default is also 88.
     "emeraldwalk.runonsave": {
         "commands": [
             {
                 "match": ".*\\.sql(\\.jinja)?$",
                 "notMatch": ".*/dbt/.*",
                 "isAsync": true,
-                "cmd": "echo 'Running sqlfmt on: ${file}' && $HOME/.local/bin/sqlfmt --line-length 120 '${file}'"
+                "cmd": "echo 'Running sqlfmt on: ${file}' && $HOME/.local/bin/sqlfmt '${file}'"
             },
             {
                 "match": ".*\\.tf$",

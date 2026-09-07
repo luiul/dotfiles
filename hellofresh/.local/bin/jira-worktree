@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Create (or reopen) a coppice worktree named after a Jira ticket and open its
-# VS Code window (via wt's post-start `code -n` hook).
+# VS Code window (via wt's post-start `code -n` hook). Also copies a plan-only
+# pi prompt for the ticket to the clipboard; starting pi and pasting it is the
+# user's job.
 #
 # This is a script, not a zsh function, because jira-today's fzf `execute`
 # binding spawns a non-interactive `$SHELL -c`, which never sources
@@ -29,6 +31,7 @@ fi
 
 REPOS_ROOT="${JIRA_TODAY_REPOS_ROOT:-$HOME/projects/hellofresh}"
 BRANCH="${JIRA_TODAY_BRANCH_PREFIX:-}$TICKET"
+PROMPT="Read jira ticket $TICKET (description and comments), explore the relevant code in this repo, and write an implementation plan. Do not implement anything yet."
 
 command -v cop >/dev/null || {
 	echo "jira-worktree: cop not on PATH" >&2
@@ -64,5 +67,10 @@ if [ -z "$selection" ]; then
 	echo "jira-worktree: no repo selected" >&2
 	exit 1
 fi
+
+# Hand the plan prompt to the user via the clipboard before the possibly slow
+# worktree creation, so it is ready to paste whenever pi is up.
+printf '%s' "$PROMPT" | pbcopy
+echo "jira-worktree: plan prompt for $TICKET copied to clipboard (start pi and paste it yourself)"
 
 cop new "$REPOS_ROOT/$selection" --branch "$BRANCH" --yes

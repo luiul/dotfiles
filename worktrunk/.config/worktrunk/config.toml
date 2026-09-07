@@ -149,3 +149,13 @@ for f in "{{ worktree_path }}"/pipelines/*/*/dbt/dbt_project.yml; do
   ( cd "$d" && "{{ worktree_path }}/.venv/bin/dbt" deps )
 done
 '''
+
+# global-ops: `wt step copy-ignored` (above) reflinks .env.dev from the base worktree, but that
+# file carries ABSOLUTE machine paths of the checkout it was written in (REPO_ROOT, CHANGE_PATH,
+# DBT_PROFILES_DIR). Left stale, `make test` in the worktree would load pytest-env from the copied
+# .env.dev and run the schemachange tests against the MAIN checkout's SQL, silently testing the
+# wrong tree. `make setup-env` is the repo's own non-destructive fix: it preserves all secrets
+# (backs up to .env.dev.bak) and rewrites only those three paths to the worktree. Best-effort: a
+# failure (e.g. make/databricks missing) must never block worktree creation.
+[[projects."github.com/hellofresh/global-ops".post-start]]
+setup-env = 'make -C "{{ worktree_path }}" setup-env || true'

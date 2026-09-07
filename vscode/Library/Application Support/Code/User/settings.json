@@ -11,7 +11,7 @@
     // UI font (file explorer, sidebar, tabs) via Custom UI Style: same as Zed
     "custom-ui-style.font.sansSerif": "'JetBrainsMono Nerd Font Mono', -apple-system, sans-serif",
     "custom-ui-style.stylesheet": {
-        ".monaco-workbench": "font-weight: 200;"
+        // ".monaco-workbench": "font-weight: 200;"
     },
     "workbench.colorCustomizations": {
         "tab.activeBorderTop": "#ff00ee",
@@ -30,7 +30,7 @@
     // === Editor Settings ===
     "editor.fontFamily": "'JetBrainsMono Nerd Font Mono', Menlo, DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
     "editor.fontSize": 12,
-    "editor.fontWeight": 200,
+    // "editor.fontWeight": 200,
     "editor.fontLigatures": false,
     "editor.wordWrap": "on",
     "editor.smoothScrolling": false,
@@ -392,5 +392,7 @@
     "workbench.browser.showInTitleBar": false,
     "terminal.integrated.initialHint": false,
     "workbench.activityBar.location": "top",
-    "task.allowAutomaticTasks": "on"
+    "task.allowAutomaticTasks": "on",
+    // "workbench.experimental.modernUI": true,
+    "terminal.integrated.gpuAcceleration": "on",
 }

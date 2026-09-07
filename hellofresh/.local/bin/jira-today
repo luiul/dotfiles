@@ -15,14 +15,13 @@
 # The picker is modal, lazygit-style. It starts with fzf's search DISABLED
 # (--disabled), so plain letters are action keys instead of query input:
 # enter opens the highlighted ticket in the browser, w creates (or reopens) a
-# coppice worktree named after the ticket via jira-worktree (which also
-# copies a plan-only pi prompt for the ticket to the clipboard), t moves
-# the ticket to another workflow state via jira-today-move --back (which
-# execs this script again when it finishes, so a state change returns to a
-# freshly loaded overview), v shows the full ticket detail in a pager, y
-# yanks the ticket
-# key to the clipboard, r reloads the ticket list, c clears an active filter,
-# q quits. `/` enters filter mode: search is enabled and the letter actions
+# coppice worktree for the ticket via jira-worktree (named TICKET-slug from a
+# short description it asks for; it also copies a plan-only pi prompt to the
+# clipboard), t moves the ticket to another workflow state via jira-today-move
+# --back (which execs this script again when it finishes, so a state change
+# returns to a freshly loaded overview), v shows the full ticket detail in a
+# pager, y yanks the ticket key to the clipboard, r reloads the ticket list,
+# c clears an active filter, q quits. `/` enters filter mode: search is enabled and the letter actions
 # are unbound, so typing goes into the fuzzy query; esc leaves filter mode
 # (the query stays applied until c clears it) and restores the action keys.
 # rebind(...) needs the explicit key list: bare `rebind` is a parse error.
@@ -53,7 +52,7 @@ jira-today-list |
 		--bind 'j:down' \
 		--bind 'k:up' \
 		--bind 'enter:become(echo "jira-today: opening {2} in the browser"; jira open {2})' \
-		--bind 'w:become(echo "jira-today: worktree setup for {2} in progress (pick a repo next)"; jira-worktree {2})' \
+		--bind 'w:become(echo "jira-today: worktree setup for {2} in progress (pick a worktree or repo next)"; jira-worktree {2})' \
 		--bind 't:become(echo "jira-today: move {2} to another state"; jira-today-move --back {2})' \
 		--bind 'v:execute(jira issue view {2} | less -R)' \
 		--bind 'y:execute-silent(echo -n {2} | pbcopy)+transform-prompt(echo jira-today: copied {2} ·)' \
@@ -62,7 +61,7 @@ jira-today-list |
 		--bind '/:enable-search+unbind(j,k,w,t,v,y,r,c,q,/)+change-prompt(filter> )' \
 		--bind 'esc:disable-search+rebind(j,k,w,t,v,y,r,c,q,/)+change-prompt(> )' \
 		--bind 'q:abort' \
-		--bind 'ctrl-w:become(echo "jira-today: worktree setup for {2} in progress (pick a repo next)"; jira-worktree {2})' \
+		--bind 'ctrl-w:become(echo "jira-today: worktree setup for {2} in progress (pick a worktree or repo next)"; jira-worktree {2})' \
 		--bind 'ctrl-t:become(echo "jira-today: move {2} to another state"; jira-today-move --back {2})' \
 		--bind 'ctrl-v:execute(jira issue view {2} | less -R)' \
 		--bind 'ctrl-y:execute-silent(echo -n {2} | pbcopy)+transform-prompt(echo jira-today: copied {2} ·)' \

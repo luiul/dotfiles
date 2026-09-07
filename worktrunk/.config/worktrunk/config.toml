@@ -48,10 +48,8 @@ git fetch origin "{{ default_branch }}:{{ default_branch }}" || true
 '''
 
 # .venv is symlinked (below); skip it in copy-ignored so we don't try to reflink it too.
-# .cop-prompt is written into a fresh worktree by the pi-prompt post-switch hook (below);
-# never let a stray one in the main checkout get reflinked over the one the hook just wrote.
 [step.copy-ignored]
-exclude = [".venv/", ".DS_Store", ".cop-prompt"]
+exclude = [".venv/", ".DS_Store"]
 
 # Symlink .venv (shared, handled separately), copy other gitignored files (.vscode/settings.json,
 # .env, etc.) via reflink, open the new worktree in VS Code, register the repo so `coppice list`
@@ -61,9 +59,7 @@ exclude = [".venv/", ".DS_Store", ".cop-prompt"]
 [post-start]
 venv = "ln -sfn {{ repo_path }}/.venv {{ worktree_path }}/.venv"
 copy = "wt step copy-ignored --force"
-# When `cop new --prompt` set COP_PROMPT, the pi-prompt post-switch hook (below) opens the
-# window instead; skip here so create-with-prompt opens exactly one window, not two.
-vscode = '[ -n "$COP_PROMPT" ] || code -n {{ worktree_path }}'
+vscode = 'code -n {{ worktree_path }}'
 registry = "mkdir -p ~/.cache/wt && echo '{{ repo_path }}' >> ~/.cache/wt/known-repos && sort -u -o ~/.cache/wt/known-repos ~/.cache/wt/known-repos"
 # pi/Claude discover AGENTS.md/CLAUDE.md by walking up from cwd to the filesystem root,
 # concatenating every match along the way. From the main checkout ({{ repo_path }}, e.g.
@@ -105,20 +101,6 @@ if command -v code-review-graph >/dev/null 2>&1; then
   command -v crg-daemon >/dev/null 2>&1 && crg-daemon add "{{ worktree_path }}" --alias "{{ repo }}-{{ branch | sanitize }}" >/dev/null 2>&1
 fi
 '''
-
-[post-switch]
-# cop new --prompt (coppice#23): COP_PROMPT is set in wt's environment by `cop new -p`.
-# Delivery lives in cop-prompt-deliver.sh (next to this config): it writes the prompt to
-# <worktree>/.cop-prompt, opens the window with `code -n` and drives the integrated terminal
-# directly via AppleScript (Terminal > New Terminal, paste `pi`, Return), starting pi ~1.5s
-# after the window appears instead of waiting ~3s for VS Code's task system, which gates
-# folderOpen tasks on the extension host having started. pi's cop-draft-prompt extension
-# (~/.pi/agent/extensions/cop-draft-prompt.ts) then loads .cop-prompt into the editor as an
-# unsubmitted draft (review, then Enter to send) and deletes the file. Falls back to a
-# self-cleaning runOn:folderOpen tasks.json launching bare pi when AppleScript is unavailable
-# or the drive fails. post-switch (not post-start) so this fires on create AND on switching
-# to an existing worktree.
-pi-prompt = '[ -n "$COP_PROMPT" ] && "$HOME/.config/worktrunk/cop-prompt-deliver.sh" "{{ worktree_path }}" "{{ repo }}" "{{ branch }}"'
 
 # Refuse to remove protected branches. pre-* hooks abort on non-zero exit.
 # crg-cleanup deregisters the worktree from code-review-graph/its daemon before removal; always

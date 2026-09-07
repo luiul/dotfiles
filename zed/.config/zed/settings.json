@@ -7,6 +7,10 @@
 // custom settings, run `zed: open default settings` from the
 // command palette (cmd-shift-p / ctrl-shift-p)
 {
+  "edit_predictions": {
+    "disabled_globs": [],
+    "provider": "copilot"
+  },
   "agent": {
     "default_model": { "enable_thinking": false,
                        "provider": "ai-model-router", "model": "gpt-5.6-luna" }
@@ -198,7 +202,16 @@
     "dark": "Monokai-og"
   },
   "experimental.theme_overrides": {
-    "editor.active_line.background": "#008cff28"
+    // Blue highlight on the active line.
+    "editor.active_line.background": "#008cff28",
+    // Blue outline around the focused pane.
+    "pane.focused_border": "#008cff",
+    // Blue tint on the active tab.
+    "tab.active_background": "#008cff2e"
+  },
+  // Dim unfocused panes so the active one stands out.
+  "active_pane_modifiers": {
+    "inactive_opacity": 0.7
   },
   "project_panel": {
     "dock": "right",
@@ -229,7 +242,7 @@
   "cursor_blink": false,
   "current_line_highlight": "all",
   "ui_font_family": "JetBrainsMono Nerd Font Mono",
-  "ui_font_weight": 250,
+  "ui_font_weight": 200,
   "ui_font_size": 14,
   "ui_font_features": { "calt": false, "liga": false, "dlig": false },
   "tab_bar": {
@@ -254,13 +267,13 @@
   },
   "buffer_font_family": "JetBrainsMono Nerd Font Mono",
   "buffer_font_size": 14,
-  "buffer_font_weight": 250,
+  "buffer_font_weight": 200,
   "buffer_line_height": { "custom": 1.3 },
   "buffer_font_features": { "calt": false, "liga": false, "dlig": false },
   "terminal": {
     "font_family": "JetBrainsMono Nerd Font Mono",
     "font_size": 14,
-    "font_weight": 250,
+    "font_weight": 200,
     "font_features": { "calt": false, "liga": false, "dlig": false },
     "cursor_shape": "bar",
     "blinking": "off"

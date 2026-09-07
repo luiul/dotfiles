@@ -12,6 +12,19 @@
     "custom-ui-style.font.sansSerif": "'JetBrainsMono Nerd Font Mono', -apple-system, sans-serif",
     "custom-ui-style.stylesheet": {
         // ".monaco-workbench": "font-weight: 200;"
+        // Smaller UI font. VS Code sets explicit px sizes on many parts, so each
+        // must be overridden individually (a bare .monaco-workbench rule loses).
+        ".monaco-workbench": "font-size: 11px;",
+        // Sidebar, panel and editor part contents (file explorer, search, SCM, ...)
+        ".monaco-workbench .part > .content": "font-size: 11px !important;",
+        // Editor tab labels
+        ".monaco-workbench .part.editor > .content .editor-group-container > .title .tabs-container > .tab .tab-label a": "font-size: 11px !important;",
+        // Status bar
+        ".monaco-workbench .part.statusbar": "font-size: 11px !important;",
+        // Section headers (EXPLORER, OUTLINE, TERMINAL, ...)
+        ".monaco-workbench .part > .title > .title-label h2, .monaco-pane-view .pane > .pane-header h3.title": "font-size: 11px !important;",
+        // Window title in title bar
+        ".monaco-workbench .part.titlebar > .titlebar-container > .titlebar-center > .window-title": "font-size: 11px !important;"
     },
     "workbench.colorCustomizations": {
         "tab.activeBorderTop": "#ff00ee",
@@ -135,10 +148,11 @@
     // current-line blame annotates every line. Keep GitLens for on-demand views only.
     "gitlens.codeLens.enabled": false,
     "gitlens.currentLine.enabled": false,
-    // Worktrees share a leaf folder name per repo (~/worktrees/<owner>/<branch>/<repo>,
-    // branch as parent so pi-hermes-memory's cwd-basename project detection resolves to the
-    // repo, not the branch) — show the branch in the title bar so windows stay distinguishable.
-    "window.title": "${rootName}${separator}${activeRepositoryBranchName}${separator}${activeEditorShort}",
+    // Cosmetic only: the window registry (dashkit's vscode-window-registry extension) is
+    // what tools match windows on. ${rootPath} tilde-collapses ("~/dotfiles — main"), so the
+    // Window menu shows paths for humans. Needs a Code restart: the symlinked settings file
+    // is not watched (microsoft/vscode#24739).
+    "window.title": "${rootPath}${separator}${activeRepositoryBranchName}",
     // === GitHub Settings ===
     "githubPullRequests.remotes": [
         "origin",
@@ -407,4 +421,5 @@
     "task.allowAutomaticTasks": "off",
     // "workbench.experimental.modernUI": true,
     "terminal.integrated.gpuAcceleration": "on",
+    "custom-ui-style.reloadWithoutPrompting": true
 }

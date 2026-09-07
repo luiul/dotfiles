@@ -23,7 +23,6 @@
         "docker.docker",
         "donjayamanne.githistory",
         "dvirtz.parquet-viewer",
-        "eamodio.gitlens",
         "ecmel.vscode-html-css",
         "emeraldwalk.runonsave",
         "esbenp.prettier-vscode",

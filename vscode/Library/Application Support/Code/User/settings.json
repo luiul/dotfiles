@@ -144,10 +144,6 @@
     "git.autoRepositoryDetection": "openEditors",
     "git.openRepositoryInParentFolders": "always",
     "git.autofetch": false,
-    // GitLens defaults are heavy: code lens runs `git log` per open file and
-    // current-line blame annotates every line. Keep GitLens for on-demand views only.
-    "gitlens.codeLens.enabled": false,
-    "gitlens.currentLine.enabled": false,
     // Cosmetic only: the window registry (dashkit's vscode-window-registry extension) is
     // what tools match windows on. ${rootPath} tilde-collapses ("~/dotfiles — main"), so the
     // Window menu shows paths for humans. Needs a Code restart: the symlinked settings file
@@ -371,7 +367,7 @@
     // === UI & Misc ===
     "workbench.productIconTheme": "fluent-icons",
     "makefile.configureOnOpen": false,
-    "git.blame.editorDecoration.enabled": false,
+    "git.blame.editorDecoration.enabled": true,
     "macros": {
         "refreshTerminal": [
             "workbench.action.terminal.kill",

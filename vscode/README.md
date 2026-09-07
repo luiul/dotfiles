@@ -47,14 +47,26 @@ Two terminal notification extensions did the same job; both were removed.
 | `jaredly.background-terminal-notifier` | Notification when a background terminal command finishes | `code --install-extension jaredly.background-terminal-notifier` |
 | `wenbopan.vscode-terminal-osc-notifier` | Notifications via OSC 9 escape sequences | `code --install-extension wenbopan.vscode-terminal-osc-notifier` |
 
+## Removed Extensions (2026-09-07, GitLens)
+
+GitLens was removed. The built-in blame settings (`git.blame.editorDecoration.enabled`
+and `git.blame.statusBarItem.enabled`) cover inline blame and status bar blame, and
+GitLens's defaults are heavy: code lens runs `git log` per open file and current-line
+blame annotates every line. The `gitlens.*` settings were removed from settings.json
+with it.
+
+| Extension | What it does | Reinstall |
+| --- | --- | --- |
+| `eamodio.gitlens` | Git blame, history, and code lens | `code --install-extension eamodio.gitlens` |
+
 ## Performance Settings
 
 These settings in `settings.json` are tuned for speed:
 
 - `emeraldwalk.runonsave`: the sqlfmt command runs with `isAsync: true` so saves never
   block on formatting.
-- `git.blame.editorDecoration.enabled: false`: skips running blame decoration on every
-  opened file (status bar blame stays on).
+- `git.blame.editorDecoration.enabled: true`: inline blame on the current line
+  (built-in, replaces GitLens). Status bar blame stays on.
 - `python.analysis.typeCheckingMode: "basic"`: cheaper Pylance analysis on large repos.
 - `makefile.configureOnOpen: false` and `terraform.codelens.referenceCount: false`:
   avoid extra language server work on open.
@@ -70,8 +82,6 @@ These settings in `settings.json` are tuned for speed:
 - `python.terminal.activateEnvInCurrentTerminal: false`: new terminals reach a prompt
   without waiting for the Python envs extension to inject activation.
 - `git.autofetch: false`: no background `git fetch` every 3 minutes per open repo.
-- `gitlens.codeLens.enabled: false` and `gitlens.currentLine.enabled: false`: GitLens
-  defaults run `git log` per open file and annotate every line.
 - `task.allowAutomaticTasks: "off"`: opening a folder no longer runs workspace tasks.
 - `files.watcherExclude` also covers `target/`, `dbt_packages/`, and `.terraform/`
   (generated dirs that churn on every dbt run or terraform init).

@@ -15,11 +15,12 @@
 # The picker is modal, lazygit-style. It starts with fzf's search DISABLED
 # (--disabled), so plain letters are action keys instead of query input:
 # enter opens the highlighted ticket in the browser, w creates (or reopens) a
-# coppice worktree named after the ticket via jira-worktree (which asks
-# whether pi should start with a plan-only prompt), t moves the ticket to
-# another workflow state via jira-today-move --back (which execs this script
-# again when it finishes, so a state change returns to a freshly loaded
-# overview), v shows the full ticket detail in a pager, y yanks the ticket
+# coppice worktree named after the ticket via jira-worktree (which also
+# copies a plan-only pi prompt for the ticket to the clipboard), t moves
+# the ticket to another workflow state via jira-today-move --back (which
+# execs this script again when it finishes, so a state change returns to a
+# freshly loaded overview), v shows the full ticket detail in a pager, y
+# yanks the ticket
 # key to the clipboard, r reloads the ticket list, c clears an active filter,
 # q quits. `/` enters filter mode: search is enabled and the letter actions
 # are unbound, so typing goes into the fuzzy query; esc leaves filter mode

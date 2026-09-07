@@ -40,9 +40,10 @@
 # scripts.
 #
 # Interactive input MUST come from /dev/tty, not fd 0: when jira-today's fzf
-# `become` execs this script, fd 0 is the exhausted ticket-list pipe with
-# O_NONBLOCK set (see jira-worktree's header comment). With no tty at all, the
-# Done path refuses to run rather than marking the ticket Done with no hours.
+# `become` execs this script, fd 0 is the exhausted ticket-list pipe and fzf
+# leaves O_NONBLOCK set on it, so reads from fd 0 fail with EAGAIN ("Resource
+# temporarily unavailable"). With no tty at all, the Done path refuses to run
+# rather than marking the ticket Done with no hours.
 #
 # Auth for the API call: basic auth with login/server read from jira-cli's
 # config and JIRA_API_TOKEN from the environment (exported from

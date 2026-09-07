@@ -11,6 +11,8 @@
     // "persist": false keeps zoom session-only so settings.json (a stow
     // symlink into this repo) is never rewritten by zooming.
     "bindings": {
+      // Toggle the terminal panel (overrides the default ctrl-`)
+      "alt-cmd-t": "terminal_panel::ToggleFocus",
       "cmd-=": ["workspace::SendKeystrokes", "f24 f23"],
       "cmd-+": ["workspace::SendKeystrokes", "f24 f23"],
       "cmd--": ["workspace::SendKeystrokes", "f22 f21"],
@@ -20,7 +22,13 @@
       "f22": ["zed::DecreaseBufferFontSize", { "persist": false }],
       "f21": ["zed::DecreaseUiFontSize", { "persist": false }],
       "f20": ["zed::ResetBufferFontSize", { "persist": false }],
-      "f19": ["zed::ResetUiFontSize", { "persist": false }]
+      "f19": ["zed::ResetUiFontSize", { "persist": false }],
+      // Zed has no confirm dialog for closing a window (only confirm_quit
+      // for quitting the app, see settings.json; upstream: zed#4322).
+      // Unbind cmd-shift-w so the window can't be closed by accident from
+      // the keyboard. The macOS red traffic-light button can't be
+      // intercepted by Zed at all.
+      "cmd-shift-w": null
     }
   }
 ]

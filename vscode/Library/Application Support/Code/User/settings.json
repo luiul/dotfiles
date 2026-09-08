@@ -427,5 +427,9 @@
     "terminal.integrated.suggest.enabled": false,
     // Off: measured about 33ms extra per terminal open, and nothing here uses it.
     "terminal.integrated.shellIntegration.environmentReporting": false,
+    // Off: TUI apps (pi, Claude Code) enable this protocol, which makes the terminal
+    // swallow Cmd+keys (e.g. Cmd+M minimize) as CSI-u escape sequences sent to the app.
+    // Only cost: super+key bindings in TUIs stop working; pi has none by default.
+    "terminal.integrated.enableKittyKeyboardProtocol": false,
     "custom-ui-style.reloadWithoutPrompting": true
 }

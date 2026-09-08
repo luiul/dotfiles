@@ -2,7 +2,7 @@
 
 What changed, why, and how the pieces talk to each other. Written 2026-07-24.
 
-## TLDR
+## Summary
 
 - **Repos flattened**: `~/projects/hellofresh/<repo>` and `~/projects/personal/<repo>` — no more numbered pipeline-stage folders. Meaning/relationships now come from the code itself (code-review-graph) and TRE, not folder depth.
 - **Worktrees centralized**: `~/worktrees/<owner>/<branch>/<repo>` (note: branch before repo — deliberate, see §4/diagram below, it's what keeps pi's memory and skills unified per-repo instead of fragmenting per-branch).

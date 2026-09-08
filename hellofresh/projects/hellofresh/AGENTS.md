@@ -26,11 +26,8 @@ Follow conventional commit style:
 - **Body**:
 
   ```markdown
-  ## TLDR
-  2-4 plain-language sentences: what happened, why, and what the change does
-
   ## Summary
-  - Brief bullet points explaining the changes
+  2-4 plain-language sentences: what happened, why, and what the change does
 
   ## Key Changes
   - List of specific changes made
@@ -52,7 +49,8 @@ Follow conventional commit style:
 - No agent attribution, tool footers, or generated-by links (no Claude Code or pi credits).
 - Omit empty sections rather than writing "N/A".
 - Focus on the "why", not a list of every file changed.
-- **TLDR first**: the body always starts with a `## TLDR` section, written for a reader with no context on the system (what happened, why, what the change does).
+- **Summary first**: the body always starts with a `## Summary` section, written for a reader with no context on the system (what happened, why, what the change does).
+- **No `## TLDR` section**: Summary replaces it. Go straight from Summary to Key Changes.
 - **Concise, not exhaustive**: plain language plus, when it clarifies the issue, one small concrete example (a few sample rows or a short query result). Do not dump full investigation logs, long JSON payloads, or every query that was run; those belong in the linked Jira ticket. The PR body is the friendly summary, not the full report.
 
 ### Org-wide PR rules (enforced by Mergeable)

@@ -15,6 +15,16 @@
  * installs fall back to `agent_end`.
  *
  * Toggle notifications on and off with the /notifications command.
+ *
+ * Notification icon: banners show the ClaudeNotifier.app icon, one global
+ * choice shared with Claude Code (brown, blue, or green). We use blue. The
+ * default brown comes back on every brew reinstall of the cask. To change it,
+ * set "icon" in ~/Library/Application Support/ClaudeNotifier/config.json and
+ * copy the matching AppIcon-<color>.icns over AppIcon.icns inside the app
+ * bundle (that copy is what the app's own config menu does). macOS caches the
+ * icon hard: re-register with `lsregister -f /Applications/ClaudeNotifier.app`
+ * or the old icon keeps showing. If that is not enough, wipe
+ * /Library/Caches/com.apple.iconservices.store with sudo and reboot.
  */
 
 import { execFile } from "node:child_process";

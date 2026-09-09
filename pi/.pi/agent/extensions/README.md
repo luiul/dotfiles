@@ -1,5 +1,24 @@
 # Pi extensions
 
+## System notifications
+
+`notifications.ts` sends macOS notifications through the `claude-notifier` binary when pi settles and waits for input, after a manual `/compact`, or when a run exceeds the long-run threshold (default 600s, `PI_LONG_RUN_SECONDS`, `/notify-timeout`). `/notifications` toggles them live.
+
+Key behaviors:
+
+- Turn-end trigger is `agent_settled`, so auto-retries, auto-compaction retries, and queued follow-ups do not fire premature "Awaiting your input" notifications. `agent_settled` needs pi >= 0.80.4; the extension detects the running pi version from its package.json and falls back to `agent_end` on older installs.
+- Only interactive sessions notify. The `ctx.hasUI` guard keeps subagent child sessions (pi-subagents loads extensions there too) and print mode silent.
+- Only manual compactions notify (`event.reason === "manual"`); threshold and overflow compactions happen mid-run and stay silent.
+- Focus suppression: no desktop notification when pi's terminal app is frontmost (tab-level for iTerm2, app-level elsewhere).
+
+Verification from the repository root:
+
+```sh
+scripts/test-pi-notifications.sh
+```
+
+The script runs an interactive pi in a detached tmux session with a 2s long-run threshold and asserts a real notification lands in `claude-notifier logs`.
+
 ## Model scores companion
 
 `model-scores/index.ts` is the additive `/model-scores` companion picker for issue #9. It leaves pi's native `/model` and Ctrl+P picker untouched.

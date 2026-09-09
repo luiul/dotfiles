@@ -1,18 +1,25 @@
 /**
  * System notifications for pi (mirrors the Claude Code notifier setup).
  *
- * Fires a macOS notification via the `claude-notifier` binary when pi finishes
- * a turn and hands control back to you, after a context compaction, or when a
+ * Fires a macOS notification via the `claude-notifier` binary when pi settles
+ * and hands control back to you, after a manual context compaction, or when a
  * single agent run has been working for too long without returning control
  * (default 600s, configurable via PI_LONG_RUN_SECONDS or /notify-timeout). The
  * notification is suppressed when you are already looking at pi's terminal tab,
  * replicating the focus-detection logic from the Claude `notify.sh` hook.
  *
+ * Only interactive sessions notify: subagent child sessions and print mode
+ * (`ctx.hasUI === false`) stay silent. The turn-end trigger is `agent_settled`
+ * (pi >= 0.80.4), which fires only when pi will not continue on its own (no
+ * auto-retries, auto-compaction retries, or queued follow-ups). Older pi
+ * installs fall back to `agent_end`.
+ *
  * Toggle notifications on and off with the /notifications command.
  */
 
 import { execFile } from "node:child_process";
-import { basename } from "node:path";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
@@ -117,6 +124,32 @@ function parseThreshold(): number {
 	return Number.isFinite(raw) && raw > 0 ? raw : 600;
 }
 
+// `agent_settled` was added in pi 0.80.4. Detect the running pi's version by
+// walking up from the CLI script (process.argv[1]) to its package.json. When
+// the version is unknown, fall back to `agent_end`: it exists on every pi.
+function supportsAgentSettled(): boolean {
+	try {
+		const script = process.argv[1];
+		if (!script) return false;
+		let dir = dirname(realpathSync(script));
+		for (let i = 0; i < 5; i++) {
+			const pkgPath = join(dir, "package.json");
+			if (existsSync(pkgPath)) {
+				const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+				if (pkg.name !== "@earendil-works/pi-coding-agent") return false;
+				const m = /^(\d+)\.(\d+)\.(\d+)/.exec(pkg.version ?? "");
+				if (!m) return false;
+				const [major, minor, patch] = [Number(m[1]), Number(m[2]), Number(m[3])];
+				return major > 0 || minor > 80 || (minor === 80 && patch >= 4);
+			}
+			dir = dirname(dir);
+		}
+	} catch {
+		// fall through to the safe default
+	}
+	return false;
+}
+
 export default function (pi: ExtensionAPI) {
 	let enabled = process.platform === "darwin";
 	let longRunThreshold = parseThreshold();
@@ -130,7 +163,7 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	const maybeNotify = async (ctx: ExtensionContext, message: string, force = false) => {
-		if (!enabled) return;
+		if (!enabled || !ctx.hasUI) return;
 		try {
 			const term = detectTerminal();
 			if (!force && !(await shouldNotify(term))) return;
@@ -161,7 +194,12 @@ export default function (pi: ExtensionAPI) {
 		}, longRunThreshold * 1000);
 	});
 
-	pi.on("agent_end", async (_event, ctx) => {
+	// agent_settled fires only when pi will not continue on its own; agent_end
+	// (fallback for pi < 0.80.4) can also fire before auto-retries and queued
+	// follow-ups. The cast picks a compatible overload; the runtime string is
+	// what matters.
+	const settledEvent = supportsAgentSettled() ? "agent_settled" : "agent_end";
+	pi.on(settledEvent as "agent_end", async (_event, ctx) => {
 		stopLongRunWatch();
 		await maybeNotify(ctx, "Awaiting your input");
 	});
@@ -170,7 +208,10 @@ export default function (pi: ExtensionAPI) {
 		stopLongRunWatch();
 	});
 
-	pi.on("session_compact", async (_event, ctx) => {
+	// Only manual /compact is worth a notification. Threshold and overflow
+	// compactions happen mid-run and the agent keeps working afterwards.
+	pi.on("session_compact", async (event, ctx) => {
+		if (event.reason !== "manual") return;
 		await maybeNotify(ctx, "Context compacted");
 	});
 

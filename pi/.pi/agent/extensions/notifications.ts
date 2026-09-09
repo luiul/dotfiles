@@ -4,7 +4,7 @@
  * Fires a macOS notification via the `claude-notifier` binary when pi finishes
  * a turn and hands control back to you, after a context compaction, or when a
  * single agent run has been working for too long without returning control
- * (default 300s, configurable via PI_LONG_RUN_SECONDS or /notify-timeout). The
+ * (default 600s, configurable via PI_LONG_RUN_SECONDS or /notify-timeout). The
  * notification is suppressed when you are already looking at pi's terminal tab,
  * replicating the focus-detection logic from the Claude `notify.sh` hook.
  *
@@ -114,7 +114,7 @@ async function repoName(cwd: string): Promise<string> {
 // Seconds an agent run may work before we alert. <= 0 disables the watcher.
 function parseThreshold(): number {
 	const raw = Number(process.env.PI_LONG_RUN_SECONDS);
-	return Number.isFinite(raw) && raw > 0 ? raw : 300;
+	return Number.isFinite(raw) && raw > 0 ? raw : 600;
 }
 
 export default function (pi: ExtensionAPI) {

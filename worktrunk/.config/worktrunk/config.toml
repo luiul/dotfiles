@@ -52,10 +52,8 @@ git fetch origin "{{ default_branch }}:{{ default_branch }}" || true
 exclude = [".venv/", ".DS_Store"]
 
 # Symlink .venv (shared, handled separately), copy other gitignored files (.vscode/settings.json,
-# .env, etc.) via reflink, open the new worktree in VS Code, register the repo so `coppice list`
-# (or `coppice remove`) can find its worktrees later from anywhere, and register+build+watch the worktree
-# in code-review-graph so its branch-specific code graph is queryable/kept fresh like the main
-# repo's. Guarded by `command -v` so this is a no-op on machines without code-review-graph.
+# .env, etc.) via reflink, open the new worktree in VS Code, and register the repo so `coppice list`
+# (or `coppice remove`) can find its worktrees later from anywhere.
 [post-start]
 venv = "ln -sfn {{ repo_path }}/.venv {{ worktree_path }}/.venv"
 copy = "wt step copy-ignored --force"
@@ -94,29 +92,13 @@ for name in AGENTS.md CLAUDE.md; do
   [ -n "$found" ] && ln -sf "$found" "$owner_dir/$name"
 done
 '''
-crg = '''
-if command -v code-review-graph >/dev/null 2>&1; then
-  code-review-graph register "{{ worktree_path }}" --alias "{{ repo }}-{{ branch | sanitize }}" >/dev/null 2>&1
-  ( cd "{{ worktree_path }}" && code-review-graph build >/dev/null 2>&1 )
-  command -v crg-daemon >/dev/null 2>&1 && crg-daemon add "{{ worktree_path }}" --alias "{{ repo }}-{{ branch | sanitize }}" >/dev/null 2>&1
-fi
-'''
-
 # Refuse to remove protected branches. pre-* hooks abort on non-zero exit.
-# crg-cleanup deregisters the worktree from code-review-graph/its daemon before removal; always
-# exits 0 so a code-review-graph hiccup never blocks a worktree removal.
 [pre-remove]
 protect = '''
 case "{{ branch }}" in
   main|master|live) echo "refusing to remove protected branch: {{ branch }}" >&2; exit 1 ;;
 esac
 '''
-crg-cleanup = '''
-command -v crg-daemon >/dev/null 2>&1 && crg-daemon remove "{{ worktree_path }}" >/dev/null 2>&1
-command -v code-review-graph >/dev/null 2>&1 && code-review-graph unregister "{{ worktree_path }}" >/dev/null 2>&1
-exit 0
-'''
-
 # tardis-community: many independent dbt projects live under pipelines/<tribe>/<squad>/dbt.
 # `wt step copy-ignored` (above) already reflinks each project's gitignored dbt_packages/ from
 # the base worktree, so this only self-heals the rare case where that cache is still missing

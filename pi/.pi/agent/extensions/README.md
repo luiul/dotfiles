@@ -1,25 +1,5 @@
 # Pi extensions
 
-## System notifications
-
-`notifications.ts` sends macOS notifications through the `claude-notifier` binary when pi settles and waits for input, after a manual `/compact`, or when a run exceeds the long-run threshold (default 600s, `PI_LONG_RUN_SECONDS`, `/notify-timeout`). `/notifications` toggles them live.
-
-Key behaviors:
-
-- Triggers on `agent_settled`, not `agent_end`, so auto-retries, auto-compaction retries, and queued follow-ups do not fire premature "Awaiting your input" notifications.
-- Only interactive sessions notify. The `ctx.hasUI` guard keeps subagent child sessions (pi-subagents loads extensions there too) and print mode silent.
-- Only manual compactions notify (`event.reason === "manual"`); threshold and overflow compactions happen mid-run and stay silent.
-- Focus suppression: no desktop notification when pi's terminal app is frontmost (tab-level for iTerm2, app-level elsewhere). In the VS Code family an in-product OSC 99 notification is sent instead, since a frontmost editor often hides the terminal panel. Clicking it focuses the terminal.
-
-Verification from the repository root:
-
-```sh
-bunx vitest run pi/.pi/agent/extensions/notifications-tests/notifications.test.ts
-pi --no-session --no-extensions -e pi/.pi/agent/extensions/notifications.ts -p 'Reply with exactly OK.'
-```
-
-The print mode check verifies the extension loads and stays silent without a UI. `claude-notifier logs` shows delivered notifications for live checks.
-
 ## Model scores companion
 
 `model-scores/index.ts` is the additive `/model-scores` companion picker for issue #9. It leaves pi's native `/model` and Ctrl+P picker untouched.

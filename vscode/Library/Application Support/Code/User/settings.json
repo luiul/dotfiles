@@ -40,6 +40,11 @@
     "workbench.tree.enableStickyScroll": true,
     "workbench.sideBar.location": "right",
     "workbench.editor.alwaysShowEditorActions": true,
+    // Cap open editors: the least-recently-used one closes past 10 (memory + clutter).
+    "workbench.editor.limit.enabled": true,
+    "workbench.editor.limit.value": 10,
+    // Kill UI animations (the real equivalent of the bogus "performanceMode" setting).
+    "workbench.reduceMotion": "on",
     // === Editor Settings ===
     "editor.fontFamily": "'JetBrainsMono Nerd Font Mono', Menlo, DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
     "editor.fontSize": 12,
@@ -49,6 +54,8 @@
     "editor.smoothScrolling": false,
     "editor.cursorBlinking": "solid",
     "editor.guides.bracketPairs": true,
+    // Native indent guides (replaces the uninstalled indent-rainbow extension).
+    "editor.guides.indentation": true,
     "editor.bracketPairColorization.enabled": false,
     "editor.inlineSuggest.enabled": true,
     "editor.copyWithSyntaxHighlighting": false,
@@ -337,7 +344,6 @@
     "workbench.colorTheme": "Monokai Night",
     "python.languageServer": "Pylance",
     "editor.inlayHints.enabled": "offUnlessPressed",
-    "jupyter.askForKernelRestart": false,
     // === dbt & SQL ===
     "files.associations": {
         "*.sql": "jinja-sql"
@@ -368,19 +374,6 @@
     "workbench.productIconTheme": "fluent-icons",
     "makefile.configureOnOpen": false,
     "git.blame.editorDecoration.enabled": true,
-    // UNUSED: refreshTerminal has no keybinding anymore (alt+cmd+r now runs
-    // "Toggle Maximized Panel", see keybindings.json). It only runs if bound to a
-    // key or called from the Command Palette, so the block below is dead config.
-    // To remove it completely:
-    //   1. Delete this "macros" block.
-    //   2. Remove "geddski.macros" from extensions.json in this package.
-    //   3. Uninstall the extension: code --uninstall-extension geddski.macros
-    "macros": {
-        "refreshTerminal": [
-            "workbench.action.terminal.kill",
-            "workbench.action.terminal.new"
-        ]
-    },
     "diffEditor.ignoreTrimWhitespace": true,
     "dbt.enableNewLineagePanel": true,
     //
@@ -409,7 +402,6 @@
     "claudeCode.preferredLocation": "panel",
     "python.terminal.useEnvFile": false,
     "window.commandCenter": false,
-    "markdown-preview-github-styles.colorTheme": "light",
     "terminal.integrated.tabs.enabled": false,
     "yaml.disableSchemaDetection": [
         "**/.github/workflows/*.yml",

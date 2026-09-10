@@ -60,8 +60,6 @@
     "editor.inlineSuggest.enabled": true,
     "editor.copyWithSyntaxHighlighting": false,
     "editor.minimap.enabled": false,
-    "editor.minimap.autohide": "mouseover",
-    "editor.minimap.renderCharacters": false,
     "editor.folding": true,
     "editor.showFoldingControls": "mouseover",
     "editor.glyphMargin": true,
@@ -107,6 +105,9 @@
         ]
     },
     "editor.lineNumbers": "on",
+    // TRIAL: off for perf. CodeLens providers re-run on every document change.
+    // Revert if you miss reference/test lenses.
+    "editor.codeLens": false,
     // === Breadcrumbs (extra vertical space) ===
     // "breadcrumbs.enabled": false,
     "editor.unicodeHighlight.ambiguousCharacters": false,
@@ -142,15 +143,13 @@
     "notebook.diff.ignoreMetadata": true,
     "notebook.cellExecutionTimeVerbosity": "verbose",
     // === Git Settings ===
-    "git-graph.repository.fetchAndPrune": true,
-    "git-graph.commitDetailsView.location": "Docked to Bottom",
-    "git-graph.date.format": "ISO Date & Time",
-    "git-graph.graph.style": "angular",
-    "git-graph.maxDepthOfRepoSearch": 1,
     "git.autoStash": true,
     "git.autoRepositoryDetection": "openEditors",
     "git.openRepositoryInParentFolders": "always",
     "git.autofetch": false,
+    // TRIAL: no repo rescan on every file event. Cheaper SCM, but the git status
+    // badge can go stale until manual refresh. Revert if annoying.
+    "git.autorefresh": false,
     // Cosmetic only: the window registry (dashkit's vscode-window-registry extension) is
     // what tools match windows on. ${rootPath} tilde-collapses ("~/dotfiles — main"), so the
     // Window menu shows paths for humans. Needs a Code restart: the symlinked settings file

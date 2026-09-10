@@ -87,9 +87,11 @@ the next commit via the pre-commit hook; the entries were also removed from
 | `bierner.github-markdown-preview` (+ `markdown-checkbox`, `markdown-emoji`, `markdown-footnotes`, `markdown-preview-github-styles`) | GitHub-style markdown preview pack. `markdown-all-in-one` and `markdownlint` are kept. The `markdown-preview-github-styles.colorTheme` setting was removed too | `code --install-extension bierner.github-markdown-preview` |
 | `oderwat.indent-rainbow` | Colored indent guides, repaints on every editor change. Replaced by native `editor.guides.indentation` | `code --install-extension oderwat.indent-rainbow` |
 
-Also removed with this prune: `jupyter.askForKernelRestart` from settings.json (dead
-without the Jupyter extension) and `bierner.markdown-mermaid` from `extensions.json`
-recommendations (never installed).
+Also removed with this prune: `jupyter.askForKernelRestart` (dead without the Jupyter
+extension), the `git-graph.*` block (`mhutchie.git-graph` is not installed), and the
+dead `editor.minimap.autohide` / `editor.minimap.renderCharacters` keys from
+settings.json, plus `bierner.markdown-mermaid` from `extensions.json` recommendations
+(never installed).
 
 ## Performance Settings
 
@@ -124,7 +126,15 @@ These settings in `settings.json` are tuned for speed:
   least-recently-used one closes past 10 (memory + clutter).
 - `editor.guides.indentation: true`: native indent guides (replaces indent-rainbow).
 
-Optional trials, not applied (revert candidates if annoying):
-`editor.codeLens: false` (CodeLens providers re-run on every document change) and
-`git.autorefresh: false` (cheaper SCM, but the git status badge can go stale until
-manual refresh).
+- `editor.codeLens: false` (TRIAL): CodeLens providers re-run on every document
+  change. Revert if reference/test lenses are missed.
+- `git.autorefresh: false` (TRIAL): no repo rescan on every file event. Cheaper SCM,
+  but the git status badge can go stale until manual refresh. Revert if annoying.
+
+Workspace-scoped extension disabling (gear icon on an extension > Disable (Workspace))
+is stored in VS Code's internal state, not in any file, so it cannot be stowed here.
+Worth doing once per repo: disable `innoverio.vscode-dbt-power-user`,
+`hashicorp.terraform`, `docker.docker`, and `ms-kubernetes-tools.vscode-kubernetes-tools`
+in repos that never touch them (e.g. dotfiles); disable the web stack
+(`ms-vscode.live-server`, `peakchen90.open-html-in-browser`, `ecmel.vscode-html-css`,
+`piyushsarkar.sort-css-properties`) in data repos.

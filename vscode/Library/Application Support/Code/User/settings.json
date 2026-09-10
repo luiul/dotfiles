@@ -417,6 +417,10 @@
     "terminal.integrated.initialHint": false,
     "workbench.activityBar.location": "top",
     "task.allowAutomaticTasks": "off",
+    // === Draw.io ===
+    // Convention for sharing diagrams in GitHub READMEs: docs/diagrams.md in this repo.
+    // Editor appearance follows the active VS Code theme (Monokai Night = dark).
+    "hediet.vscode-drawio.appearance": "automatic",
     // "workbench.experimental.modernUI": true,
     // Off: measured on this machine. The DOM renderer drains heavy output about 2x
     // faster than WebGL (650-830ms vs 1650-1900ms per 300k lines of output).

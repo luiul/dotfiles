@@ -13,6 +13,18 @@ writer from [dashkit](https://github.com/luiul/dashkit) (`vscode-window-registry
 stays in dashkit, so there is no copy to drift. It activates after a Code restart and
 writes one small JSON file per window into `~/.local/state/vscode-windows/`.
 
+## Draw.io Diagrams
+
+`hediet.vscode-drawio` (installed via the Brewfile, recommended in `extensions.json`)
+edits `.drawio`, `.drawio.svg`, and `.drawio.png` files in place, offline by default.
+The convention for sharing diagrams in GitHub READMEs is one `.drawio.svg` file per
+diagram under `docs/diagrams/`: the file is both the rendered image and the editable
+source, so no export step is needed. The full convention (CLI creation, browser
+edit links, migration of old `.png` + `.drawio` pairs, the two-file fallback flow) is
+in [`docs/diagrams.md`](../docs/diagrams.md). The only drawio setting in
+`settings.json` is `hediet.vscode-drawio.appearance: "automatic"`, so the diagram
+editor follows the VS Code theme.
+
 ## Removed Extensions (2026-08-31, performance prune)
 
 These were uninstalled to speed up startup and reduce background load. Reinstall any of

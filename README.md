@@ -81,7 +81,7 @@ The `aws` package stows `~/.aws/config` (used by the `aws-sso-refresh` pi extens
 
 ## VS Code
 
-The `vscode` package stows `settings.json`, `keybindings.json`, and `extensions.json` (recommendations) into `~/Library/Application Support/Code/User/`. Installed extensions are tracked as `vscode` entries in the Brewfile, which the pre-commit hook regenerates from the live system, so uninstalling an extension locally drops it from the Brewfile on the next commit. Extensions removed in the 2026-08-31 performance prune (with reinstall commands) and the performance-tuned settings are documented in `vscode/README.md`.
+The `vscode` package stows `settings.json`, `keybindings.json`, and `extensions.json` (recommendations) into `~/Library/Application Support/Code/User/`. Installed extensions are tracked as `vscode` entries in the Brewfile, which the pre-commit hook regenerates from the live system, so uninstalling an extension locally drops it from the Brewfile on the next commit. Extensions removed in the 2026-08-31 performance prune (with reinstall commands) and the performance-tuned settings are documented in `vscode/README.md`. The convention for sharing draw.io diagrams in GitHub READMEs (single-file `.drawio.svg` under `docs/diagrams/`, editable in VS Code) is documented in `docs/diagrams.md`.
 
 ## Pi Memory (Hermes)
 

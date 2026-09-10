@@ -24,7 +24,14 @@
         // Section headers (EXPLORER, OUTLINE, TERMINAL, ...)
         ".monaco-workbench .part > .title > .title-label h2, .monaco-pane-view .pane > .pane-header h3.title": "font-size: 11px !important;",
         // Window title in title bar
-        ".monaco-workbench .part.titlebar > .titlebar-container > .titlebar-center > .window-title": "font-size: 11px !important;"
+        ".monaco-workbench .part.titlebar > .titlebar-container > .titlebar-center > .window-title": "font-size: 11px !important;",
+        // Slim the panel header row (the TERMINAL / PROBLEMS / OUTPUT tabs). ~35px by
+        // default; no native setting exists. If a VS Code update misaligns the icons,
+        // delete these rules.
+        ".monaco-workbench .part.panel > .title": "height: 24px !important; min-height: 24px !important;",
+        ".monaco-workbench .part.panel > .title > .composite-bar-container, .monaco-workbench .part.panel > .title > .panel-switcher-container": "height: 24px !important; min-height: 24px !important;",
+        ".monaco-workbench .part.panel > .title .monaco-action-bar, .monaco-workbench .part.panel > .title .monaco-action-bar .action-item": "height: 24px !important;",
+        ".monaco-workbench .part.panel > .title .monaco-action-bar .action-label": "font-size: 11px !important; line-height: 24px !important; padding-top: 0 !important; padding-bottom: 0 !important;"
     },
     "workbench.colorCustomizations": {
         "tab.activeBorderTop": "#ff00ee",
@@ -123,7 +130,9 @@
     "terminal.integrated.defaultProfile.osx": "zsh",
     "terminal.integrated.persistentSessionScrollback": 100,
     "terminal.integrated.lineHeight": 1.3,
-    "terminal.integrated.tabs.hideCondition": "never",
+    // Compact panel: only show the terminal tab list when terminals are split into
+    // groups. A single group (even with several terminals) gets a dropdown instead.
+    "terminal.integrated.tabs.hideCondition": "singleGroup",
     "terminal.integrated.cursorStyle": "line",
     "terminal.integrated.cursorStyleInactive": "none",
     "terminal.integrated.cursorWidth": 2,

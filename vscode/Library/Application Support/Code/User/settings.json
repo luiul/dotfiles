@@ -5,7 +5,7 @@
     "workbench.iconTheme": "material-icon-theme",
     "workbench.settings.editor": "json",
     "workbench.tree.renderIndentGuides": "always",
-    "workbench.tree.indent": 14,
+    // "workbench.tree.indent": 14,
     "workbench.list.openMode": "doubleClick",
     "workbench.fontAliasing": "antialiased",
     // UI font (file explorer, sidebar, tabs) via Custom UI Style: same as Zed
@@ -368,6 +368,13 @@
     "workbench.productIconTheme": "fluent-icons",
     "makefile.configureOnOpen": false,
     "git.blame.editorDecoration.enabled": true,
+    // UNUSED: refreshTerminal has no keybinding anymore (alt+cmd+r now runs
+    // "Toggle Maximized Panel", see keybindings.json). It only runs if bound to a
+    // key or called from the Command Palette, so the block below is dead config.
+    // To remove it completely:
+    //   1. Delete this "macros" block.
+    //   2. Remove "geddski.macros" from extensions.json in this package.
+    //   3. Uninstall the extension: code --uninstall-extension geddski.macros
     "macros": {
         "refreshTerminal": [
             "workbench.action.terminal.kill",

@@ -24,7 +24,7 @@
         "key": "alt+cmd+t",
         "command": "-workbench.action.closeOtherEditors"
     },
-    // Terminal shortcuts: T toggle, S split, W close, R refresh
+    // Terminal shortcuts: T toggle, S split, W close, R maximize panel
     {
         "key": "alt+cmd+t",
         "command": "workbench.action.terminal.toggleTerminal"
@@ -41,7 +41,7 @@
     },
     {
         "key": "alt+cmd+r",
-        "command": "macros.refreshTerminal"
+        "command": "workbench.action.toggleMaximizedPanel"
     },
     // Markdown All in One — Remove default keybindings that conflict with macOS shortcuts
     {

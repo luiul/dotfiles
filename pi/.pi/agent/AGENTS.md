@@ -46,6 +46,11 @@
 - Dotfiles live at `~/dotfiles` (a git repo). Read from there directly when relevant; no symlink needed. Treat `~/dotfiles/.env` as real secrets and never surface its values unless asked.
 - `claude/.claude/settings.json` is NOT stowed (`.stow-local-ignore`): Claude Code rewrites the live `~/.claude/settings.json` at runtime, which would clobber a symlink. The live file is the source of truth; the dotfiles copy is a snapshot. To change a setting, edit the live file, then refresh the snapshot: `cp ~/.claude/settings.json ~/dotfiles/claude/.claude/settings.json`.
 
+## Pi Skills
+
+- Skills live in `~/pi-skills` (a git repo with a GitHub remote), symlinked into `~/.pi/agent/skills` and `~/.pi/agent/pi-hermes-memory/skills`. Not stowed in dotfiles.
+- After creating or patching a skill with `skill_manage`, commit and push `~/pi-skills` before ending the session. Conventional commits, direct to `main`.
+
 ## Large Files
 
 - Read files over 2,000 lines in chunks via the read tool's `offset` and `limit` parameters, not all at once.

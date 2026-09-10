@@ -93,6 +93,17 @@ dead `editor.minimap.autohide` / `editor.minimap.renderCharacters` keys from
 settings.json, plus `bierner.markdown-mermaid` from `extensions.json` recommendations
 (never installed).
 
+## Removed Extensions (2026-09-10, second pass: eager activation costs)
+
+Measured with `Developer: Startup Performance` after the first prune. These four were
+the last extensions with meaningful eager (startup-blocking) activation cost.
+
+| Extension | What it does | Reinstall |
+| --- | --- | --- |
+| `johnpapa.vscode-peacock` | Colored window borders, ~117ms eager activation in every window | `code --install-extension johnpapa.vscode-peacock` |
+| `mtxr.sqltools` + `koszti.snowflake-driver-for-sqltools` | SQL client + Snowflake driver, ~100ms eager activation. The `sqltools.currentQueryBg` color customization was removed from settings.json too | `code --install-extension koszti.snowflake-driver-for-sqltools` |
+| `mechatroner.rainbow-csv` | CSV column coloring. Activated on any plaintext file to sniff for CSV content (~1s finish under load) | `code --install-extension mechatroner.rainbow-csv` |
+
 ## Performance Settings
 
 These settings in `settings.json` are tuned for speed:
@@ -125,6 +136,9 @@ These settings in `settings.json` are tuned for speed:
 - `workbench.editor.limit.enabled` / `.value: 10`: caps open editors, the
   least-recently-used one closes past 10 (memory + clutter).
 - `editor.guides.indentation: true`: native indent guides (replaces indent-rainbow).
+- `extensions.autoCheckUpdates: false`: skips ~50 marketplace version-check requests
+  at every startup. Update extensions manually: Extensions view > ... > Check for
+  Updates.
 
 - `editor.codeLens: false` (TRIAL): CodeLens providers re-run on every document
   change. Revert if reference/test lenses are missed.

@@ -59,6 +59,26 @@ with it.
 | --- | --- | --- |
 | `eamodio.gitlens` | Git blame, history, and code lens | `code --install-extension eamodio.gitlens` |
 
+## Removed Extensions (2026-09-10, performance prune: packs and redundant tools)
+
+Pruned after a startup/background-load audit. The Brewfile drops these automatically on
+the next commit via the pre-commit hook; the entries were also removed from
+`extensions.json` recommendations.
+
+| Extension | What it does | Reinstall |
+| --- | --- | --- |
+| `ms-toolsai.jupyter` (+ `jupyter-keymap`, `jupyter-renderers`, `vscode-jupyter-cell-tags`, `vscode-jupyter-powertoys`, `vscode-jupyter-slideshow`) | Notebook kernels and tooling. The core notebook editor stays, only execution/rich output is gone | `code --install-extension ms-toolsai.jupyter` |
+| `ms-vscode-remote.vscode-remote-extensionpack` (+ `remote-containers`, `remote-ssh`, `remote-ssh-edit`, `remote-explorer`, `remote-server`) | Dev Containers and SSH remoting | `code --install-extension ms-vscode-remote.vscode-remote-extensionpack` |
+| `altimateai.vscode-altimate-mcp-server` | dbt MCP server, ran a background process per window | `code --install-extension altimateai.vscode-altimate-mcp-server` |
+| `geddski.macros` | Dead config: its only macro (`refreshTerminal`) had no keybinding. The `macros` block was removed from settings.json with it | `code --install-extension geddski.macros` |
+| `pjmiravalle.terraform-advanced-syntax-highlighting` | Redundant next to `hashicorp.terraform`'s language server | `code --install-extension pjmiravalle.terraform-advanced-syntax-highlighting` |
+| `bierner.github-markdown-preview` (+ `markdown-checkbox`, `markdown-emoji`, `markdown-footnotes`, `markdown-preview-github-styles`) | GitHub-style markdown preview pack. `markdown-all-in-one` and `markdownlint` are kept. The `markdown-preview-github-styles.colorTheme` setting was removed too | `code --install-extension bierner.github-markdown-preview` |
+| `oderwat.indent-rainbow` | Colored indent guides, repaints on every editor change. Replaced by native `editor.guides.indentation` | `code --install-extension oderwat.indent-rainbow` |
+
+Also removed with this prune: `jupyter.askForKernelRestart` from settings.json (dead
+without the Jupyter extension) and `bierner.markdown-mermaid` from `extensions.json`
+recommendations (never installed).
+
 ## Performance Settings
 
 These settings in `settings.json` are tuned for speed:
@@ -74,8 +94,9 @@ These settings in `settings.json` are tuned for speed:
   `editor.smoothScrolling: false`: less rendering work in large files.
 - `window.openFilesInNewWindow: "off"`: files opened from Finder/CLI reuse the current
   window instead of spawning a new one (each window runs its own extension hosts).
-- `terminal.integrated.gpuAcceleration: "on"`: renders the integrated terminal with
-  WebGL on the GPU instead of the CPU.
+- `terminal.integrated.gpuAcceleration: "off"`: measured on this machine, the DOM
+  renderer drains heavy output about 2x faster than WebGL (650-830ms vs 1650-1900ms
+  per 300k lines).
 - `terminal.integrated.persistentSessionScrollback: 100`: less scrollback to serialize
   and restore on every window reload.
 - `terminal.integrated.lineHeight: 1.3`: fewer pixels per terminal line than 1.5.
@@ -86,3 +107,12 @@ These settings in `settings.json` are tuned for speed:
 - `files.watcherExclude` also covers `target/`, `dbt_packages/`, and `.terraform/`
   (generated dirs that churn on every dbt run or terraform init).
 - `search.followSymlinks: false`: search does not follow symlink trees (stow).
+- `workbench.reduceMotion: "on"`: no UI animations.
+- `workbench.editor.limit.enabled` / `.value: 10`: caps open editors, the
+  least-recently-used one closes past 10 (memory + clutter).
+- `editor.guides.indentation: true`: native indent guides (replaces indent-rainbow).
+
+Optional trials, not applied (revert candidates if annoying):
+`editor.codeLens: false` (CodeLens providers re-run on every document change) and
+`git.autorefresh: false` (cheaper SCM, but the git status badge can go stale until
+manual refresh).

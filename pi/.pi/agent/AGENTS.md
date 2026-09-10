@@ -50,3 +50,12 @@
 
 - Read files over 2,000 lines in chunks via the read tool's `offset` and `limit` parameters, not all at once.
 
+## Diagrams
+
+- Full convention: `~/dotfiles/docs/diagrams.md`. Follow it in every repo.
+- One file per diagram: `docs/diagrams/<name>.drawio.svg` (kebab-case). A `.drawio.svg` is a valid SVG with the draw.io XML source embedded: GitHub renders it, and the VS Code drawio extension (`hediet.vscode-drawio`) edits it. No export step.
+- Embed in markdown with `![alt](docs/diagrams/<name>.drawio.svg)`. Never paste raw draw.io XML or Mermaid source fences into markdown.
+- Create or edit in VS Code, or via CLI: `drawio -x -f svg -e -o docs/diagrams/<name>.drawio.svg <name>.drawio`. The `-e` flag embeds the source; without it the SVG is not re-editable.
+- Fallback when a plain image file is required (e.g. Marp decks): keep the `.drawio`/`.mmd` source next to the rendered image and export with the `drawio` CLI (see the `export-drawio-diagrams-as-images-via-cli` skill).
+- Check the rendered diagram in GitHub light and dark mode before merging.
+

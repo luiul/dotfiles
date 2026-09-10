@@ -31,7 +31,6 @@
         "notebook.focusedCellBackground": "#0099ff30",
         "editor.findMatchBackground": "#8ffa876b",
         "editor.findMatchHighlightBackground": "#ff7dbe75",
-        "sqltools.currentQueryBg": "#7b798a03",
         "tree.indentGuidesStroke": "#51bdd8",
         "tree.inactiveIndentGuidesStroke": "#232a35",
         "editor.lineHighlightBackground": "#008cff28",
@@ -289,7 +288,9 @@
     // === Miscellaneous ===
     "update.mode": "manual",
     "extensions.autoUpdate": "on",
-    "extensions.autoCheckUpdates": true,
+    // Off: skips ~50 marketplace version-check requests at every startup.
+    // Update extensions manually (Extensions view > ... > Check for Updates).
+    "extensions.autoCheckUpdates": false,
     "telemetry.telemetryLevel": "off",
     "redhat.telemetry.enabled": false,
     "window.openFilesInNewWindow": "off",

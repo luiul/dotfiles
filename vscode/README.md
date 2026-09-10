@@ -93,6 +93,14 @@ dead `editor.minimap.autohide` / `editor.minimap.renderCharacters` keys from
 settings.json, plus `bierner.markdown-mermaid` from `extensions.json` recommendations
 (never installed).
 
+Collateral damage found later the same day: `innoverio.vscode-dbt-power-user` was also
+removed. It hard-depends on `altimateai.vscode-altimate-mcp-server`
+(`extensionDependencies`), so uninstalling the MCP server took dbt Power User with it,
+and the Brewfile pre-commit dump cemented the removal. dbt Power User is meant to stay
+installed for dbt projects, so both extensions were reinstalled. Keep both or neither.
+To keep the Altimate extension inert, settings.json sets `altimate.disableMcpServer`,
+`altimate.codeAutoUpdate: false`, and `altimate.codeLens.enabled: false`.
+
 ## Removed Extensions (2026-09-10, second pass: eager activation costs)
 
 Measured with `Developer: Startup Performance` after the first prune. These four were

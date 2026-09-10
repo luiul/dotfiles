@@ -304,6 +304,12 @@
     "redhat.telemetry.enabled": false,
     "window.openFilesInNewWindow": "off",
     "window.confirmBeforeClose": "always",
+    // === Altimate MCP Server (hard dependency of dbt Power User) ===
+    // The extension cannot be disabled/removed without losing dbt Power User
+    // (extensionDependencies). These switches stop what it runs instead.
+    "altimate.disableMcpServer": true,
+    "altimate.codeAutoUpdate": false,
+    "altimate.codeLens.enabled": false,
     // === Files/Housekeeping ===
     "files.autoSave": "onWindowChange",
     "files.exclude": {

@@ -14,13 +14,13 @@
       "type": "http",
       "url": "https://mcp.excalidraw.com",
       "lifecycle": "lazy",
-      "directTools": true
+      "directTools": false
     },
     "drawio": {
       "type": "http",
       "url": "https://mcp.draw.io/mcp",
       "lifecycle": "lazy",
-      "directTools": true
+      "directTools": false
     },
     "context-mode": {
       "command": "context-mode",

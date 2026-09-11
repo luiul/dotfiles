@@ -160,3 +160,18 @@ Worth doing once per repo: disable `innoverio.vscode-dbt-power-user`,
 in repos that never touch them (e.g. dotfiles); disable the web stack
 (`ms-vscode.live-server`, `peakchen90.open-html-in-browser`, `ecmel.vscode-html-css`,
 `piyushsarkar.sort-css-properties`) in data repos.
+
+## Hidden Palette Commands
+
+`subframe7536.custom-ui-style` puts `Custom UI Style: Reload` right next to
+`Developer: Reload Window` in the command palette, so it is easy to pick by
+accident. VS Code cannot hide one extension command natively, and the extension
+has no setting for it. `.local/bin/patch-custom-ui-style-palette.sh` in this
+package (stowed onto PATH) patches the extension's `package.json` with a
+`menus.commandPalette` entry of `when: "false"`. The command still works, it is
+only hidden from the palette. Styles still auto apply on settings save because
+`custom-ui-style.watch` defaults to true.
+
+Extension updates replace the manifest and wipe the patch, so re-run the script
+after updating extensions. It is idempotent; `--check` reports status without
+changing anything.

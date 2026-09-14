@@ -440,6 +440,7 @@
       "baseUrl": "https://ai-model-router-api.eu.foundations.prod.int.hellofresh.io/v1",
       "api": "openai-completions",
       "apiKey": "$AI_MODEL_ROUTER_API_KEY",
+      "compat": { "supportsReasoningEffort": true },
       "models": [
         {
           "id": "moonshotai/Kimi-K3",
@@ -516,7 +517,7 @@
         {
           "id": "gpt-5.6-luna",
           "name": "GPT-5.6 Luna",
-          "reasoning": false,
+          "reasoning": true,
           "input": ["text", "image"],
           "cost": { "input": 0.1, "output": 0.2, "cacheRead": 0.02, "cacheWrite": 0.25 },
           "contextWindow": 1000000,
@@ -530,6 +531,15 @@
           "cost": { "input": 1.4, "output": 4.4, "cacheRead": 0.14, "cacheWrite": 0 },
           "contextWindow": 204800,
           "maxTokens": 131072
+        },
+        {
+          "id": "zai-org/GLM-5.3",
+          "name": "GLM-5.3",
+          "reasoning": true,
+          "input": ["text"],
+          "cost": { "input": 1.4, "output": 4.4, "cacheRead": 0.14, "cacheWrite": 0 },
+          "contextWindow": 1048576,
+          "maxTokens": 262144
         }
       ]
     }

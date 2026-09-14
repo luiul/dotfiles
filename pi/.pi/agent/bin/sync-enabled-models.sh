@@ -268,14 +268,16 @@ echo "Total unique candidates across all regions: $total" >&2
 # the whole probe.
 #
 # Circuit breaker: a shared counter file (workdir/fail_streak) tracks how many
-# CONSECUTIVE probes have failed. If it reaches PROBE_FAIL_CIRCUIT, a trip
-# file is written and every probe still queued in xargs short-circuits to
-# SKIP without ever invoking `pi`/`aws` again. This is what should have
-# stopped the run that produced the runaway `aws sso login` processes: a
-# systemic break (auth, network, throttling -- whatever it is) shows up as a
-# run of failures well before all 79 candidates would otherwise be hammered.
-# Any OK resets the streak (isolated per-model failures, e.g. a genuinely
-# unavailable model, must not trip it).
+# CONSECUTIVE SYSTEMIC probes have failed (timeouts, auth, network,
+# throttling). If it reaches PROBE_FAIL_CIRCUIT, a trip file is written and
+# every probe still queued in xargs short-circuits to SKIP without ever
+# invoking `pi`/`aws` again. This is what should have stopped the run that
+# produced the runaway `aws sso login` processes: a systemic break shows up
+# as a run of failures well before all candidates would otherwise be
+# hammered. Per-model failures (marketplace not subscribed, model doesn't
+# support streaming tool use, ...) are neutral: they neither advance nor
+# reset the streak, so a cluster of account-unavailable catalog ids cannot
+# false-trip the breaker. Any OK proves service health and resets the streak.
 : > "$workdir/fail_streak"
 probe_one() {
   local id="$1" region="$2" timeout="$3"
@@ -299,22 +301,37 @@ probe_one() {
     exit $status
   )
   status=$?
-  local out result
+  local out result systemic reason
+  systemic=0
   out=$(cat "$tmpout" 2>/dev/null); rm -f "$tmpout"
   if [[ $status -eq 137 ]]; then
     result="FAIL	$id	$region	(timed out after ${timeout}s)"
+    systemic=1
   elif [[ $status -eq 0 ]] \
      && ! echo "$out" | grep -qiE 'error|exception|denied|not found|invalid|warning'; then
     result="OK	$id	$region"
   else
-    result="FAIL	$id	$region"
+    # Distinguish systemic failures (auth/network/throttle -- the circuit
+    # breaker's job) from per-model ones (marketplace not subscribed, no
+    # streaming tool use, ...). pi exits 0 even when the model call fails,
+    # so classification is by output text. A cluster of newly catalogued but
+    # account-unavailable models (sorted ids cluster alphabetically) must NOT
+    # trip the breaker -- that was the 2026-09-14 false trip.
+    reason=$(echo "$out" | grep -iE 'error|exception|denied|not found|invalid' | head -1 | cut -c1-120)
+    result="FAIL	$id	$region	($reason)"
+    if echo "$out" | grep -qiE 'sso|expired.?token|credential|throttl|econnrefused|enotfound|etimedout|socket hang up|could not connect|unable to locate'; then
+      systemic=1
+    fi
   fi
 
   # Non-atomic streak update -- fine for a heuristic breaker at low
-  # concurrency; worst case it trips a probe or two late/early.
+  # concurrency; worst case it trips a probe or two late/early. Only systemic
+  # failures advance the streak; per-model failures neither advance nor reset
+  # it, so a run of unavailable models neither trips the breaker nor hides a
+  # real cascade in progress. Any OK proves service health and resets.
   if [[ "$result" == OK* ]]; then
     : > "$workdir/fail_streak"
-  else
+  elif [[ $systemic -eq 1 ]]; then
     printf 'x' >> "$workdir/fail_streak"
     streak_len=$(wc -c < "$workdir/fail_streak" | tr -d ' ')
     if [[ "$streak_len" -ge "$PROBE_FAIL_CIRCUIT" && ! -f "$workdir/circuit_tripped" ]]; then

@@ -116,13 +116,21 @@ cod() {
 	# so cd stays in the current shell (dir change persists) and no external
 	# process is spawned besides `code` itself. Benchmarked faster than the
 	# original grep-based version, not just more correct.
-	local tmp="${TMPDIR:-/tmp}/cod.$$.$RANDOM" rc err
+	local reuse=false tmp="${TMPDIR:-/tmp}/cod.$$.$RANDOM" rc err
+	if [[ $1 == -r || $1 == --reuse-window ]]; then
+		reuse=true
+		shift
+	fi
 	cd "$@" 2>"$tmp"
 	rc=$?
 	err="$(<$tmp)"
 	zf_rm -f -- "$tmp"
 	if (( rc == 0 )) || [[ "$err" == *"already in the only match"* ]]; then
-		code .
+		if $reuse; then
+			code -r .
+		else
+			code .
+		fi
 	else
 		[[ -n "$err" ]] && print -r -- "$err" >&2
 		return $rc

@@ -14,23 +14,33 @@ The script is idempotent and prompts before each step. It will:
 2. Install global npm packages listed in the Brewfile
 3. Install Claude Code (native build), register plugin marketplaces, and install plugins
 4. Install `znap` (zsh plugin manager)
-5. Build `ClaudeNotifier.app` into `~/Applications` (click-to-focus notification helper — see `claudenotifier/`)
-6. Stow all dotfile packages into `$HOME` (skips `rectangle` and `claudenotifier` — see below)
-7. Generate an ed25519 SSH key (if missing) and add it to the macOS Keychain
-8. Clean stale `.zwc` files, configure git hooks, and create `.env` from `example.env`
+5. Stow all dotfile packages into `$HOME` (skips export-only packages and non-package dirs — see below)
+6. Generate an ed25519 SSH key (if missing) and add it to the macOS Keychain
+7. Clean stale `.zwc` files, configure git hooks, and create `.env` from `example.env`
 
 ## Stow Packages
 
 Each top-level directory is a stow package that mirrors `$HOME`:
 
-`aws`, `borders`, `brew`, `claude`, `claudenotifier`, `ghostty`, `git`, `hellofresh`, `pi`, `pip`, `rectangle`, `ruff`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `sublime`, `vscode`, `zed`, `zsh`
+`aws`, `borders`, `brew`, `claude`, `datagrip`, `ghostty`, `git`, `hellofresh`, `herdr`, `hunk`, `karabiner`, `macos`, `pi`, `pip`, `rectangle`, `rtk`, `ruff`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `sublime`, `vscode`, `worktrunk`, `zed`, `zsh`
 
-Two packages are tracked but **not stowed** (export-only, see below): `karabiner` and `rectangle`.
+Three packages are tracked but **not stowed** (export-only, see below): `karabiner`, `rectangle`, and `datagrip`.
+
+One package is stowed only in part: `macos` stows `Library/LaunchAgents/` normally but excludes
+`Library/LaunchDaemons/` (system-wide, no per-user path stow can target correctly) — see
+`macos/README.md` for manual install of the LaunchDaemon.
 
 ### Apply or Update All
 
+`./setup.sh` does this, or mirror its skip list by hand:
+
 ```sh
-stow */
+for pkg in */; do
+	case "${pkg%/}" in
+		rectangle | karabiner | datagrip | docs | scripts) continue ;;
+	esac
+	stow --no-folding "${pkg%/}"
+done
 ```
 
 ### Stow a Single Package
@@ -67,9 +77,20 @@ The `ssh` package stows only `~/.ssh/config` (private keys never leave `~/.ssh/`
 
 Rectangle stores its config in macOS defaults, not in a home-directory file, so the `rectangle` package is not stowable. `RectangleConfig.json` is an exported snapshot — restore via Rectangle → Preferences → Import. See `rectangle/README.md`.
 
+## macOS system tweaks
+
+The `macos` package holds per-user LaunchAgents (stowed) and system-wide LaunchDaemons (not
+stowable, manual install). Currently includes a LaunchDaemon that keeps AWDL (AirDrop/AirPlay/
+Sidecar radio) disabled, fixing a Zscaler ZPA tunnel-drop issue caused by AWDL's periodic Wi-Fi
+channel hops. See `macos/README.md`.
+
 ## Karabiner
 
 Karabiner-Elements rewrites `~/.config/karabiner/karabiner.json` in place whenever its settings change, which silently replaces a stow symlink with a real file. The `karabiner` package is therefore not stowable — `karabiner.json` is kept as a versioned export and `setup.sh` skips it. Restore by copying it into `~/.config/karabiner/`. See `karabiner/README.md`.
+
+## DataGrip
+
+JetBrains IDEs rewrite config files with atomic saves (write temp + rename), which would replace a stow symlink with a real file on the first edit in the UI. The `datagrip` package is therefore a tracked snapshot, not stowed: the four data sources (Snowflake, the Databricks query engine, and the two global-ops Databricks connections) plus their introspection scopes. Passwords and OAuth tokens live in the macOS keychain, never in the XML. Restore or refresh the snapshot with the `cp` commands in `datagrip/README.md`.
 
 ## Claude Code settings
 
@@ -90,10 +111,6 @@ The `vscode` package stows `settings.json`, `keybindings.json`, and `extensions.
 Fix applied: `reviewTransport: "subprocess"` (skip the always-doomed Direct attempt), `llmModelOverride` to a cheap/fast Bedrock model for background maintenance calls, and `childExtensionPaths` pointing at `aws-sso-refresh.ts` so the isolated child process also proactively refreshes the SSO session before its model call, instead of relying on whatever state the token happened to be in.
 
 **Next step (not yet done, needs a manual interactive command):** run `/login amazon-bedrock` inside pi to store a persisted Bedrock API key (bearer token) in `auth.json`, if the `bedrock-user` SSO role permits minting one. That would let the Direct transport succeed in-process on its own, removing the Subprocess/SSO-refresh dependency for memory review entirely rather than just mitigating it.
-
-## ClaudeNotifier
-
-The `claudenotifier` package is build source, not a dotfile, so it is not stowable. `setup.sh` builds `ClaudeNotifier.applescript` into `~/Applications/ClaudeNotifier.app`, a tiny notification helper so that clicking a Claude Code notification focuses the originating terminal. On first run, enable it in System Settings → Notifications → Claude Code. See `claudenotifier/README.md`.
 
 ## Snowflake CLI
 

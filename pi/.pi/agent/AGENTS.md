@@ -51,6 +51,13 @@
 - Skills live in `~/pi-skills` (a git repo with a GitHub remote), symlinked into `~/.pi/agent/skills` and `~/.pi/agent/pi-hermes-memory/skills`. Not stowed in dotfiles.
 - After creating or patching a skill with `skill_manage`, commit and push `~/pi-skills` before ending the session. Conventional commits, direct to `main`.
 
+## HelloFresh Business Impact
+
+- The Jira ticket is the source of truth, harvest (`~/.harvest/`, CLI `harvest`, repo `~/projects/personal/harvest`) is its database, the PR is a projection. Never write the same impact data in two places.
+- Sequence, always ticket first: create the Jira ticket with the `## Business Impact` block, then `harvest record ticket <KEY> ...`; branch `type/<KEY>-short-desc`; draft PR with labels only (NEVER a Business Impact block in the PR body), then `harvest record pr <repo>#<n> --ticket <KEY>` (impact fields inherit from the ticket row).
+- Estimate changed: update the ticket block and re-run `harvest record ticket`; update PR labels only if category/scope changed.
+- Full spec (taxonomy, block format, label colors): `~/projects/hellofresh/AGENTS.md` section "Business Impact". Reports: `harvest report --year <yyyy>`.
+
 ## Large Files
 
 - Read files over 2,000 lines in chunks via the read tool's `offset` and `limit` parameters, not all at once.

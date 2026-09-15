@@ -129,10 +129,11 @@ elif confirm "Stow all packages into \$HOME?"; then
 	mkdir -p "$HOME/.aws"
 	# sublime: User dir only exists after first launch, but --no-folding needs it
 	mkdir -p "$HOME/Library/Application Support/Sublime Text/Packages/User"
-	# rectangle and karabiner are not stowable (export packages).
+	# rectangle, karabiner and datagrip are export-only (not stowed);
+	# docs and scripts are not packages.
 	for pkg in */; do
 		case "${pkg%/}" in
-			rectangle | karabiner) continue ;;
+			rectangle | karabiner | datagrip | docs | scripts) continue ;;
 		esac
 		stow --no-folding "${pkg%/}"
 	done

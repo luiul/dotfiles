@@ -22,10 +22,10 @@
 # ~/worktrees/hellofresh/<TICKET>*/<repo> and listed in the picker above the
 # plain repo entries. Picking one reuses its branch and repo (no description
 # prompt); picking a repo asks for a description and creates a new worktree.
-# The owner segment is hardcoded to hellofresh: this tool only serves ISA
+# The owner segment is hardcoded to hellofresh: this tool only serves GLOA
 # tickets, whose repos all live under github.com/hellofresh.
 #
-# Usage: jira-worktree <TICKET-KEY>        e.g. jira-worktree ISA-1234
+# Usage: jira-worktree <TICKET-KEY>        e.g. jira-worktree GLOA-1234
 #
 # Env knobs:
 #   JIRA_TODAY_REPOS_ROOT      dir to pick the target repo from
@@ -36,7 +36,7 @@ set -euo pipefail
 
 TICKET="${1:-}"
 if [ -z "$TICKET" ]; then
-	echo "usage: jira-worktree <TICKET-KEY> (e.g. ISA-1234)" >&2
+	echo "usage: jira-worktree <TICKET-KEY> (e.g. GLOA-1234)" >&2
 	exit 1
 fi
 

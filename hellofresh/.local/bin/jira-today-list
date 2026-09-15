@@ -7,7 +7,7 @@
 # `$SHELL -c`, which never sources .zsh_config (it does inherit the exported
 # PATH, so ~/.local/bin is visible). Same reason jira-worktree is a script.
 #
-# Tickets are my open ISA issues, grouped into Sprint (current sprint, or the
+# Tickets are my open GLOA issues, grouped into Sprint (current sprint, or the
 # upcoming one if it hasn't started yet: openSprints() only matches active
 # sprints, so futureSprints() is needed too) and Backlog (no sprint
 # assigned), so it is visually clear which bucket each ticket sits in, then
@@ -22,15 +22,15 @@
 # notice is filtered out so only real errors (e.g. API failures like a
 # 405) reach the terminal.
 #
-# Workflow order: Open, Ready, Selected for Dev, In Progress,
-# Internal Review, then anything else.
+# Workflow order: Open, Reopened, In Progress, Peer review, On Hold, then
+# anything else.
 #
 # No `set -e`: if one of the two jira queries fails, the other should still
 # run and its rows still print (the pre-script inline version behaved the
 # same way); fzf's reload ignores the exit status and just takes stdout.
 set -uo pipefail
 
-base='project = ISA AND assignee = currentUser() AND statusCategory != Done AND issuetype != Epic'
+base='project = GLOA AND assignee = currentUser() AND statusCategory != Done AND issuetype != Epic'
 cols='key,type,status,updated,summary'
 
 {
@@ -47,10 +47,10 @@ cols='key,type,status,updated,summary'
 		bucket_rank = ($1 == "Sprint") ? 0 : 1
 		status_rank = 99
 		if ($4 == "Open") status_rank = 1
-		else if ($4 == "Ready") status_rank = 2
-		else if ($4 == "Selected for Dev") status_rank = 3
-		else if ($4 == "In Progress") status_rank = 4
-		else if ($4 == "Internal Review") status_rank = 5
+		else if ($4 == "Reopened") status_rank = 2
+		else if ($4 == "In Progress") status_rank = 3
+		else if ($4 == "Peer review") status_rank = 4
+		else if ($4 == "On Hold") status_rank = 5
 		print bucket_rank, status_rank, $0
 	}
 ' |

@@ -4,7 +4,7 @@ These instructions apply to every repo under the subfolders of `~/projects/hello
 
 ## Planning & Tracking
 
-HelloFresh repos do not have GitHub Issues enabled, so the global rule (track plans in GitHub issues) does not apply. Track bigger projects and multi-step plans as Jira tickets in project ISA, following the Business Impact conventions below. Use in-repo markdown only for working notes that are not ticket-worthy.
+HelloFresh repos do not have GitHub Issues enabled, so the global rule (track plans in GitHub issues) does not apply. Track bigger projects and multi-step plans as Jira tickets in project GLOA, following the Business Impact conventions below. Use in-repo markdown only for working notes that are not ticket-worthy.
 
 ## Branch Naming
 
@@ -16,7 +16,7 @@ Use the format: `type/TICKET-description`
 - Ticket format: `ABC-123` (uppercase letters, dash, numbers), validated against Jira, must be uppercase
 - Description: lowercase, words separated by hyphens
 - Ask for the Jira ticket. Only include the ticket in the branch name if one is provided.
-- Examples: `feature/ISA-1234_add-login`, `hotfix/ISA-567_fix-null-pointer`
+- Examples: `feature/GLOA-1234_add-login`, `hotfix/GLOA-567_fix-null-pointer`
 
 ## Pull Requests
 
@@ -34,17 +34,11 @@ Follow conventional commit style:
 
   ## Test Plan
   - [ ] How the changes were tested
-
-  ## Business Impact
-  - **Category:** one or more of `cost_reduction` | `risk_mitigation` | `increased_revenue` (comma-separated, primary driver first)
-  - **Estimated Annual Impact:** $X,XXX
-  - **Notes:** Short justification for the category and the dollar estimate
   ```
 
-- The **Business Impact** section is required on every PR (canonical spec below); it is never omitted, even when impact is small or indirect.
 - **Open as draft**: always create PRs as drafts first (`gh pr create --draft`); leave it to me to mark them ready for review.
 - **Assignee**: always assign to me.
-- **Labels**: always add the squad and tribe labels `squad: scm-analytics-engineers` and `tribe: intl-scm-analytics` (the spaces are an org-wide convention), plus the review-taxonomy labels from **Review taxonomy** below: at minimum the required `impact:<category>` label(s) (one per Business Impact category) and the `scope:<reach>` label; add the recommended `estimate:` and `work_type:` labels where they apply. Create missing labels first (e.g. `gh label create "impact:cost_reduction" --description "Year-end review: cost reduction" --color 0E8A16`). This lets the year-end review filter by label as well as by heading (`gh pr list --label "impact:cost_reduction" --state all`). GitHub PRs only: on Jira the same taxonomy lives in the Business Impact body block, since a Jira automation strips custom labels off tickets.
+- **Labels**: always add the squad and tribe labels `squad: scm-analytics-engineers` and `tribe: intl-scm-analytics` (the spaces are an org-wide convention), plus the review-taxonomy labels from **Review taxonomy** below: at minimum the required `impact:<category>` label(s) (one per impact category) and the `scope:<reach>` label; add the recommended `estimate:` and `work_type:` labels where they apply. Create missing labels first (e.g. `gh label create "impact:cost_reduction" --description "Year-end review: cost reduction" --color 0E8A16`). This lets the year-end review filter by label as well as by heading (`gh pr list --label "impact:cost_reduction" --state all`). GitHub PRs only: on Jira the same taxonomy lives in the Business Impact body block, since a Jira automation strips custom labels off tickets.
 - No emoji prefixes in title or body.
 - No agent attribution, tool footers, or generated-by links (no Claude Code or pi credits).
 - Omit empty sections rather than writing "N/A".
@@ -59,9 +53,9 @@ Follow conventional commit style:
 - PR cannot have a "WIP" label
 - Requires developer review approval
 
-## Business Impact (required on all PRs and Jira tickets)
+## Business Impact (required on all Jira tickets)
 
-Every PR I open and every Jira ticket I create or update across all repos under this directory must carry a Business Impact block. This feeds the end-of-year review, so the format is fixed and must stay machine-parseable. The block lives in the body/description and includes the review taxonomy (scope, estimate basis, work type) as body fields. On GitHub PRs the taxonomy is also applied as labels; on Jira the body fields are the only record (a Jira automation strips custom labels off tickets).
+Every Jira ticket I create or update across all repos under this directory must carry a Business Impact block. This feeds the end-of-year review, so the format is fixed and must stay machine-parseable. The block lives in the ticket description and includes the review taxonomy (scope, estimate basis, work type) as body fields. GitHub PRs do not carry the block; there the taxonomy lives only in labels. On Jira the body fields are the only record (a Jira automation strips custom labels off tickets).
 
 ### Canonical block
 
@@ -89,14 +83,14 @@ Use exactly these fields, in this order, with these field labels. The first thre
 
 ### Review taxonomy
 
-The review taxonomy (impact category, scope, estimate basis, work type) is recorded as **GitHub PR labels** in `dimension:value` colon-no-space form (`impact:cost_reduction`, `scope:tribe`, `estimate:modeled`, `work_type:reliability`) and, in parallel, as **body fields** in the Business Impact block (`**Category:**`, `**Scope:**`, `**Estimate Basis:**`, `**Work Type:**`), each value in backticks. On GitHub both forms are present; on Jira only the body fields survive (the label-stripping automation), so do not apply taxonomy labels there. The org-wide `squad: ` / `tribe: ` labels (with their space) are a separate convention, not part of this taxonomy.
+The review taxonomy (impact category, scope, estimate basis, work type) is recorded as **GitHub PR labels** in `dimension:value` colon-no-space form (`impact:cost_reduction`, `scope:tribe`, `estimate:modeled`, `work_type:reliability`) on PRs, and as **body fields** in the Jira Business Impact block (`**Category:**`, `**Scope:**`, `**Estimate Basis:**`, `**Work Type:**`), each value in backticks. On GitHub PRs only the labels are present (no body block); on Jira only the body fields survive (the label-stripping automation), so do not apply taxonomy labels there. The org-wide `squad: ` / `tribe: ` labels (with their space) are a separate convention, not part of this taxonomy.
 
 - **Category** (`**Category:**` field, required, one or more): `cost_reduction`, `risk_mitigation`, `increased_revenue` (defined above). GitHub label form: `impact:<category>`, one per listed category.
 - **Scope** (`**Scope:**` field, required, exactly one): `squad`, `tribe`, `alliance`, `org`, in increasing order of reach. Blast radius of the change; maps to leveling rubrics (scope of influence), so reviewers weigh it alongside dollars. My current org hierarchy: `org` = HelloFresh (Organization), `alliance` = No Alliance Operations Technology (Alliance), `tribe` = Operations Data and Decisions (Tribe), `squad` = Data Engineering (Squad). Pick the widest level the change actually affects. GitHub label form: `scope:<reach>`.
 - **Estimate Basis** (`**Estimate Basis:**` field, recommended, one): `validated` (confirmed against real billing/metrics), `modeled` (computed from a stated model and assumptions), `speculative` (rough judgment, no model). Protects credibility: a validated figure defends itself, a speculative one is flagged as such. GitHub label form: `estimate:<basis>`.
 - **Work Type** (`**Work Type:**` field, recommended, exactly one): `delivery`, `enablement`, `reliability`, `maintenance`. The type of work, orthogonal to dollar impact (which **Category** captures). `delivery` ships a feature, dataset, or pipeline that directly serves a business need; `enablement` is platform/tooling/framework work that unlocks other teams or engineers (the force-multiplier axis leveling rubrics reward, even when its own dollar line is indirect); `reliability` hardens an existing system (DQ, monitoring, incident fixes, resilience); `maintenance` keeps the lights on with no new capability (dependency bumps, refactors, migrations, cleanup). Pick the single best fit. Kept separate from **Category** on purpose: a change can be `cost_reduction` + `enablement` at once. GitHub label form: `work_type:<type>`.
 
-Record one **Category** value per category (usually one, occasionally more), exactly one **Scope**, at most one **Estimate Basis**, and at most one **Work Type** in the body. On GitHub PRs, mirror these as labels and create any missing label first (`gh label create "<label>" --description "..." --color <hex>`). When a `speculative` or `modeled` figure is later confirmed, update the Notes with the actual, flip **Estimate Basis** to `validated`, and (on GitHub) flip the `estimate:` label.
+Record one **Category** value per category (usually one, occasionally more), exactly one **Scope**, at most one **Estimate Basis**, and at most one **Work Type** in the body. On GitHub PRs, apply these as labels and create any missing label first (`gh label create "<label>" --description "..." --color <hex>`). When a `speculative` or `modeled` figure is later confirmed, update the Notes with the actual, flip **Estimate Basis** to `validated`, and (on GitHub) flip the `estimate:` label.
 
 ### Keep it parseable
 
@@ -397,19 +391,19 @@ A rewritten/renamed pipeline (old `_ap`-suffixed table, or a prior unversioned D
 
 ## Jira (`jira` CLI)
 
-Use the `jira` CLI (jira-cli, configured for project ISA at `~/.config/.jira/.config.yml`, token from `JIRA_API_TOKEN`). Do not use the Atlassian MCP.
+Use the `jira` CLI (jira-cli, configured for project GLOA at `~/.config/.jira/.config.yml`, token from `JIRA_API_TOKEN`). Do not use the Atlassian MCP.
 
 ```bash
 jira me                                    # verify auth / show current user
-jira issue list -q "project = ISA AND status = 'In Progress' AND assignee = currentUser()" \
+jira issue list -q "project = GLOA AND status = 'In Progress' AND assignee = currentUser()" \
   --order-by created --reverse --plain     # filter via JQL; order via flags, never inline ORDER BY
-jira issue list -q "project = ISA" --raw   # JSON for parsing / summarizing
-jira issue view ISA-123 --comments 5
+jira issue list -q "project = GLOA" --raw  # JSON for parsing / summarizing
+jira issue view GLOA-123 --comments 5
 jira issue create -tTask -s "Summary" -T body.md -a luis.aceituno@hellofresh.com
-jira issue comment add ISA-123 -T comment.md
-jira issue move ISA-123 "In Progress"      # transition
-jira issue assign ISA-123 luis.aceituno@hellofresh.com
-jira issue link ISA-1 ISA-2 Blocks
+jira issue comment add GLOA-123 -T comment.md
+jira issue move GLOA-123 "In Progress"     # transition
+jira issue assign GLOA-123 luis.aceituno@hellofresh.com
+jira issue link GLOA-1 GLOA-2 Blocks
 ```
 
 Conventions:
@@ -420,14 +414,13 @@ Conventions:
 - Wrap every file path, SQL identifier, column name, and code token in backticks (bare underscores render as emphasis otherwise). Do not use Markdown link syntax `[text](path)` for local file references; list the path in a code span.
 - JQL ordering: jira-cli rejects inline `ORDER BY`; use `--order-by <field> [--reverse]`.
 - After create/update, fetch back with `jira issue view <KEY>` and confirm the body and Business Impact block render as intended.
-- **Every ISA ticket must carry a `fixVersion` so it lands on board 11974** (Global Ops DE Scrum). The board's saved filter is `project = ISA AND fixVersion IN ("Engineering", "OR - Engineering", DPM)`; a ticket with no `fixVersion` (or one outside that list) is invisible on the board and backlog regardless of assignee, reporter, or status. Default to `Engineering` (version id `30557`) unless the ticket clearly belongs to `OR - Engineering` or `DPM`. Set it at creation time (`jira issue create` does not expose `--fix-version`, so follow up with the REST call below), and check for it whenever creating or editing a ticket assigned or reported by me:
+- **Board 15367 (GLOA Scrum Board) has no visibility gate**: its saved filter (id 59649) is `project = GLOA`, so every GLOA ticket lands on the board and backlog with no extra fields. `fixVersions` is optional: the project's only version is `Central Ops Data Assets` (id `59925`); set it only for tickets in that asset stream, with the REST call below (`jira issue create` does not expose `--fix-version`):
   ```bash
   curl -s -u "luis.aceituno@hellofresh.com:$JIRA_API_TOKEN" -X PUT \
-    "https://hellofresh.atlassian.net/rest/api/3/issue/ISA-XXXXX" \
+    "https://hellofresh.atlassian.net/rest/api/3/issue/GLOA-XXXXX" \
     -H 'Content-Type: application/json' \
-    --data '{"fields":{"fixVersions":[{"id":"30557"}]}}'
+    --data '{"fields":{"fixVersions":[{"id":"59925"}]}}'
   ```
-  To sweep for any of my tickets missing this (assignee or reporter = me), page through `POST /rest/api/3/search/jql` with `jql=project = ISA AND (assignee = currentUser() OR reporter = currentUser()) AND fixVersion is EMPTY` (the legacy `GET /rest/api/3/search` endpoint is removed; use `/rest/api/3/search/jql` with `nextPageToken` pagination), then PUT the fix above per key.
 
 ## Confluence (`curl` REST)
 

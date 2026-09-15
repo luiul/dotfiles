@@ -501,7 +501,7 @@ gbranch() {
 
 	local jira_ticket
 	while true; do
-		jira_ticket=$(prompt_for_input "Enter Jira ticket (e.g., ISA-1234): ")
+		jira_ticket=$(prompt_for_input "Enter Jira ticket (e.g., GLOA-1234): ")
 		if [[ "$jira_ticket" =~ ^[A-Z]+-[0-9]+$ ]]; then
 			break
 		else

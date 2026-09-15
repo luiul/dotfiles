@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# List my open ISA tickets in an interactive fzf picker. The ticket rows come
+# List my open GLOA tickets in an interactive fzf picker. The ticket rows come
 # from the jira-today-list script (~/.local/bin), which groups tickets into
 # Sprint/Backlog buckets and orders them by workflow state; see its header
 # comment for the details.

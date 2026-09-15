@@ -3,35 +3,40 @@
 # picker (t, or the ctrl-t alias) or standalone.
 #
 # Usage: jira-today-move [--back] <TICKET-KEY> [TARGET-STATUS]
-#   e.g. jira-today-move ISA-1234          (pick the target interactively)
-#        jira-today-move ISA-1234 "Ready"  (skip the picker)
+#   e.g. jira-today-move GLOA-316              (pick the target interactively)
+#        jira-today-move GLOA-316 "On Hold"   (skip the picker)
 #
 # --back (passed by jira-today's t binding): after the flow finishes
 # without an error, including an Esc abort, exec jira-today again so you land
 # back in a freshly loaded overview. Skipped silently without a tty (the
 # picker could not open anyway), so the script stays safe to run unattended.
 #
-# The board (Global Ops DE Scrum, ISA) only allows specific transitions
-# between states (e.g. Open cannot go straight to In Progress; In Progress has
-# no direct way back), and jira-cli's `jira issue move KEY STATE` matches STATE
-# against the transition *name*, not the target status (from Open you must say
-# "Open to Ready", not "Ready"). So the script asks the API for the ticket's
-# currently available transitions (GET .../issue/{key}?fields=status&expand=
-# transitions), offers their target statuses, and passes the exact transition
-# name to jira-cli. Nothing about the workflow is hardcoded: whatever the
-# board allows from the ticket's current state is what gets offered, which is
-# why Blocked / To deploy can appear alongside the jira-today-list states.
-# Self-transitions (e.g. Blocked -> Blocked) are filtered out, duplicates are
-# collapsed by target status (preferring the transition named exactly like the
-# target, e.g. the generic "Done" over "Deploy to Done"), and Done sorts last.
+# The board (GLOA Scrum Board, GLOA) only allows specific transitions between
+# states (e.g. Open cannot go straight to Peer review), and jira-cli's
+# `jira issue move KEY STATE` matches STATE against the transition *name*, not
+# the target status (from In Progress you must say "Stop Progress", not
+# "Open"). So the script asks the API for the ticket's currently available
+# transitions (GET .../issue/{key}?fields=status&expand=transitions), offers
+# their target statuses, and passes the exact transition name to jira-cli.
+# Nothing about the workflow is hardcoded: whatever the board allows from the
+# ticket's current state is what gets offered. Self-transitions (e.g. On Hold
+# -> On Hold) are filtered out, duplicates are collapsed by target status
+# (preferring the transition named exactly like the target), and the terminal
+# states (Done, Resolved, Closed) sort last.
 #
-# Done is special: its transition has a screen with Resolution required and
-# optional Log Work / Comment, which is what the Jira UI makes you fill in.
-# The script offers to log hours + comment via CLI prompts (default: `jira
-# issue worklog add` + `jira issue move KEY Done -R Done --comment`) or to open
-# the ticket in the browser and use the UI screen instead. If the CLI move
-# fails (e.g. a workflow validator not visible via the API), it falls back to
-# opening the browser.
+# Transitions with a screen are detected at runtime via the transition's
+# hasScreen flag, not by hardcoding a target status: when the chosen
+# transition has a screen, a second call (GET .../issue/{key}/transitions?
+# expand=transitions.fields) checks whether the screen exposes a resolution
+# field. If it does (e.g. "Close Issue" to Closed on GLOA), the script offers
+# to log hours + comment via CLI prompts (`jira issue worklog add` + `jira
+# issue move KEY <transition> --resolution <value> [--comment]`) or to open the
+# ticket in the browser and use the UI screen instead. The resolution defaults
+# to the screen's allowed values, preferring one named like the target status,
+# then "Done", then the first value. Screenless transitions (e.g. "Resolve"
+# to Done on GLOA) are plain moves with no prompts. If a CLI move fails (e.g.
+# a workflow validator not visible via the API), it falls back to opening the
+# browser.
 #
 # This is a script, not part of the jira-today picker, because fzf's
 # `become` spawns a non-interactive `$SHELL -c`, which never sources
@@ -42,8 +47,8 @@
 # Interactive input MUST come from /dev/tty, not fd 0: when jira-today's fzf
 # `become` execs this script, fd 0 is the exhausted ticket-list pipe and fzf
 # leaves O_NONBLOCK set on it, so reads from fd 0 fail with EAGAIN ("Resource
-# temporarily unavailable"). With no tty at all, the Done path refuses to run
-# rather than marking the ticket Done with no hours.
+# temporarily unavailable"). With no tty at all, the resolution/worklog prompt
+# path refuses to run rather than closing the ticket with no hours.
 #
 # Auth for the API call: basic auth with login/server read from jira-cli's
 # config and JIRA_API_TOKEN from the environment (exported from
@@ -59,7 +64,7 @@ KEY="${1:-}"
 TARGET="${2:-}"
 
 if [ -z "$KEY" ]; then
-	echo "usage: jira-today-move [--back] <TICKET-KEY> [TARGET-STATUS] (e.g. jira-today-move ISA-1234 \"Ready\")" >&2
+	echo "usage: jira-today-move [--back] <TICKET-KEY> [TARGET-STATUS] (e.g. jira-today-move GLOA-316 \"On Hold\")" >&2
 	exit 1
 fi
 
@@ -101,28 +106,29 @@ if ! json=$(curl -sf --max-time 10 -u "$LOGIN:$JIRA_API_TOKEN" -H 'Accept: appli
 fi
 status=$(jq -r '.fields.status.name' <<<"$json")
 
-# Lines of "target-status <TAB> transition-name": self-transitions dropped,
-# ranked by the jira-today-list workflow order (Done always last), deduped by
-# target status preferring the transition named exactly like the target.
-options=$(jq -r '.transitions[] | [.to.name, .name] | @tsv' <<<"$json" |
+# Lines of "target-status <TAB> transition-name <TAB> hasScreen":
+# self-transitions dropped, ranked by the jira-today-list workflow order
+# (terminal states last), deduped by target status preferring the transition
+# named exactly like the target.
+options=$(jq -r '.transitions[] | [.to.name, .name, .hasScreen] | @tsv' <<<"$json" |
 	awk -F'\t' -v cur="$status" '
 		BEGIN { OFS = "\t" }
 		$1 == cur { next }
 		{
 			rank = 8
 			if ($1 == "Open") rank = 1
-			else if ($1 == "Ready") rank = 2
-			else if ($1 == "Selected for Dev") rank = 3
-			else if ($1 == "In Progress") rank = 4
-			else if ($1 == "Internal Review") rank = 5
-			else if ($1 == "To deploy") rank = 6
-			else if ($1 == "Blocked") rank = 7
+			else if ($1 == "Reopened") rank = 2
+			else if ($1 == "In Progress") rank = 3
+			else if ($1 == "Peer review") rank = 4
+			else if ($1 == "On Hold") rank = 5
 			else if ($1 == "Done") rank = 9
+			else if ($1 == "Resolved") rank = 9
+			else if ($1 == "Closed") rank = 9
 			exact = ($2 == $1) ? 0 : 1
-			print rank, exact, $1, $2
+			print rank, exact, $1, $2, $3
 		}
 	' | sort -t$'\t' -k1,1n -k2,2n -k3,3 |
-	awk -F'\t' '!seen[$3]++ { print $3 "\t" $4 }')
+	awk -F'\t' '!seen[$3]++ { print $3 "\t" $4 "\t" $5 }')
 
 if [ -z "$options" ]; then
 	echo "jira-today-move: $KEY ($status) has no available transitions" >&2
@@ -155,13 +161,39 @@ fi
 
 target=$(printf '%s' "$line" | cut -f1)
 transition=$(printf '%s' "$line" | cut -f2)
+has_screen=$(printf '%s' "$line" | cut -f3)
 
-if [ "$target" = "Done" ]; then
-	if ! { : </dev/tty; } 2>/dev/null; then
-		echo "jira-today-move: marking Done needs an interactive terminal for the hours/comment prompts; refusing to mark $KEY Done non-interactively" >&2
+# A screened transition needs one more API call to see the screen's fields
+# (the issue endpoint's expand=transitions only carries the hasScreen flag).
+# Only a resolution field triggers the hours/comment ceremony below, with the
+# resolution defaulted from the screen's allowed values. Any other screen is
+# a plain move attempt with a browser fallback, since jira-cli cannot fill
+# screen fields.
+resolution=''
+if [ "$has_screen" = "true" ]; then
+	if ! tjson=$(curl -sf --max-time 10 -u "$LOGIN:$JIRA_API_TOKEN" -H 'Accept: application/json' \
+		"$SERVER/rest/api/3/issue/$KEY/transitions?expand=transitions.fields"); then
+		echo "jira-today-move: could not inspect the \"$transition\" screen; opening $KEY in the browser" >&2
+		jira open "$KEY"
 		exit 1
 	fi
-	printf 'jira-today-move: %s → Done (resolution "Done"). Log hours/comment here, or use the browser screen?\n' "$KEY"
+	resolution=$(jq -r --arg t "$transition" --arg target "$target" '
+		[.transitions[] | select(.name == $t)][0] |
+		if .fields | has("resolution") then
+			.fields.resolution | [(.allowedValues // [])[].name] as $vals |
+			[$vals[] | select(ascii_downcase == ($target | ascii_downcase))][0] //
+				(if $vals | index("Done") then "Done" else null end) //
+				$vals[0] // ""
+		else empty end
+	' <<<"$tjson")
+fi
+
+if [ -n "$resolution" ]; then
+	if ! { : </dev/tty; } 2>/dev/null; then
+		echo "jira-today-move: \"$transition\" needs a resolution (and offers worklog/comment prompts), which needs an interactive terminal; refusing to move $KEY non-interactively" >&2
+		exit 1
+	fi
+	printf 'jira-today-move: %s → %s via "%s" (resolution "%s"). Log hours/comment here, or use the browser screen?\n' "$KEY" "$target" "$transition" "$resolution"
 	printf '[enter] cli · [b]rowser · [a]bort? '
 	reply=''
 	read -n 1 -r reply </dev/tty || true
@@ -173,7 +205,7 @@ if [ "$target" = "Done" ]; then
 			exit 1
 			;;
 		b | B)
-			echo "jira-today-move: opening $KEY — click the status, choose Done, and fill in Log Work / Comment / Resolution"
+			echo "jira-today-move: opening $KEY, click the status, choose \"$transition\", and fill in the screen"
 			jira open "$KEY"
 			back_to_overview
 			exit 0
@@ -186,7 +218,7 @@ if [ "$target" = "Done" ]; then
 	comment=''
 	printf 'comment (empty to skip): '
 	read -r comment </dev/tty || true
-	printf 'mark %s Done? [Y/n] ' "$KEY"
+	printf 'move %s to %s? [Y/n] ' "$KEY" "$target"
 	confirm=''
 	read -n 1 -r confirm </dev/tty || true
 	echo
@@ -201,20 +233,28 @@ if [ "$target" = "Done" ]; then
 			exit 1
 		fi
 	fi
-	move_args=(--resolution Done)
+	move_args=(--resolution "$resolution")
 	if [ -n "$comment" ]; then
 		move_args+=(--comment "$comment")
 	fi
 	if jira issue move "$KEY" "$transition" "${move_args[@]}"; then
-		echo "jira-today-move: $KEY is Done"
+		echo "jira-today-move: $KEY is now $target"
 		back_to_overview
 		exit 0
 	fi
-	echo "jira-today-move: transition failed; opening $KEY in the browser so you can complete the Done screen there" >&2
+	echo "jira-today-move: transition failed; opening $KEY in the browser so you can complete the screen there" >&2
 	jira open "$KEY"
 	exit 1
 fi
 
 echo "jira-today-move: $KEY $status → $target"
-jira issue move "$KEY" "$transition"
+if [ "$has_screen" = "true" ]; then
+	if ! jira issue move "$KEY" "$transition"; then
+		echo "jira-today-move: transition failed; opening $KEY in the browser so you can complete the screen there" >&2
+		jira open "$KEY"
+		exit 1
+	fi
+else
+	jira issue move "$KEY" "$transition"
+fi
 back_to_overview

@@ -311,7 +311,6 @@
     "altimate.codeAutoUpdate": false,
     "altimate.codeLens.enabled": false,
     // === Files/Housekeeping ===
-    "files.autoSave": "onWindowChange",
     "files.exclude": {
         "**/__pycache__": true,
         "**/.pytest_cache": true,

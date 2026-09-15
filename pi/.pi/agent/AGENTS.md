@@ -14,6 +14,7 @@
 - Follow ASD-STE100 (Simplified Technical English), lighter variant: short sentences (aim for 20 words or fewer), one idea per sentence, active voice, no filler or hedging.
 - No hyphens (`-`) or em dashes (`—`) as punctuation in prose. Rewrite with commas, periods, parentheses, or colons instead. Hyphens are still fine in compound words (e.g. `well-formatted`), command flags (e.g. `--no-verify`), and markdown list markers.
 - Scope: chat replies, scratch files, docs, READMEs, tickets, commit messages. Code, identifiers, commands, and quoted text are exempt.
+- Always link to PRs and online resources. When you mention a PR, Jira ticket, Slack thread, doc, or any resource with a URL, include the full clickable URL (e.g. https://github.com/hellofresh/schema-registry/pull/4222), not just `schema-registry#4222` or `GLOA-338`.
 
 ## Python
 
@@ -54,8 +55,8 @@
 ## HelloFresh Business Impact
 
 - The Jira ticket is the source of truth, harvest (`~/.harvest/`, CLI `harvest`, repo `~/projects/personal/harvest`) is its database, the PR is a projection. Never write the same impact data in two places.
-- Sequence, always ticket first: create the Jira ticket with the `## Business Impact` block, then `harvest record ticket <KEY> ...`; branch `type/<KEY>-short-desc`; draft PR with labels only (NEVER a Business Impact block in the PR body), then `harvest record pr <repo>#<n> --ticket <KEY>` (impact fields inherit from the ticket row).
-- Estimate changed: update the ticket block and re-run `harvest record ticket`; update PR labels only if category/scope changed.
+- Sequence, always ticket first: `harvest create ticket --summary ... -c ... -i ... -n ... -s ... -e ... -w ...` (records the full row in harvest AND creates the Jira ticket with the four-field projection block; dollars and estimate basis live only in harvest, never on Jira); branch `type/<KEY>-short-desc`; draft PR with labels only (NEVER a Business Impact block in the PR body), then `harvest record pr <repo>#<n> --ticket <KEY>` (impact fields inherit from the ticket row).
+- Estimate changed: `harvest record ticket <KEY>` with the new flags, then `harvest project <KEY>` if a projected field (Category, Notes, Scope, Work Type) changed; dollar/basis changes never touch Jira. Update PR labels only if category/scope changed.
 - Full spec (taxonomy, block format, label colors): `~/projects/hellofresh/AGENTS.md` section "Business Impact". Reports: `harvest report --year <yyyy>`.
 
 ## Large Files

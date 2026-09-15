@@ -1,0 +1,9 @@
+# Files in this package that stow must NOT symlink into $HOME.
+# LaunchDaemons are system-wide (/Library/LaunchDaemons), never per-user, so
+# there is no ~/Library/LaunchDaemons for stow to target correctly. `stow
+# macos` would otherwise create a dead symlink there. Install manually — see
+# macos/README.md.
+^/Library/LaunchDaemons$
+# Package docs, not a dotfile. Needed because a package-level .stow-local-ignore
+# makes stow skip the global ignore file (which would otherwise cover this).
+^/README\.md$

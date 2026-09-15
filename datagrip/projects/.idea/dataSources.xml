@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
+    <data-source source="LOCAL" name="Snowflake - SA NONSENSITIVE" uuid="95331c7f-2c13-4a48-b65d-104c656e186b">
+      <driver-ref>snowflake</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>net.snowflake.client.jdbc.SnowflakeDriver</jdbc-driver>
+      <jdbc-url>jdbc:snowflake://XG02811-OO69432.snowflakecomputing.com:443?role=SCM_ANALYTICS_SA_NONSENSITIVE&amp;warehouse=scm_analytics_dev</jdbc-url>
+      <jdbc-additional-properties>
+        <property name="authenticator" value="externalbrowser" />
+      </jdbc-additional-properties>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
+    <data-source source="LOCAL" name="Databricks April 2026" uuid="beeaee40-472c-437a-ac74-69f9a0ef939a">
+      <driver-ref>java.sql.Driver</driver-ref>
+      <synchronize>true</synchronize>
+      <configured-by-url>true</configured-by-url>
+      <jdbc-driver>com.databricks.client.jdbc.Driver</jdbc-driver>
+      <jdbc-url>jdbc:databricks://hf-query-engine.cloud.databricks.com:443;transportMode=http;ssl=1;AuthMech=3;httpPath=/sql/1.0/warehouses/96c9036f3d79463f;</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
+    <data-source source="LOCAL" name="dbx staging (global-ops)" uuid="5405e702-3862-4241-97b2-9193a205243c">
+      <driver-ref>databricks</driver-ref>
+      <synchronize>true</synchronize>
+      <configured-by-url>true</configured-by-url>
+      <jdbc-driver>com.databricks.client.jdbc.Driver</jdbc-driver>
+      <jdbc-url>jdbc:databricks://hf-community-staging.cloud.databricks.com:443;httpPath=/sql/1.0/warehouses/55b1dfeeb6b3f05c;AuthMech=11;Auth_Flow=2;EnableTokenCache=0;ConnCatalog=global_ops__nonsensitive__dev</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
+    <data-source source="LOCAL" name="dbx live (global-ops)" uuid="3652ceb9-3cf1-4a95-8210-68479e975f6d">
+      <driver-ref>databricks</driver-ref>
+      <synchronize>true</synchronize>
+      <configured-by-url>true</configured-by-url>
+      <jdbc-driver>com.databricks.client.jdbc.Driver</jdbc-driver>
+      <jdbc-url>jdbc:databricks://hf-community-live.cloud.databricks.com:443;httpPath=/sql/1.0/warehouses/5ada7a34882f4472;AuthMech=11;Auth_Flow=2;EnableTokenCache=0;ConnCatalog=global_ops__nonsensitive__live</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
+  </component>
+</project>

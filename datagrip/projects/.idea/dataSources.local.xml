@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="dataSourceStorageLocal" created-in="DB-261.26222.86">
+    <data-source name="Snowflake - SA NONSENSITIVE" uuid="95331c7f-2c13-4a48-b65d-104c656e186b">
+      <database-info product="Snowflake" version="10.31.101" jdbc-version="4.2" driver-name="Snowflake" driver-version="3.27.0" dbms="SNOWFLAKE" exact-version="10.31.101" exact-driver-version="3.27">
+        <extra-name-characters>$</extra-name-characters>
+        <identifier-quote-string>&quot;</identifier-quote-string>
+      </database-info>
+      <case-sensitivity plain-identifiers="upper" quoted-identifiers="exact" />
+      <secret-storage>master_key</secret-storage>
+      <auth-provider>Snowflake.ExternalAuthenticator</auth-provider>
+      <user-name>LUIS.ACEITUNO@HELLOFRESH.COM</user-name>
+      <schema-mapping>
+        <introspection-scope>
+          <node negative="1">
+            <node kind="database" qname="@">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database">
+              <name qname="EDW" />
+              <name qname="GLOBAL_BI" />
+              <name qname="STAGING_US_OPS_ANALYTICS" />
+            </node>
+            <node kind="database">
+              <name qname="SCM_ANALYTICS" />
+              <name qname="SCM_ANALYTICS_STAGING" />
+              <node kind="schema">
+                <name qname="BASE_GRAIN" />
+                <name qname="BUSINESS_MARTS" />
+                <name qname="INTERMEDIATE" />
+                <name qname="LANDING" />
+                <name qname="LIMESYNC_BI" />
+                <name qname="LIMESYNC_REF" />
+                <name qname="PUBLIC" />
+                <name qname="RAW_DATA_VAULT" />
+              </node>
+            </node>
+            <node kind="database">
+              <name qname="SCM_ANALYTICS_SANDBOX_LUIS_ACEITUNO" />
+              <name qname="US_OPS_ANALYTICS" />
+              <node kind="schema" negative="1" />
+            </node>
+            <node kind="database">
+              <name qname="SCM_ANALYTICS_SENSITIVE" />
+              <name qname="SCM_ANALYTICS_SENSITIVE_STAGING" />
+              <node kind="schema">
+                <name qname="LANDING" />
+                <name qname="PUBLIC" />
+              </node>
+            </node>
+          </node>
+        </introspection-scope>
+      </schema-mapping>
+    </data-source>
+    <data-source name="Databricks April 2026" uuid="beeaee40-472c-437a-ac74-69f9a0ef939a">
+      <database-info product="SparkSQL" version="3.3.1" jdbc-version="4.3" driver-name="DatabricksJDBC" driver-version="3.3.1" dbms="DATABRICKS" exact-version="3.3" exact-driver-version="3.3">
+        <identifier-quote-string>`</identifier-quote-string>
+      </database-info>
+      <secret-storage>master_key</secret-storage>
+      <user-name>token</user-name>
+      <schema-mapping>
+        <introspection-scope>
+          <node negative="1">
+            <node kind="database" qname="glue">
+              <node kind="schema">
+                <name qname="private_edw_base_grain_live" />
+                <name qname="private_edw_base_grain_staging" />
+                <name qname="public_edw_base_grain_live" />
+                <name qname="public_edw_base_grain_staging" />
+                <name qname="public_edw_business_mart_live" />
+                <name qname="public_edw_business_mart_staging" />
+              </node>
+            </node>
+            <node kind="database" qname="hive_metastore">
+              <node kind="schema" qname="default" />
+            </node>
+          </node>
+        </introspection-scope>
+      </schema-mapping>
+    </data-source>
+    <data-source name="dbx staging (global-ops)" uuid="5405e702-3862-4241-97b2-9193a205243c">
+      <database-info product="SparkSQL" version="3.3.3" jdbc-version="4.3" driver-name="DatabricksJDBC" driver-version="3.4.2" dbms="DATABRICKS" exact-version="3.3" exact-driver-version="3.4">
+        <identifier-quote-string>`</identifier-quote-string>
+      </database-info>
+      <schema-mapping>
+        <introspection-scope>
+          <node negative="1">
+            <node kind="database" qname="consumer_analytics__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ai">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ai_staging">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ops__nonsensitive__dev">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ops__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ops__nonsensitive__staging">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ops__pii__dev">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ops__pii__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ops__pii__staging">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ops__sensitive__dev">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ops__sensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ops__sensitive__staging">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="gpso__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="growth_analytics__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="landing__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="landing__nonsensitive__staging">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="landing__pii__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="operations_data_and_decisions__nonsensitive__dev">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="operations_data_and_decisions__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="operations_data_and_decisions__nonsensitive__staging">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="people_data_products__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="platform_analytics__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="product_analytics_scm_tech__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+          </node>
+        </introspection-scope>
+      </schema-mapping>
+    </data-source>
+    <data-source name="dbx live (global-ops)" uuid="3652ceb9-3cf1-4a95-8210-68479e975f6d">
+      <database-info product="SparkSQL" version="3.3.3" jdbc-version="4.3" driver-name="DatabricksJDBC" driver-version="3.4.2" dbms="DATABRICKS" exact-version="3.3" exact-driver-version="3.4">
+        <identifier-quote-string>`</identifier-quote-string>
+      </database-info>
+      <schema-mapping>
+        <introspection-scope>
+          <node negative="1">
+            <node kind="database" qname="consumer_analytics__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ai">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ai_staging">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ops__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ops__pii__dev">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ops__pii__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ops__sensitive__dev">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="global_ops__sensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="gpso__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="growth_analytics__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="hightouch_poc_staging">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="landing__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="landing__nonsensitive__staging">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="landing__pii__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="operations_data_and_decisions__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="people_data_products__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="platform_analytics__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+            <node kind="database" qname="product_analytics_scm_tech__nonsensitive__live">
+              <node kind="schema" qname="@" />
+            </node>
+          </node>
+        </introspection-scope>
+      </schema-mapping>
+    </data-source>
+  </component>
+</project>

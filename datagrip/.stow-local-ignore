@@ -1,0 +1,8 @@
+# Files in this package that stow must NOT symlink into $HOME.
+# dataSources.xml is a tracked snapshot, not stowed: JetBrains IDEs rewrite
+# config files with atomic saves (write temp + rename), which would replace
+# the symlink with a real file on the first data source edit in the UI.
+# Install/refresh with the cp commands in README.md.
+projects
+README\.md
+\.stow-local-ignore

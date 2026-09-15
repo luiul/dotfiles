@@ -57,6 +57,16 @@ Follow conventional commit style:
 
 Every Jira ticket I create or update across all repos under this directory must carry a Business Impact block. This feeds the end-of-year review, so the format is fixed and must stay machine-parseable. The block lives in the ticket description and includes the review taxonomy (scope, estimate basis, work type) as body fields. GitHub PRs do not carry the block; there the taxonomy lives only in labels. On Jira the body fields are the only record (a Jira automation strips custom labels off tickets).
 
+### Canonical record: harvest
+
+Every Business Impact block also gets a structured row in harvest, the local DuckDB + Iceberg database at `~/.harvest/` (repo: `~/projects/personal/harvest`, CLI `harvest`). The rule: **the ticket is the source of truth, harvest is its database, the PR is a projection.** Nothing is written in two places. The canonical sequence (ticket first, always):
+
+1. Create the Jira ticket with the Business Impact block, then `harvest record ticket <KEY> ...` (impact flags; missing fields prompt).
+2. Branch `type/<KEY>-short-desc`, open the draft PR (body: Summary / Key Changes / Test Plan + Jira link; labels only, NO Business Impact block), then `harvest record pr <repo>#<n> --ticket <KEY>` (impact fields inherit from the ticket row).
+3. When an estimate changes: update the ticket block AND the ticket row (`harvest record ticket` again); PR labels only if category/scope changed.
+
+`harvest sync` re-pulls Jira tickets and GitHub PRs; `harvest report --year 2026` gives the review totals. Never put a `## Business Impact` block in a PR body; if one is found on a PR, record it in harvest first, then strip the block (labels stay).
+
 ### Canonical block
 
 Use exactly these fields, in this order, with these field labels. The first three are the core block; the last three carry the review taxonomy (defined under **Review taxonomy** below):
@@ -94,7 +104,7 @@ Record one **Category** value per category (usually one, occasionally more), exa
 
 ### Keep it parseable
 
-The year-end review harvests these blocks programmatically (the harvest and reporting tooling lives in the `promo-tracker` repo, not here). All that matters on the authoring side is that the block stays machine-readable:
+The year-end review harvests these blocks programmatically (the tooling is harvest, repo `~/projects/personal/harvest`; the store is `~/.harvest/`). All that matters on the authoring side is that the block stays machine-readable:
 
 - Keep the heading text exactly `## Business Impact`.
 - Keep the field labels exactly `**Category:**`, `**Estimated Annual Impact:**`, `**Notes:**`, `**Scope:**`, `**Estimate Basis:**`, `**Work Type:**`.

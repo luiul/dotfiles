@@ -158,10 +158,11 @@
     // TRIAL: no repo rescan on every file event. Cheaper SCM, but the git status
     // badge can go stale until manual refresh. Revert if annoying.
     "git.autorefresh": false,
-    // Cosmetic only: the window registry (dashkit's vscode-window-registry extension) is
-    // what tools match windows on. ${rootPath} tilde-collapses ("~/dotfiles — main"), so the
-    // Window menu shows paths for humans. Needs a Code restart: the symlinked settings file
-    // is not watched (microsoft/vscode#24739).
+    // Load-bearing, not cosmetic: dashkit's mycelium (canopy, understory) and coppice match
+    // VS Code windows by parsing this title. Contract: the opened folder's full path before
+    // the first " — " (${separator}), branch after it and never matched. ${rootPath}
+    // tilde-collapses ("~/dotfiles — main"). Change the template and window switching breaks.
+    // Needs a Code restart: the symlinked settings file is not watched (microsoft/vscode#24739).
     "window.title": "${rootPath}${separator}${activeRepositoryBranchName}",
     // === GitHub Settings ===
     "githubPullRequests.remotes": [

@@ -7,11 +7,10 @@ Installed extensions are tracked in the Brewfile (`vscode "..."` entries). The p
 hook regenerates the Brewfile from the live system via `brew bundle dump --force`, so
 uninstalling an extension locally removes it from the Brewfile on the next commit.
 
-One extension is not from the Marketplace: `luiul-window-registry`, the window registry
-writer from [dashkit](https://github.com/luiul/dashkit) (`vscode-window-registry/`).
-`setup.sh` symlinks the dashkit checkout into `~/.vscode/extensions/`; the source of truth
-stays in dashkit, so there is no copy to drift. It activates after a Code restart and
-writes one small JSON file per window into `~/.local/state/vscode-windows/`.
+The `window.title` setting (`settings.json`) is load-bearing, not cosmetic: dashkit's
+mycelium (canopy, understory) and coppice identify windows by it. Parse contract: the
+opened folder's full path before the first ` — `, branch after it and never matched.
+See the setting's own comment for the details.
 
 ## Draw.io Diagrams
 

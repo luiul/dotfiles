@@ -121,6 +121,8 @@ cask "font-jetbrains-mono-nerd-font"
 cask "font-meslo-lg-nerd-font"
 # Set of tools to manage resources and applications hosted on Google Cloud
 cask "gcloud-cli"
+# Speech to text application
+cask "handy"
 # Free and open-source media player
 cask "iina"
 # Menu bar manager

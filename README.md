@@ -22,7 +22,7 @@ The script is idempotent and prompts before each step. It will:
 
 Each top-level directory is a stow package that mirrors `$HOME`:
 
-`aws`, `borders`, `brew`, `claude`, `datagrip`, `ghostty`, `git`, `hellofresh`, `herdr`, `hunk`, `karabiner`, `macos`, `pi`, `pip`, `rectangle`, `rtk`, `ruff`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `sublime`, `vscode`, `worktrunk`, `zed`, `zsh`
+`aws`, `borders`, `brew`, `claude`, `datagrip`, `ghostty`, `git`, `hellofresh`, `hunk`, `karabiner`, `macos`, `pi`, `pip`, `rectangle`, `rtk`, `ruff`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `sublime`, `vscode`, `worktrunk`, `zed`, `zsh`
 
 Three packages are tracked but **not stowed** (export-only, see below): `karabiner`, `rectangle`, and `datagrip`.
 

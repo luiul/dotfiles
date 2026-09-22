@@ -44,7 +44,9 @@
 
 ## Scratch Files
 
-- Write proofreading and text output for review to `~/scratch/<descriptive-name>.md` (e.g. `proofread-team-update.md`), then print the full absolute path so the user can click to open it.
+- Only create a scratch file when the user explicitly asks for one. Triggers: the message contains `scratch:` (with the colon, e.g. `scratch: write a summary of ...`), or the user explicitly says "save to scratch" or "write this to a scratch file".
+- Default for proofreading, drafts, reviews, and any other text output: reply in chat, no scratch file.
+- When asked: write to `~/scratch/<descriptive-name>.md` (e.g. `proofread-team-update.md`), then print the full absolute path so the user can click to open it.
 - For follow-up edits, update the same file rather than creating a new one.
 
 ## Dotfiles

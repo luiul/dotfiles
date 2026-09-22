@@ -214,6 +214,7 @@
     "inactive_opacity": 0.7
   },
   "project_panel": {
+    "starts_open": false,
     "dock": "right",
     "default_width": 200,
     "entry_spacing": "standard",

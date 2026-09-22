@@ -4,15 +4,18 @@
 #
 # Scan EVERY AWS region this account has Bedrock entitlements in, find every
 # Bedrock model actually invocable through pi (independent of region), and:
-#   1. write pi/.pi/agent/settings.json .enabledModels with EVERY probe-
-#      verified-usable model across ALL scanned regions — this is what
-#      /model and Ctrl+P show in a normal interactive session. This is safe
-#      because of (2) below: an extension keeps AWS_REGION in sync with
-#      whichever model is actually selected, so a non-default-region entry
-#      doesn't 400 when picked. Entries this script does not manage (ids
-#      absent from pi's Bedrock catalog, e.g. ai-model-router provider
-#      models such as "moonshotai/Kimi-K3" or "claude-opus-5") are
-#      PRESERVED, not wiped.
+#   1. validate + write pi/.pi/agent/settings.json .enabledModels, which is a
+#      hand-curated list of minimatch patterns (CURATED_PATTERNS below), NOT
+#      the full probe-verified list. Patterns keep the /model and Ctrl+P
+#      picker small (only the model families actually in use, in the regions
+#      they are used in) while absorbing new model versions automatically.
+#      The script reports each pattern's live match count (zero = dead
+#      pattern, probably a retired or renamed model), lists usable models no
+#      pattern covers (candidates for new patterns), and warns about
+#      hand-added entries the write would drop. This is safe because of (2)
+#      below: an extension keeps AWS_REGION in sync with whichever model is
+#      actually selected, so a non-default-region entry doesn't 400 when
+#      picked.
 #   2. write pi/.pi/agent/bedrock-models.json, a full { modelId: region } map
 #      of EVERY usable model across ALL scanned regions. Two consumers read
 #      it: the pi extension pi/.pi/agent/extensions/bedrock-region-sync.ts
@@ -91,14 +94,6 @@
 #                       the probe batch instead of continuing to hammer AWS
 #                       (default: 6). Sized to PROBE_CONCURRENCY so one bad
 #                       batch trips it, not one bad model.
-#   ENABLED_MODELS_SCOPE "all" (default) writes every probe-verified model
-#                       across all regions to enabledModels, relying on
-#                       bedrock-region-sync.ts to keep AWS_REGION correct.
-#                       "default-region" restricts enabledModels to just
-#                       $DEFAULT_REGION's usable subset instead (the old
-#                       behavior) -- use this if that extension isn't
-#                       installed, since without it a non-default-region
-#                       model would 400 when picked via /model or Ctrl+P.
 #   PI_SETTINGS         (default: the stowed dotfiles settings.json)
 #   BEDROCK_MODELS_JSON (default: the stowed dotfiles bedrock-models.json)
 #
@@ -125,7 +120,41 @@ BEDROCK_MODELS_JSON="${BEDROCK_MODELS_JSON:-$DOTFILES/pi/.pi/agent/bedrock-model
 PROBE_TIMEOUT="${PROBE_TIMEOUT:-45}"
 PROBE_CONCURRENCY="${PROBE_CONCURRENCY:-3}"
 PROBE_FAIL_CIRCUIT="${PROBE_FAIL_CIRCUIT:-6}"
-ENABLED_MODELS_SCOPE="${ENABLED_MODELS_SCOPE:-all}"
+# enabledModels is this hand-curated list of patterns (minimatch against
+# provider/modelId or bare modelId; a ":<level>" suffix pins a thinking
+# level). The probe below VALIDATES these patterns against what is currently
+# invocable; it never adds or removes patterns itself. Edit this list to
+# change what /model and Ctrl+P offer.
+CURATED_PATTERNS=(
+  'moonshotai/Kimi-K3:high'
+  'gpt-5.6-luna:max'
+  'global.openai.gpt-5.6-luna:max'
+  'moonshotai/Kimi-K3*'
+  'claude-sonnet-5*'
+  'claude-opus-5*'
+  'claude-opus-4-8*'
+  'claude-haiku-4-5*'
+  'gpt-5.6-luna*'
+  'zai-org/GLM-5*'
+  'deepseek-ai/DeepSeek-V4*'
+  'eu.anthropic.claude-sonnet-5*'
+  'eu.anthropic.claude-sonnet-4-6*'
+  'eu.anthropic.claude-opus-5*'
+  'eu.anthropic.claude-opus-4-8*'
+  'eu.anthropic.claude-haiku-4-5*'
+  'global.anthropic.claude-sonnet-5*'
+  'global.anthropic.claude-sonnet-4-6*'
+  'global.anthropic.claude-opus-5*'
+  'global.anthropic.claude-opus-4-8*'
+  'global.anthropic.claude-haiku-4-5*'
+  'us.anthropic.claude-sonnet-5*'
+  'us.anthropic.claude-sonnet-4-6*'
+  'us.anthropic.claude-opus-5*'
+  'us.anthropic.claude-opus-4-8*'
+  'us.anthropic.claude-haiku-4-5*'
+  'global.openai.gpt-5.6-luna*'
+  'us.openai.gpt-5.6-luna*'
+)
 # Some globally named inference profiles are only enabled in a particular
 # region for this account. Keep these overrides explicit and exact rather
 # than silently selecting the default region after a failed probe.
@@ -142,17 +171,12 @@ for arg in "$@"; do
     --dry-run)  dry_run=true ;;
     --no-probe) probe=false ;;
     --help|-h)
-      sed -n '1,116p' "$0"
+      sed -n '2,/^set -uo pipefail/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//; s/^#$//'
       exit 0
       ;;
     *) echo "Unknown arg: $arg" >&2; exit 2 ;;
   esac
 done
-
-case "$ENABLED_MODELS_SCOPE" in
-  all|default-region) ;;
-  *) echo "ENABLED_MODELS_SCOPE must be 'all' or 'default-region' (got: $ENABLED_MODELS_SCOPE)" >&2; exit 2 ;;
-esac
 
 case "$PROBE_TIMEOUT" in
   ''|*[!0-9]*) echo "PROBE_TIMEOUT must be a positive integer (got: $PROBE_TIMEOUT)" >&2; exit 2 ;;
@@ -378,14 +402,55 @@ all_ids=$(echo "$usable_tsv" | awk -F'\t' '{print $1}' | sort -u)
 all_count=$(echo "$all_ids" | sed '/^$/d' | wc -l | tr -d ' ')
 echo "Usable across all scanned regions: $all_count" >&2
 
-if [[ "$ENABLED_MODELS_SCOPE" == "all" ]]; then
-  enabled_ids="$all_ids"
-  enabled_count="$all_count"
-else
-  enabled_ids="$default_ids"
-  enabled_count="$default_count"
+# --- Validate the curated patterns ------------------------------------------
+# Patterns are matched with bash globbing ([[ id == pattern ]]) against the
+# probe-verified usable Bedrock ids plus pi's ai-model-router catalog ids
+# (router models are not probed by this script; catalog presence is enough).
+strip_pin() {
+  case "$1" in
+    *:off|*:minimal|*:low|*:medium|*:high|*:xhigh|*:max) echo "${1%:*}" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+router_catalog=$(pi --list-models 2>/dev/null | awk '$1=="ai-model-router"{print $2}' | sort -u)
+printf '%s\n%s\n' "$all_ids" "$router_catalog" | sed '/^$/d' | sort -u > "$workdir/matchable_ids"
+
+: > "$workdir/covered_ids"
+dead=0
+echo "Validating ${#CURATED_PATTERNS[@]} curated pattern(s) against currently invocable models:" >&2
+for raw_pat in "${CURATED_PATTERNS[@]}"; do
+  pat=$(strip_pin "$raw_pat")
+  : > "$workdir/pat_matches"
+  while IFS= read -r id; do
+    [[ "$id" == $pat ]] && echo "$id" >> "$workdir/pat_matches"
+  done < "$workdir/matchable_ids"
+  n=$(wc -l < "$workdir/pat_matches" | tr -d ' ')
+  if [[ "$n" -eq 0 ]]; then
+    echo "  DEAD PATTERN: $raw_pat matches nothing currently invocable (model retired or renamed?)" >&2
+    dead=$((dead+1))
+  else
+    cat "$workdir/pat_matches" >> "$workdir/covered_ids"
+  fi
+done
+if [[ "$dead" -eq 0 ]]; then echo "  all patterns matched at least one invocable model" >&2; fi
+
+uncovered=$(comm -23 <(echo "$all_ids") <(sort -u "$workdir/covered_ids"))
+if [[ -n "$uncovered" ]]; then
+  echo "Usable Bedrock model(s) covered by NO pattern (add a pattern to offer them):" >&2
+  echo "$uncovered" | sed 's/^/  /' >&2
 fi
-echo "enabledModels scope: $ENABLED_MODELS_SCOPE ($enabled_count model(s))" >&2
+
+# Warn about hand-added enabledModels entries this write would drop: anything
+# already there that is neither a curated pattern nor a Bedrock-catalog id.
+existing=$(jq -r '.enabledModels // [] | .[]' "$PI_SETTINGS" 2>/dev/null || true)
+dropped=$(comm -23 \
+  <(echo "$existing" | sed '/^$/d' | sort -u) \
+  <(printf '%s\n%s\n' "${CURATED_PATTERNS[@]}" "$catalog" | sed '/^$/d' | sort -u))
+if [[ -n "$dropped" ]]; then
+  echo "Hand-added enabledModels entr(ies) the write would DROP (move into CURATED_PATTERNS to keep):" >&2
+  echo "$dropped" | sed 's/^/  /' >&2
+fi
 
 if $dry_run; then
   echo "(--dry-run: settings.json / bedrock-models.json not modified)" >&2
@@ -403,21 +468,11 @@ printf '%s\n' "$map_json" | jq -S --arg region "$DEFAULT_REGION" --arg gen "$(da
   '{generatedAt: $gen, defaultRegion: $region, models: .}' > "$BEDROCK_MODELS_JSON"
 echo "Wrote $(echo "$usable_tsv" | wc -l | tr -d ' ') model(s) to $BEDROCK_MODELS_JSON" >&2
 
-# enabledModels: with ENABLED_MODELS_SCOPE=all (default), this is every
-# probe-verified model across every region -- safe because
-# bedrock-region-sync.ts keeps AWS_REGION matched to whatever model is
-# active. With ENABLED_MODELS_SCOPE=default-region, it's scoped down to just
-# $DEFAULT_REGION so a plain interactive session never offers a model that
-# would 400 even without that extension installed.
-# Merge, don't clobber: keep existing enabledModels entries that are not
-# Bedrock-catalog ids (the ai-model-router provider models added by hand),
-# while replacing the Bedrock subset wholesale with the fresh probe-verified
-# set. grep -vxF does exact whole-line matching against the catalog; || true
-# because grep exits 1 when there is nothing foreign to keep (set -o
-# pipefail would otherwise abort here).
-foreign_ids=$(jq -r '.enabledModels // [] | .[]' "$PI_SETTINGS" | grep -vxF -f <(echo "$catalog") || true)
-enabled_models_json=$(printf '%s\n%s\n' "$enabled_ids" "$foreign_ids" | sed '/^$/d' | sort -u | jq -R . | jq -s .)
+# Write the curated pattern list verbatim. The validation report above is
+# the review step: dead patterns and uncovered models are surfaced, never
+# auto-fixed. jq preserves every other setting untouched.
+enabled_models_json=$(printf '%s\n' "${CURATED_PATTERNS[@]}" | jq -R . | jq -s .)
 tmp=$(mktemp)
 jq --argjson models "$enabled_models_json" '.enabledModels = $models' "$PI_SETTINGS" > "$tmp"
 mv "$tmp" "$PI_SETTINGS"
-echo "Updated enabledModels in $PI_SETTINGS ($enabled_count models, scope=$ENABLED_MODELS_SCOPE)" >&2
+echo "Updated enabledModels in $PI_SETTINGS (${#CURATED_PATTERNS[@]} curated patterns)" >&2

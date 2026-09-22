@@ -112,6 +112,16 @@ Fix applied: `reviewTransport: "subprocess"` (skip the always-doomed Direct atte
 
 **Next step (not yet done, needs a manual interactive command):** run `/login amazon-bedrock` inside pi to store a persisted Bedrock API key (bearer token) in `auth.json`, if the `bedrock-user` SSO role permits minting one. That would let the Direct transport succeed in-process on its own, removing the Subprocess/SSO-refresh dependency for memory review entirely rather than just mitigating it.
 
+## Agent Commands
+
+Custom slash commands live in `pi/.pi/agent/prompts/` (pi prompt templates, symlinked to `~/.pi/agent/prompts/`, picked up on the next pi session) and `claude/.claude/commands/` (Claude Code parity).
+
+- `/proofread <message> [--context <text>] [--scratch] [--no-copy]` (pi only): proofreads and polishes a message in ASD-STE100 style and copies the final version to the clipboard. `--context`/`-c` marks everything after it as context only (e.g. a pasted Slack thread), never rewritten. `--no-copy`/`-n` skips the clipboard step. `--scratch`/`-s` also saves the full review to `~/scratch/`. Flags combine freely and work as trailing tokens: `/proofread lgtm, ship it --context <thread> -s`.
+- `/scratch <what to write>` (pi and Claude Code): writes text output to `~/scratch/<descriptive-name>.md`, prints the absolute path, and shows the content in chat. Example: `/scratch write a short summary of the incident timeline`.
+- `/vscode [new]` (pi only): opens the current project in VS Code and copies a `pi --session` resume command to the clipboard so the session can continue in a VS Code terminal. `new` forces a new window.
+
+Scratch files are opt-in everywhere (see the "Scratch Files" section in `pi/.pi/agent/AGENTS.md`): no tool writes to `~/scratch/` unless a command flag above says so, or the prompt contains the `scratch:` trigger.
+
 ## Snowflake CLI
 
 The `snowflake` package stows `~/.snowflake/config.toml` with three connections (`default`, `staging`, `dev`) using browser SSO auth. All connection settings live in `config.toml`. The package is stowed with `--no-folding` so that Snowflake CLI runtime files (logs, cache) stay out of the repo.

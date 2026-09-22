@@ -17,6 +17,10 @@
  * On narrow terminals it collapses to a single compact line. Toggle the bar on
  * and off with the /statusbar command.
  *
+ * While a turn runs, line 1 shows a live "working <elapsed>" timer in canopy's
+ * humanizeSince format (45s, 3m, 2h15m), driven by a 1s tick that only exists
+ * between before_agent_start and agent_settled, and coloured warning past 10m.
+ *
  * Git working-tree state (changed count, ahead/behind) is polled on a timer and
  * cached, since the footer render path must stay synchronous.
  */
@@ -87,11 +91,32 @@ export default function (pi: ExtensionAPI) {
 	let compaction: CompactionConfig = { enabled: true, reserveTokens: DEFAULT_RESERVE_TOKENS };
 	let timer: ReturnType<typeof setInterval> | undefined;
 	let enabled = true;
+	// Turn timer state. turnTick only exists while a turn runs; footerTui is the
+	// live footer's tui handle so that tick (started in the event handlers, outside
+	// the footer factory) can request renders.
+	let turnStartedAt: number | null = null;
+	let turnTick: ReturnType<typeof setInterval> | undefined;
+	let footerTui: { requestRender(): void } | undefined;
 
 	const fmtTokens = (n: number): string => {
 		if (n < 1000) return `${n}`;
 		if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
 		return `${(n / 1_000_000).toFixed(1)}M`;
+	};
+
+	// canopy's humanizeSince (internal/tui/duration.go): compact, at most two
+	// units, no sub-second precision, negatives clamped to 0s.
+	const humanizeSince = (ms: number): string => {
+		const s = Math.max(0, Math.floor(ms / 1000));
+		if (s < 60) return `${s}s`;
+		const m = Math.floor(s / 60);
+		if (m < 60) return `${m}m`;
+		const h = Math.floor(m / 60);
+		if (h < 24) {
+			const rem = m % 60;
+			return rem > 0 ? `${h}h${rem}m` : `${h}h`;
+		}
+		return `${Math.floor(h / 24)}d`;
 	};
 
 	// Sum token usage and cost across the current branch's assistant messages, and
@@ -159,6 +184,7 @@ export default function (pi: ExtensionAPI) {
 			});
 			// Re-render whenever git state refreshes on the timer.
 			const tick = setInterval(() => tui.requestRender(), GIT_POLL_MS);
+			footerTui = tui;
 
 			const join = (left: string, right: string, width: number): string => {
 				const gap = Math.max(1, width - visibleWidth(left) - visibleWidth(right));
@@ -203,6 +229,15 @@ export default function (pi: ExtensionAPI) {
 				return theme.getThinkingBorderColor(level)(`thinking ${level}`);
 			};
 
+			// Live turn timer, canopy-style. Warning colour past 10m, same pattern
+			// as the "free" tokens colouring below.
+			const workingTag = (): string => {
+				if (turnStartedAt == null) return "";
+				const elapsed = Date.now() - turnStartedAt;
+				const color = elapsed >= 10 * 60 * 1000 ? "warning" : "muted";
+				return theme.fg("dim", "working ") + theme.fg(color, humanizeSince(elapsed));
+			};
+
 			const gitTag = (compact: boolean): string => {
 				const branch = footerData.getGitBranch();
 				if (!branch) return "";
@@ -217,6 +252,7 @@ export default function (pi: ExtensionAPI) {
 				dispose: () => {
 					unsub();
 					clearInterval(tick);
+					if (footerTui === tui) footerTui = undefined;
 				},
 				invalidate() {},
 				render(width: number): string[] {
@@ -257,14 +293,17 @@ export default function (pi: ExtensionAPI) {
 								: "",
 							usage?.percent != null ? theme.fg("muted", `${Math.round(usage.percent)}%`) : "",
 							theme.fg("success", `$${cost.toFixed(2)}`),
-							theme.fg("dim", model),
+							workingTag(),
+							// Mid-turn the static model name yields its slot to the live
+							// timer; the compact line is too narrow for both.
+							turnStartedAt == null ? theme.fg("dim", model) : "",
 						].filter(Boolean);
 						return [join(left, rightBits.join("  "), width)];
 					}
 
 					// --- Line 1: project + git  |  model + thinking ---
 					const l1 = theme.fg("accent", theme.bold(project)) + gitTag(false);
-					const r1 = [theme.fg("dim", model), think].filter(Boolean).join("  ");
+					const r1 = [theme.fg("dim", model), think, workingTag()].filter(Boolean).join("  ");
 
 					// --- Line 2: session + tokens + cost  |  context ---
 					const parts2: string[] = [];
@@ -325,6 +364,12 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	pi.on("session_start", async (_event, ctx) => {
+		// A new/resumed/forked session never starts mid-turn.
+		turnStartedAt = null;
+		if (turnTick) {
+			clearInterval(turnTick);
+			turnTick = undefined;
+		}
 		compaction = readCompactionConfig(ctx.cwd);
 		void refreshGit(ctx);
 		timer = setInterval(() => {
@@ -343,10 +388,33 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	pi.on("before_agent_start", async () => {
+		if (!enabled) return;
+		turnStartedAt = Date.now();
+		if (turnTick) clearInterval(turnTick);
+		turnTick = setInterval(() => footerTui?.requestRender(), 1000);
+		turnTick.unref?.();
+		footerTui?.requestRender();
+	});
+
+	pi.on("agent_settled", async () => {
+		turnStartedAt = null;
+		if (turnTick) {
+			clearInterval(turnTick);
+			turnTick = undefined;
+		}
+		footerTui?.requestRender();
+	});
+
 	pi.on("session_shutdown", async () => {
 		if (timer) {
 			clearInterval(timer);
 			timer = undefined;
 		}
+		if (turnTick) {
+			clearInterval(turnTick);
+			turnTick = undefined;
+		}
+		turnStartedAt = null;
 	});
 }

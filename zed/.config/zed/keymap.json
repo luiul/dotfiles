@@ -30,5 +30,16 @@
       // intercepted by Zed at all.
       "cmd-shift-w": null
     }
+  },
+  {
+    // VSCode's workbench.action.toggleMaximizedPanel (bound to alt-cmd-r in
+    // keybindings.json there too). workspace::ToggleZoom zooms the focused
+    // pane; scoped to Terminal so it only maximizes the terminal panel, not
+    // editor panes. Press again to restore. Zed's default for the same
+    // action is shift-escape.
+    "context": "Terminal",
+    "bindings": {
+      "alt-cmd-r": "workspace::ToggleZoom"
+    }
   }
 ]

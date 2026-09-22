@@ -53,6 +53,7 @@
 
 - Dotfiles live at `~/dotfiles` (a git repo). Read from there directly when relevant; no symlink needed. Treat `~/dotfiles/.env` as real secrets and never surface its values unless asked.
 - `claude/.claude/settings.json` is NOT stowed (`.stow-local-ignore`): Claude Code rewrites the live `~/.claude/settings.json` at runtime, which would clobber a symlink. The live file is the source of truth; the dotfiles copy is a snapshot. To change a setting, edit the live file, then refresh the snapshot: `cp ~/.claude/settings.json ~/dotfiles/claude/.claude/settings.json`.
+- Same pattern for pi: `pi/.pi/agent/settings.json` and `pi/.pi/agent/mcp.json` are NOT stowed (`pi/.stow-local-ignore`). pi rewrites both at runtime (changelog version on startup, MCP server installs), which would clobber symlinks. Edit the live file, then refresh the snapshot: `cp ~/.pi/agent/settings.json ~/dotfiles/pi/.pi/agent/settings.json` (same for `mcp.json`).
 
 ## Pi Skills
 

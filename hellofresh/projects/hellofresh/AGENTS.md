@@ -38,7 +38,7 @@ Follow conventional commit style:
 
 - **Open as draft**: always create PRs as drafts first (`gh pr create --draft`); leave it to me to mark them ready for review.
 - **Assignee**: always assign to me.
-- **Labels**: always add the squad and tribe labels `squad: scm-analytics-engineers` and `tribe: intl-scm-analytics` (the spaces are an org-wide convention), plus the review-taxonomy labels from **Review taxonomy** below: at minimum the required `impact:<category>` label(s) (one per impact category) and the `scope:<reach>` label; add the recommended `estimate:` and `work_type:` labels where they apply. Create missing labels first (e.g. `gh label create "impact:cost_reduction" --description "Year-end review: cost reduction" --color 0E8A16`). This lets the year-end review filter by label as well as by heading (`gh pr list --label "impact:cost_reduction" --state all`). GitHub PRs only: on Jira the same taxonomy lives in the Business Impact body block, since a Jira automation strips custom labels off tickets.
+- **Labels**: always add the squad and tribe labels `squad: scm-analytics-engineers` and `tribe: intl-scm-analytics` (the spaces are an org-wide convention), plus the review-taxonomy labels from **Review taxonomy** below: at minimum the required `impact:<category>` label(s) (one per impact category) and the `scope:<reach>` label; add the recommended `estimate:` and `work_type:` labels where they apply. Create missing labels first (e.g. `gh label create "impact:cost_reduction" --description "Year-end review: cost reduction" --color 0E8A16`). This lets the year-end review filter by label as well as by heading (`gh pr list --label "impact:cost_reduction" --state all`). GitHub PRs only: on Jira the same taxonomy (minus estimate basis, which is harvest-only) lives in the Business Impact body block, since a Jira automation strips custom labels off tickets.
 - No emoji prefixes in title or body.
 - No agent attribution, tool footers, or generated-by links (no Claude Code or pi credits).
 - Omit empty sections rather than writing "N/A".
@@ -55,61 +55,60 @@ Follow conventional commit style:
 
 ## Business Impact (required on all Jira tickets)
 
-Every Jira ticket I create or update across all repos under this directory must carry a Business Impact block. This feeds the end-of-year review, so the format is fixed and must stay machine-parseable. The block lives in the ticket description and includes the review taxonomy (scope, estimate basis, work type) as body fields. GitHub PRs do not carry the block; there the taxonomy lives only in labels. On Jira the body fields are the only record (a Jira automation strips custom labels off tickets).
+Every Jira ticket I create or update across all repos under this directory must carry a Business Impact block. This feeds the end-of-year review, so the format is fixed and must stay machine-parseable. The block lives in the ticket description and carries four projected fields: Category, Notes, Scope, Work Type. GitHub PRs do not carry the block; there the taxonomy lives only in labels. Estimated Annual Impact and Estimate Basis are harvest-only: dollar estimates reveal infra spend and efficiency figures, so they never appear on Jira (readable org-wide) and live only in the private harvest store.
 
 ### Canonical record: harvest
 
-Every Business Impact block also gets a structured row in harvest, the local DuckDB + Iceberg database at `~/.harvest/` (repo: `~/projects/personal/harvest`, CLI `harvest`). The rule: **the ticket is the source of truth, harvest is its database, the PR is a projection.** Nothing is written in two places. The canonical sequence (ticket first, always):
+The six impact fields live as a structured row in harvest, the local DuckDB + Iceberg database at `~/.harvest/` (repo: `~/projects/personal/harvest`, CLI `harvest`). The rule: **harvest is the source of truth for all six impact fields; the Jira ticket and the GitHub PR are projections.** Nothing is written in two places. The canonical sequence (ticket first, always):
 
-1. Create the Jira ticket with the Business Impact block, then `harvest record ticket <KEY> ...` (impact flags; missing fields prompt).
+1. `harvest create ticket --summary ... -c ... -i ... -n ... -s ... -e ... -w ...` records the full six-field row locally AND creates the Jira ticket with the four-field projection block. Missing fields prompt. (For a ticket that already exists in Jira, `harvest record ticket <KEY> ...` only updates the harvest row.)
 2. Branch `type/<KEY>-short-desc`, open the draft PR (body: Summary / Key Changes / Test Plan + Jira link; labels only, NO Business Impact block), then `harvest record pr <repo>#<n> --ticket <KEY>` (impact fields inherit from the ticket row).
-3. When an estimate changes: update the ticket block AND the ticket row (`harvest record ticket` again); PR labels only if category/scope changed.
+3. When an estimate changes: update the harvest row (`harvest record ticket <KEY>` with the new flags), then `harvest project <KEY>` if a projected field (Category, Notes, Scope, Work Type) changed. Dollar/basis changes never touch Jira. PR labels only if category/scope changed.
 
-`harvest sync` re-pulls Jira tickets and GitHub PRs; `harvest report --year 2026` gives the review totals. Never put a `## Business Impact` block in a PR body; if one is found on a PR, record it in harvest first, then strip the block (labels stay).
+`harvest project <KEY>` (or `--all`, `--dry-run`) upserts the four-field projection block inside the Jira description: it replaces the block when present, appends it when absent, and never touches other prose. `harvest sync` pulls in the other direction: it ingests lifecycle from Jira (status, resolution, comments) and GitHub (1:n PRs per ticket, state, merged_at, reviews, comments) into the warehouse, and it reports drift (Jira-side manual edits of projected fields; the harvest row always wins). `harvest report --year 2026` gives the review totals, separated into delivered (ticket done, PR merged) and intended (everything recorded). Never put a `## Business Impact` block in a PR body; if one is found on a PR, record it in harvest first, then strip the block (labels stay).
 
 ### Canonical block
 
-Use exactly these fields, in this order, with these field labels. The first three are the core block; the last three carry the review taxonomy (defined under **Review taxonomy** below):
+The harvest row is canonical and holds all six fields. The Jira ticket carries the four-field projection below, in this order, with these field labels (Estimated Annual Impact and Estimate Basis are harvest-only and must never appear on Jira):
 
 ```markdown
 ## Business Impact
 - **Category:** `cost_reduction`, `risk_mitigation`
-- **Estimated Annual Impact:** $120,000
-- **Notes:** Removed duplicate DQ coverage, cutting Soda scan compute (cost) and reducing on-call triage / false-alert risk (risk).
+- **Notes:** Removed duplicate DQ coverage, cutting Soda scan compute and on-call triage / false-alert load.
 - **Scope:** `tribe`
-- **Estimate Basis:** `modeled`
 - **Work Type:** `reliability`
 ```
 
 ### Rules
 
 - **Category** is one or more of: `cost_reduction`, `risk_mitigation`, `increased_revenue`, each wrapped in backticks. Default to a single best-fit category. List multiple (comma-separated, primary driver first) only when the change genuinely delivers on more than one axis (e.g. a migration that both cuts compute cost and removes a data-loss / outage risk); each one listed must be defensible in Notes.
-- **Estimated Annual Impact** is a dollar estimate of annualized business impact, formatted `$` + number with thousands separators (e.g. `$0`, `$12,500`, `$1,200,000`). Use `$0` only for genuinely zero-dollar work (e.g. pure refactors) and explain why in Notes. Never leave it blank or write "N/A" / "TBD".
-- **Notes** is one or two sentences justifying the category (or each, when more than one) and the dollar figure (what drives the number, what assumptions).
+- **Estimated Annual Impact** (harvest-only) is a dollar estimate of annualized business impact, an integer number of USD (e.g. `0`, `12500`, `1200000`). Use `0` only for genuinely zero-dollar work (e.g. pure refactors) and explain why in Notes. Never leave it blank.
+- **Notes** is one or two sentences justifying the category (or each, when more than one). Notes are projected to Jira, so they must NOT restate the dollar figure or the estimate basis; the full justification (what drives the number, what assumptions) lives in harvest.
 - Never use the tilde `~` for "approximately" in the block (or in PR/ticket Markdown generally): GitHub and Jira parse `~text~` as strikethrough, silently striking everything between two tildes. Write "about", "approx", or "roughly" instead.
 - This section is never omitted, even though other sections are omitted when empty.
-- **Scope**, **Estimate Basis**, and **Work Type** are the review-taxonomy fields defined below. Always fill them in (each value in backticks); they are part of the block on every PR and ticket.
+- **Scope** and **Work Type** are the review-taxonomy fields defined below. Always fill them in (each value in backticks); they are part of the projection on every ticket.
 - Always ask me for the category and dollar estimate if you cannot infer them confidently from the change. Do not silently guess a large number.
 
 ### Review taxonomy
 
-The review taxonomy (impact category, scope, estimate basis, work type) is recorded as **GitHub PR labels** in `dimension:value` colon-no-space form (`impact:cost_reduction`, `scope:tribe`, `estimate:modeled`, `work_type:reliability`) on PRs, and as **body fields** in the Jira Business Impact block (`**Category:**`, `**Scope:**`, `**Estimate Basis:**`, `**Work Type:**`), each value in backticks. On GitHub PRs only the labels are present (no body block); on Jira only the body fields survive (the label-stripping automation), so do not apply taxonomy labels there. The org-wide `squad: ` / `tribe: ` labels (with their space) are a separate convention, not part of this taxonomy.
+The review taxonomy (impact category, scope, estimate basis, work type) is recorded as **GitHub PR labels** in `dimension:value` colon-no-space form (`impact:cost_reduction`, `scope:tribe`, `estimate:modeled`, `work_type:reliability`) on PRs, and (except estimate basis, which is harvest-only) as **body fields** in the Jira Business Impact block (`**Category:**`, `**Scope:**`, `**Work Type:**`), each value in backticks. On GitHub PRs only the labels are present (no body block); on Jira only the body fields survive (the label-stripping automation), so do not apply taxonomy labels there. The org-wide `squad: ` / `tribe: ` labels (with their space) are a separate convention, not part of this taxonomy.
 
 - **Category** (`**Category:**` field, required, one or more): `cost_reduction`, `risk_mitigation`, `increased_revenue` (defined above). GitHub label form: `impact:<category>`, one per listed category.
 - **Scope** (`**Scope:**` field, required, exactly one): `squad`, `tribe`, `alliance`, `org`, in increasing order of reach. Blast radius of the change; maps to leveling rubrics (scope of influence), so reviewers weigh it alongside dollars. My current org hierarchy: `org` = HelloFresh (Organization), `alliance` = No Alliance Operations Technology (Alliance), `tribe` = Operations Data and Decisions (Tribe), `squad` = Data Engineering (Squad). Pick the widest level the change actually affects. GitHub label form: `scope:<reach>`.
-- **Estimate Basis** (`**Estimate Basis:**` field, recommended, one): `validated` (confirmed against real billing/metrics), `modeled` (computed from a stated model and assumptions), `speculative` (rough judgment, no model). Protects credibility: a validated figure defends itself, a speculative one is flagged as such. GitHub label form: `estimate:<basis>`.
+- **Estimate Basis** (harvest-only, recommended, one): `validated` (confirmed against real billing/metrics), `modeled` (computed from a stated model and assumptions), `speculative` (rough judgment, no model). Protects credibility: a validated figure defends itself, a speculative one is flagged as such. Never written on Jira. GitHub label form: `estimate:<basis>` (the label stays; it is non-sensitive).
 - **Work Type** (`**Work Type:**` field, recommended, exactly one): `delivery`, `enablement`, `reliability`, `maintenance`. The type of work, orthogonal to dollar impact (which **Category** captures). `delivery` ships a feature, dataset, or pipeline that directly serves a business need; `enablement` is platform/tooling/framework work that unlocks other teams or engineers (the force-multiplier axis leveling rubrics reward, even when its own dollar line is indirect); `reliability` hardens an existing system (DQ, monitoring, incident fixes, resilience); `maintenance` keeps the lights on with no new capability (dependency bumps, refactors, migrations, cleanup). Pick the single best fit. Kept separate from **Category** on purpose: a change can be `cost_reduction` + `enablement` at once. GitHub label form: `work_type:<type>`.
 
-Record one **Category** value per category (usually one, occasionally more), exactly one **Scope**, at most one **Estimate Basis**, and at most one **Work Type** in the body. On GitHub PRs, apply these as labels and create any missing label first (`gh label create "<label>" --description "..." --color <hex>`). When a `speculative` or `modeled` figure is later confirmed, update the Notes with the actual, flip **Estimate Basis** to `validated`, and (on GitHub) flip the `estimate:` label.
+Record one **Category** value per category (usually one, occasionally more), exactly one **Scope**, at most one **Estimate Basis** (harvest row only), and at most one **Work Type**. On GitHub PRs, apply these as labels and create any missing label first (`gh label create "<label>" --description "..." --color <hex>`). When a `speculative` or `modeled` figure is later confirmed, update the harvest row with the actual figure and `validated` basis (`harvest record ticket <KEY> ...`), run `harvest project <KEY>` if Notes changed, and (on GitHub) flip the `estimate:` label.
 
 ### Keep it parseable
 
 The year-end review harvests these blocks programmatically (the tooling is harvest, repo `~/projects/personal/harvest`; the store is `~/.harvest/`). All that matters on the authoring side is that the block stays machine-readable:
 
 - Keep the heading text exactly `## Business Impact`.
-- Keep the field labels exactly `**Category:**`, `**Estimated Annual Impact:**`, `**Notes:**`, `**Scope:**`, `**Estimate Basis:**`, `**Work Type:**`.
+- Keep the projected field labels exactly `**Category:**`, `**Notes:**`, `**Scope:**`, `**Work Type:**`.
 - One field per line, in the fixed order above.
 - Wrap every taxonomy value in backticks.
+- Never add `**Estimated Annual Impact:**` or `**Estimate Basis:**` lines on Jira; harvest strips them on the next `harvest project` run.
 
 ## Commits
 

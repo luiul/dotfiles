@@ -118,7 +118,6 @@ Custom slash commands live in `pi/.pi/agent/prompts/` (pi prompt templates, syml
 
 - `/proofread <message> [--context <text>] [--scratch] [--no-copy]` (pi only): proofreads and polishes a message in ASD-STE100 style and copies the final version to the clipboard. `--context`/`-c` marks everything after it as context only (e.g. a pasted Slack thread), never rewritten. `--no-copy`/`-n` skips the clipboard step. `--scratch`/`-s` also saves the full review to `~/scratch/`. Flags combine freely and work as trailing tokens: `/proofread lgtm, ship it --context <thread> -s`.
 - `/scratch <what to write>` (pi and Claude Code): writes text output to `~/scratch/<descriptive-name>.md`, prints the absolute path, and shows the content in chat. Example: `/scratch write a short summary of the incident timeline`.
-- `/vscode [new]` (pi only): opens the current project in VS Code and copies a `pi --session` resume command to the clipboard so the session can continue in a VS Code terminal. `new` forces a new window.
 
 Scratch files are opt-in everywhere (see the "Scratch Files" section in `pi/.pi/agent/AGENTS.md`): no tool writes to `~/scratch/` unless a command flag above says so, or the prompt contains the `scratch:` trigger.
 

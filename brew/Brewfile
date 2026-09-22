@@ -67,8 +67,6 @@ brew "opentofu"
 brew "podman-compose"
 # PDF rendering library (based on the xpdf-3.0 code base)
 brew "poppler"
-# Rsync for cloud storage
-brew "rclone"
 # Utility that provides fast incremental file transfer
 brew "rsync"
 # CLI proxy to minimize LLM token consumption

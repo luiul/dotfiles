@@ -1,0 +1,10 @@
+# Files in this package that stow must NOT symlink into $HOME.
+# settings.json and mcp.json are tracked snapshots, not stowed: pi rewrites
+# both at runtime (changelog version on startup, MCP server installs), which
+# would clobber a symlink. The live files are the source of truth.
+# Refresh the snapshots with:
+#   cp ~/.pi/agent/settings.json pi/.pi/agent/settings.json
+#   cp ~/.pi/agent/mcp.json pi/.pi/agent/mcp.json
+settings.json
+mcp.json
+\.stow-local-ignore

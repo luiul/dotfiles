@@ -28,9 +28,31 @@
     },
     "slack": {
       "command": "slack-mcp-server-hf",
-      "args": ["--transport", "stdio", "-no-cache", "-enabled-tools", "conversations_history,conversations_replies,conversations_search_messages,channels_list"],
+      "args": [
+        "--transport",
+        "stdio",
+        "-no-cache",
+        "-enabled-tools",
+        "conversations_history,conversations_replies,conversations_search_messages,channels_list"
+      ],
       "lifecycle": "lazy",
       "directTools": true
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest",
+        "--browser",
+        "chrome",
+        "--user-data-dir",
+        "/Users/luis.aceituno/.pi/agent/data/playwright-chrome"
+      ],
+      "lifecycle": "lazy",
+      "directTools": true
+    },
+    "local-mcp": {
+      "url": "http://localhost:3939/mcp"
     }
   }
 }

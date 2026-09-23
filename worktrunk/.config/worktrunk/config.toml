@@ -99,6 +99,12 @@ case "{{ branch }}" in
   main|master|live) echo "refusing to remove protected branch: {{ branch }}" >&2; exit 1 ;;
 esac
 '''
+# wt remove deletes <owner>/<branch>/<repo> but leaves the empty <branch> parent dir behind
+# (e.g. ~/worktrees/hellofresh/fix-thing/). Prune it. rmdir only removes EMPTY dirs, so a
+# branch dir that still holds another repo's worktree is left alone; the error is swallowed
+# (macOS rmdir has no --ignore-fail-on-non-empty).
+[post-remove]
+prune-empty-branch-dir = 'rmdir "{{ worktree_path | dirname }}" 2>/dev/null || true'
 # tardis-community: many independent dbt projects live under pipelines/<tribe>/<squad>/dbt.
 # `wt step copy-ignored` (above) already reflinks each project's gitignored dbt_packages/ from
 # the base worktree, so this only self-heals the rare case where that cache is still missing

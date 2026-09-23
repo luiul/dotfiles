@@ -2,7 +2,17 @@ import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSyn
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { isToolCallEventType, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { createBaselineState, DEFAULT_WARMUP_COUNT, updateBaseline, type BaselineState } from "./baseline.ts";
+import {
+	createBaselineState,
+	DEFAULT_DEGRADE_ABS,
+	DEFAULT_DEGRADE_RATIO,
+	DEFAULT_DEGRADING_ALPHA,
+	DEFAULT_MAX_INTERVENTIONS,
+	DEFAULT_STREAK_THRESHOLD,
+	DEFAULT_WARMUP_COUNT,
+	updateBaseline,
+	type BaselineState,
+} from "./baseline.ts";
 import {
 	createCandidateStore,
 	pruneCandidates,
@@ -26,8 +36,13 @@ import { autofix, countWords, extractProseSpans, scoreText, stripMarkdownCode, t
 // It is lazy by design: it never enforces a fixed absolute writing bar.
 // Instead it tracks a rolling per-session baseline (see baseline.ts) and
 // only acts once quality *degrades* relative to this session's own recent
-// output, for two consecutive samples. A session that starts wordy and
-// stays wordy is left alone; a session that starts clean and drifts is not.
+// output, for a configurable streak (default three consecutive samples).
+// Three limiters keep nudges rare: a per-session intervention cap
+// (default 3 per channel), a cooldown that blocks further nudges until a
+// clean sample re-arms the detector, and slow upward baseline adaptation
+// on degrading samples, so a session that starts wordy settles at its own
+// level instead of being nudged forever. All thresholds live in
+// config.json (see SteLiteConfig) and apply live, no reload needed.
 //
 // It is token efficient: no rule card is ever injected repeatedly. The
 // only injected text is a short (~40 word) one-shot reminder, fired at
@@ -64,6 +79,13 @@ interface SteLiteConfig {
 	enabled: boolean;
 	mode: Mode;
 	scope: { replies: boolean; edits: boolean };
+	warmupCount: number;
+	degradeRatio: number;
+	degradeAbs: number;
+	streakThreshold: number;
+	degradingAlpha: number;
+	cooldown: boolean;
+	maxInterventions: number;
 }
 
 const AGENT_DIR = join(homedir(), ".pi", "agent");
@@ -83,6 +105,13 @@ const DEFAULT_CONFIG: SteLiteConfig = Object.freeze({
 	enabled: true,
 	mode: "observe",
 	scope: { replies: true, edits: true },
+	warmupCount: DEFAULT_WARMUP_COUNT,
+	degradeRatio: DEFAULT_DEGRADE_RATIO,
+	degradeAbs: DEFAULT_DEGRADE_ABS,
+	streakThreshold: DEFAULT_STREAK_THRESHOLD,
+	degradingAlpha: DEFAULT_DEGRADING_ALPHA,
+	cooldown: true,
+	maxInterventions: DEFAULT_MAX_INTERVENTIONS,
 });
 
 function isEnvDisabled(): boolean {
@@ -122,17 +151,46 @@ function writeJson(path: string, value: unknown): void {
 
 function readConfig(): SteLiteConfig {
 	const parsed = readJson<Partial<SteLiteConfig>>(CONFIG_PATH, {});
+	const numberOrDefault = (value: unknown, fallback: number, minimum = 0): number =>
+		typeof value === "number" && Number.isFinite(value) && value >= minimum ? value : fallback;
 	const config: SteLiteConfig = {
 		enabled: parsed.enabled ?? DEFAULT_CONFIG.enabled,
-		mode: (parsed.mode as Mode) ?? DEFAULT_CONFIG.mode,
+		mode: parsed.mode === "observe" || parsed.mode === "nudge" || parsed.mode === "strict" ? parsed.mode : DEFAULT_CONFIG.mode,
 		scope: { ...DEFAULT_CONFIG.scope, ...parsed.scope },
+		warmupCount: Math.floor(numberOrDefault(parsed.warmupCount, DEFAULT_CONFIG.warmupCount, 1)),
+		degradeRatio: numberOrDefault(parsed.degradeRatio, DEFAULT_CONFIG.degradeRatio, 1),
+		degradeAbs: numberOrDefault(parsed.degradeAbs, DEFAULT_CONFIG.degradeAbs),
+		streakThreshold: Math.floor(numberOrDefault(parsed.streakThreshold, DEFAULT_CONFIG.streakThreshold, 1)),
+		degradingAlpha: numberOrDefault(parsed.degradingAlpha, DEFAULT_CONFIG.degradingAlpha),
+		cooldown: parsed.cooldown ?? DEFAULT_CONFIG.cooldown,
+		maxInterventions: Math.floor(numberOrDefault(parsed.maxInterventions, DEFAULT_CONFIG.maxInterventions)),
 	};
-	if (!existsSync(CONFIG_PATH)) writeJson(CONFIG_PATH, config);
+	const hasCalibrationFields =
+		parsed.warmupCount !== undefined ||
+		parsed.degradeRatio !== undefined ||
+		parsed.degradeAbs !== undefined ||
+		parsed.streakThreshold !== undefined ||
+		parsed.degradingAlpha !== undefined ||
+		parsed.cooldown !== undefined ||
+		parsed.maxInterventions !== undefined;
+	if (!existsSync(CONFIG_PATH) || !hasCalibrationFields) writeJson(CONFIG_PATH, config);
 	return config;
 }
 
 function writeConfig(config: SteLiteConfig): void {
 	writeJson(CONFIG_PATH, config);
+}
+
+function baselineOptions(config: SteLiteConfig) {
+	return {
+		warmupCount: config.warmupCount,
+		degradeRatio: config.degradeRatio,
+		degradeAbs: config.degradeAbs,
+		streakThreshold: config.streakThreshold,
+		degradingAlpha: config.degradingAlpha,
+		cooldown: config.cooldown,
+		maxInterventions: config.maxInterventions,
+	};
 }
 
 function loadHistory(): HistoryState {
@@ -268,11 +326,12 @@ let repliesCleanCount = 0;
 let editsCleanSum = 0;
 let editsCleanCount = 0;
 let observationsSinceFlush = 0;
+let sessionId = "unknown";
 
-function resetSessionState(): void {
+function resetSessionState(config = readConfig()): void {
 	const history = loadHistory();
-	repliesState = seedBaselineFromHistory(history.replies, DEFAULT_WARMUP_COUNT);
-	editsState = seedBaselineFromHistory(history.edits, DEFAULT_WARMUP_COUNT);
+	repliesState = seedBaselineFromHistory(history.replies, config.warmupCount);
+	editsState = seedBaselineFromHistory(history.edits, config.warmupCount);
 	pendingReminder = null;
 	candidateStore = loadCandidates();
 	repliesCleanSum = 0;
@@ -315,7 +374,8 @@ function maybeFlush(): void {
 }
 
 export default function (pi: ExtensionAPI) {
-	pi.on("session_start", () => {
+	pi.on("session_start", (_event, ctx) => {
+		sessionId = ctx.sessionManager.getSessionId();
 		resetSessionState();
 	});
 
@@ -341,7 +401,7 @@ export default function (pi: ExtensionAPI) {
 
 			const dictionary = effectiveDictionary();
 			const { score, findings } = scoreText(prose, dictionary);
-			const update = updateBaseline(repliesState, score);
+			const update = updateBaseline(repliesState, score, baselineOptions(config));
 			repliesState = update.state;
 
 			repliesCleanSum += update.degrading ? 0 : score;
@@ -351,8 +411,11 @@ export default function (pi: ExtensionAPI) {
 
 			logObservation({
 				channel: "reply",
+				sessionId,
 				mode: config.mode,
 				score: Math.round(score * 100) / 100,
+				baseline: update.baseline === null ? null : Math.round(update.baseline * 100) / 100,
+				findingRules: topFindingRules(findings),
 				wordCount: countWords(prose),
 				findingCount: findings.length,
 				degrading: update.degrading,
@@ -369,7 +432,7 @@ export default function (pi: ExtensionAPI) {
 				logObservation({ channel: "reply", action: "autofix", changes: fixResult.changes });
 
 				const refixed = scoreText(extractReplyProse(fixResult.content), dictionary);
-				const stillDegrading = updateBaseline(update.state, refixed.score).degrading;
+				const stillDegrading = updateBaseline(update.state, refixed.score, baselineOptions(config)).degrading;
 				if (stillDegrading) {
 					pendingReminder = buildReminder(refixed.findings);
 				}
@@ -425,7 +488,7 @@ export default function (pi: ExtensionAPI) {
 
 			const dictionary = effectiveDictionary();
 			const { score, findings } = scoreText(prose, dictionary);
-			const update = updateBaseline(editsState, score);
+			const update = updateBaseline(editsState, score, baselineOptions(config));
 			editsState = update.state;
 
 			editsCleanSum += update.degrading ? 0 : score;
@@ -435,9 +498,12 @@ export default function (pi: ExtensionAPI) {
 
 			logObservation({
 				channel: "edit",
+				sessionId,
 				path,
 				mode: config.mode,
 				score: Math.round(score * 100) / 100,
+				baseline: update.baseline === null ? null : Math.round(update.baseline * 100) / 100,
+				findingRules: topFindingRules(findings),
 				findingCount: findings.length,
 				degrading: update.degrading,
 				shouldIntervene: update.shouldIntervene,

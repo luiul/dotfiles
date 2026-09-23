@@ -32,7 +32,7 @@ describe("mergeChannelHistory", () => {
 describe("seedBaselineFromHistory", () => {
 	it("falls back to a cold start when there is no history yet", () => {
 		const seeded = seedBaselineFromHistory(createChannelHistory(), 4);
-		expect(seeded).toEqual({ samples: [], ewma: null, streak: 0, armed: false });
+		expect(seeded).toEqual({ samples: [], ewma: null, streak: 0, armed: false, interventionCount: 0 });
 	});
 
 	it("pre-fills all but one warmup slot from the historical mean", () => {

@@ -64,9 +64,9 @@ export function mergeChannelHistory(history: ChannelHistory, sessionMean: number
  * start. */
 export function seedBaselineFromHistory(history: ChannelHistory, warmupCount: number): BaselineState {
 	if (history.count <= 0 || warmupCount <= 0) {
-		return { samples: [], ewma: null, streak: 0, armed: false };
+		return { samples: [], ewma: null, streak: 0, armed: false, interventionCount: 0 };
 	}
 	const seedSamples = Math.max(0, warmupCount - 1);
 	const samples = Array.from({ length: seedSamples }, () => history.mean);
-	return { samples, ewma: samples.length > 0 ? history.mean : null, streak: 0, armed: false };
+	return { samples, ewma: samples.length > 0 ? history.mean : null, streak: 0, armed: false, interventionCount: 0 };
 }

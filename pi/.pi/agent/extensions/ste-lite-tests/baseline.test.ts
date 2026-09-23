@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createBaselineState, DEFAULT_STREAK_THRESHOLD, DEFAULT_WARMUP_COUNT, updateBaseline } from "../ste-lite/baseline";
+import {
+	createBaselineState,
+	DEFAULT_DEGRADING_ALPHA,
+	DEFAULT_STREAK_THRESHOLD,
+	DEFAULT_WARMUP_COUNT,
+	updateBaseline,
+} from "../ste-lite/baseline";
 
 describe("baseline warmup", () => {
 	it("never intervenes during warmup regardless of score", () => {
@@ -42,21 +48,50 @@ describe("baseline degrade detection", () => {
 		expect(state.armed).toBe(true);
 	});
 
-	it("does not drift the baseline upward on degrading samples", () => {
+	it("adapts upward slowly on degrading samples without immediately normalizing them", () => {
 		let state = warmup(2);
-		const before = state.ewma;
-		state = updateBaseline(state, 30).state;
-		state = updateBaseline(state, 30).state;
-		expect(state.ewma).toBeCloseTo(before ?? 0);
+		const before = state.ewma ?? 0;
+		const update = updateBaseline(state, 30);
+		state = update.state;
+		expect(update.degrading).toBe(true);
+		expect(state.ewma).toBeGreaterThan(before);
+		expect(state.ewma).toBeCloseTo(before + DEFAULT_DEGRADING_ALPHA * (30 - before));
 	});
 
-	it("resets the streak and reports recovery after a clean sample following an armed streak", () => {
+	it("re-arms only after a clean sample and caps interventions per session", () => {
 		let state = warmup(2);
-		state = updateBaseline(state, 20).state;
-		state = updateBaseline(state, 20).state;
+		let update = updateBaseline(state, 20, { maxInterventions: 2, streakThreshold: 2 });
+		state = update.state;
+		update = updateBaseline(state, 20, { maxInterventions: 2, streakThreshold: 2 });
+		state = update.state;
+		expect(update.shouldIntervene).toBe(true);
+		update = updateBaseline(state, 20, { maxInterventions: 2, streakThreshold: 2 });
+		state = update.state;
+		expect(update.shouldIntervene).toBe(false);
+		update = updateBaseline(state, 2, { maxInterventions: 2, streakThreshold: 2 });
+		state = update.state;
+		expect(update.recovered).toBe(true);
+		update = updateBaseline(state, 20, { maxInterventions: 2, streakThreshold: 2 });
+		state = update.state;
+		update = updateBaseline(state, 20, { maxInterventions: 2, streakThreshold: 2 });
+		state = update.state;
+		expect(update.shouldIntervene).toBe(true);
+		update = updateBaseline(state, 2, { maxInterventions: 2, streakThreshold: 2 });
+		state = update.state;
+		update = updateBaseline(state, 20, { maxInterventions: 2, streakThreshold: 2 });
+		state = update.state;
+		update = updateBaseline(state, 20, { maxInterventions: 2, streakThreshold: 2 });
+		expect(update.shouldIntervene).toBe(false);
+		expect(update.state.interventionCount).toBe(2);
+	});
+
+	it("resets the streak and reports recovery after an armed streak", () => {
+		let state = warmup(2);
+		state = updateBaseline(state, 20, { streakThreshold: 2 }).state;
+		state = updateBaseline(state, 20, { streakThreshold: 2 }).state;
 		expect(state.armed).toBe(true);
 
-		const recovery = updateBaseline(state, 2);
+		const recovery = updateBaseline(state, 2, { streakThreshold: 2 });
 		expect(recovery.recovered).toBe(true);
 		expect(recovery.state.armed).toBe(false);
 		expect(recovery.state.streak).toBe(0);

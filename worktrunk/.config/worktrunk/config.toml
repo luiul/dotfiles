@@ -17,6 +17,14 @@
 # for remote-less repos and the template fails to expand there. `default('local')` buckets
 # those under ~/worktrees/local/ instead (today only ~/projects/hellofresh/research and
 # ~/projects/personal/sandbox). Repos with a remote are unaffected.
+# Invariant the whole toolchain (wt, coppice, understory) depends on: the branch->path
+# mapping is computed ONCE at creation by this template, with `sanitize` (lossy on
+# purpose: pretty dir names; the rare collision, e.g. feature/foo vs feature-foo, fails
+# loudly in `wt switch` and is resolved interactively by coppice's occupied-path remedy).
+# Afterwards identity is always (repo, branch), read back from git's worktree metadata
+# (`wt list --format json`); nothing may parse a path to recover a branch. Drift between
+# an existing path and this template (template edit, manual `git switch` inside a
+# worktree) is what `wt step relocate` / `cop relocate` heals.
 worktree-path = "~/worktrees/{{ owner | default('local') }}/{{ branch | sanitize }}/{{ repo }}"
 
 # Keep the default branch fresh before it becomes the base of a new worktree/branch -- the same

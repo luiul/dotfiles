@@ -19,6 +19,27 @@ scripts/test-pi-notifications.sh
 
 The script runs an interactive pi in a detached tmux session with a 2s long-run threshold and asserts a real notification lands in `claude-notifier logs`.
 
+## RTK command rewriting and bash output cap
+
+`rtk.ts` rewrites bash tool commands to their `rtk` equivalents for token savings. The base file is the rtk-shipped pi extension (`rtk init -g --agent pi` regenerates it). All rewrite rules live in the rtk binary: `rtk rewrite` is the single source of truth, the extension only delegates.
+
+Local additions on top of the shipped file (also listed in the file header; re-apply after any rtk sync):
+
+1. Env-prefix-aware rtk detection: `FOO=1 rtk ls` is not re-probed. Idea from [pi-rtk-optimizer](https://github.com/MasuRii/pi-rtk-optimizer).
+2. Availability caching: a missing rtk pauses probing for 30s instead of paying a dead exec per bash call, and the extension self-heals when rtk returns (no pi restart). A too-old rtk (< 0.23.0) still disables it.
+3. Exit code 2 (rtk denied) surfaces a one-time console warning.
+4. Tail-risk cap on bash output: results over 40k chars keep head 24k + tail 12k with an explicit marker. Added after measuring 14 days of sessions: rtk outputs averaged 150 tokens, but one `rtk grep` returned 46k tokens in a single call. It fires a handful of times per month; pi's own 50KB cap stays the outer bound, and read/grep results stay exact.
+
+Why not pi-rtk-optimizer as a whole: it reroutes rtk's stats DB to a temp dir (breaks `rtk gain`), lags pi version support, and its output compaction mostly no-ops on rtk-rewritten commands. Re-evaluation triggers and the adoption checklist live in [issue #22](https://github.com/luiul/dotfiles/issues/22).
+
+Verification from the repository root:
+
+```sh
+bun scripts/test-rtk-extension.ts
+```
+
+The script drives the real extension with a stubbed ExtensionAPI: rewrite contract, env-prefix detection, `RTK_DISABLED=1`, exit-2 warn-once, timeout-vs-missing handling, 30s re-probe and self-heal, too-old disable, and the bash output cap. A live check additionally runs `pi --no-extensions -e ~/.pi/agent/extensions/rtk.ts --thinking off -p '<prompt that runs a bash command>'` and confirms the rewritten command lands in `rtk gain`.
+
 ## Bedrock pricing overrides
 
 `pi/.pi/agent/models.json` contains official Bedrock pricing overrides for 54 currently enabled model IDs whose family rates were verified against AWS sources. Route and regional differences are preserved where represented by the installed pi catalog. Configured IDs without verified official pricing are intentionally absent and render as unknown rather than free. Pi reads these natively for its built-in cost display; no extension is involved. The same file also defines the `ai-model-router` provider, so do not delete it.

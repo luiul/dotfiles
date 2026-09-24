@@ -19,26 +19,9 @@ scripts/test-pi-notifications.sh
 
 The script runs an interactive pi in a detached tmux session with a 2s long-run threshold and asserts a real notification lands in `claude-notifier logs`.
 
-## Model scores companion
+## Bedrock pricing overrides
 
-`model-scores/index.ts` is the additive `/model-scores` companion picker for issue #9. It leaves pi's native `/model` and Ctrl+P picker untouched.
-
-The picker reads the current session scope, or the available authenticated model registry when the session is unscoped. It groups Bedrock route duplicates by canonical model ID, keeps exact provider and model identities for selection, displays route and invocation region separately, prefers the current `AWS_REGION`, and shows pi's all zero cost metadata as unknown. It writes a versioned runtime cache only under `~/.pi/agent/data/model-scores.json`, never into this stow package.
-
-The cache uses schema version 1, exact `provider + modelId` keys, nullable unknown values, explicit readiness and freshness states, source status, a two second process lock, restrictive permissions, atomic replacement, and last known good cost preservation. `/model-scores sync` reconciles the current inventory and records a local snapshot without network access. `--provider=name` and `--region=name` filter the picker.
-
-After selecting a model family, the detail view lets the user select an exact route. Successful selection calls `pi.setModel()` with that exact model object and reapplies a pinned thinking level with `pi.setThinkingLevel()`. A rejected `setModel()` keeps the selector open and informs the user.
-
-`pi/.pi/agent/models.json` contains official Bedrock pricing overrides for 54 currently enabled model IDs whose family rates were verified against AWS sources. Route and regional differences are preserved where represented by the installed pi catalog. Configured IDs without verified official pricing are intentionally absent and render as unknown rather than free.
-
-Verification from the repository root:
-
-```sh
-bunx vitest run pi/.pi/agent/extensions/model-scores-tests/model-scores-core.test.ts pi/.pi/agent/extensions/model-scores-tests/model-scores-cache.test.ts
-pi --no-session --no-extensions -e pi/.pi/agent/extensions/model-scores/index.ts -p 'Reply with exactly OK.'
-```
-
-The print mode check verifies that the extension loads without opening the interactive picker. Use `/model-scores` from an interactive pi session to exercise the selector.
+`pi/.pi/agent/models.json` contains official Bedrock pricing overrides for 54 currently enabled model IDs whose family rates were verified against AWS sources. Route and regional differences are preserved where represented by the installed pi catalog. Configured IDs without verified official pricing are intentionally absent and render as unknown rather than free. Pi reads these natively for its built-in cost display; no extension is involved. The same file also defines the `ai-model-router` provider, so do not delete it.
 
 
 ## ste-lite (lazy Simplified Technical English guard)
@@ -71,7 +54,7 @@ Both persist incrementally (every 15 scored samples) and on `session_shutdown`, 
 
 ### Known limitation: cross-process races
 
-All of `config.json`, `history.json`, `candidates.json`, and `custom-dictionary.json` are read-modify-write with no lock across processes. Two pi processes flushing at the same moment (plausible: this extension is installed globally, so every concurrently running pi session on the machine shares the same files) can race, and the second write wins — the first process's contribution for that flush is silently lost, not corrupted. This is a real but bounded risk: at most one flush interval (15 observations, or one session) of learning per collision, never data corruption, and the next flush from either process recovers normal accumulation. `model-scores/cache.ts` in this same repo already has the fix pattern (`withCacheLock`, a directory-based mutex with a timeout) that ste-lite does not yet use; see Next Steps below.
+All of `config.json`, `history.json`, `candidates.json`, and `custom-dictionary.json` are read-modify-write with no lock across processes. Two pi processes flushing at the same moment (plausible: this extension is installed globally, so every concurrently running pi session on the machine shares the same files) can race, and the second write wins — the first process's contribution for that flush is silently lost, not corrupted. This is a real but bounded risk: at most one flush interval (15 observations, or one session) of learning per collision, never data corruption, and the next flush from either process recovers normal accumulation. The known fix pattern is a directory-based mutex with a timeout around the read-modify-write; see Next Steps below.
 
 ### Modes and safety
 
@@ -98,7 +81,7 @@ The current replay evidence supports the new defaults. Across the captured obser
 
 ### Next steps
 
-1. **Cross-process locking.** Port `model-scores/cache.ts`'s `withCacheLock` (directory-based mutex, timeout-bounded) to ste-lite's `writeJson`/`readJson` so concurrent pi sessions on the same machine stop racing on `history.json`/`candidates.json`/`custom-dictionary.json`. Not urgent (bounded data loss, never corruption), but cheap to fix given the pattern already exists in this repo.
+1. **Cross-process locking.** Add a directory-based mutex with a timeout around ste-lite's `writeJson`/`readJson` so concurrent pi sessions on the same machine stop racing on `history.json`/`candidates.json`/`custom-dictionary.json`. Not urgent (bounded data loss, never corruption), and cheap to implement.
 2. **Run the calibrated defaults in `nudge` mode** for two weeks. Review the new session IDs, baselines, finding rules, and intervention counts. Target 5 to 10 percent of scored replies nudging, with no more than three interventions per channel per session.
 3. **Review `/ste-lite candidates` periodically** and promote genuinely recurring offenders with `/ste-lite promote`. This is the only way the approved-word list grows. It will not happen on its own, by design.
 4. **Decide on `strict` mode** only after `nudge` has run cleanly for a while. It can block a `write` or `edit` on unambiguous not-approved-word findings, including anything promoted via step 3.

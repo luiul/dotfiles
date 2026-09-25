@@ -19,8 +19,6 @@ clipboard-trim-trailing-spaces = true
 
 # Keybindings
 keybind = global:control+command+shift+option+r=toggle_quick_terminal
-# Cmd+I: ask pi about commands (sends ^G, bound to pi-ask-widget in zsh)
-keybind = cmd+i=text:\x07
 
 # Padding
 window-padding-x = 8

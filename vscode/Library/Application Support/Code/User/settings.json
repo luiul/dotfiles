@@ -404,7 +404,11 @@
     // === Extensions/Tools ===
     "docker.extension.enableComposeLanguageServer": false,
     "parquet-viewer.format": "csv",
-    "chat.mcp.autostart": "newAndOutdated",
+    // Never eagerly start MCP servers when chat opens. The Pylance-contributed
+    // MCP server otherwise blocks up to ~3 minutes waiting on its language
+    // server, which hangs terminal inline chat (Cmd+I) on "Starting MCP
+    // servers...". With "never", servers start lazily when a tool is invoked.
+    "chat.mcp.autostart": "never",
     "aws.cloudformation.telemetry.enabled": false,
     "aws.telemetry": false,
     "git.blame.statusBarItem.enabled": true,

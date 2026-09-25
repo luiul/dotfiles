@@ -4,15 +4,13 @@
 # machine).
 #
 # Branch as the PARENT segment and repo as the LEAF (not the more obvious owner/repo/branch) is
-# deliberate: pi's memory/skill system (pi-hermes-memory) detects "project" as nothing more than
-# path.basename(cwd) at session start, with no override hook. A worktree path ending in the
-# branch name (…/tardis-community/fix-thing) would make every worktree its own disconnected
-# memory/skill bucket named after the branch, fragmenting everything already recorded under the
-# main checkout's bucket (named after the repo). Ending in the repo name instead
-# (…/fix-thing/tardis-community) makes every worktree of a repo resolve to the SAME project
-# bucket as the main checkout, so memory/skills stay unified across the whole repo regardless of
-# which branch/worktree pi was launched from. VS Code's title bar (below) carries the branch
-# distinction instead, since the folder name no longer does.
+# deliberate: it keeps the paths human-readable and makes the repo name the final directory
+# component. Current pi-hermes-memory resolves project memory inside Git from the basename of
+# the repository root. For a linked worktree it follows the worktree's `.git` pointer and
+# `commondir` back to the main checkout, so all linked worktrees share the main repo bucket
+# regardless of where the worktree lives on disk. Outside Git, it falls back to basename(cwd),
+# so the repo-as-leaf layout keeps that fallback consistent too. VS Code's title bar (below)
+# carries the branch distinction, since the folder name no longer does.
 # `owner` comes from the repo's remote URL (github.com/<owner>/<repo>), so it is UNDEFINED
 # for remote-less repos and the template fails to expand there. `default('local')` buckets
 # those under ~/worktrees/local/ instead (today only ~/projects/hellofresh/research and

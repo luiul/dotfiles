@@ -50,10 +50,6 @@
       ],
       "lifecycle": "lazy",
       "directTools": true
-    },
-    "local-mcp": {
-      "url": "http://localhost:3939/mcp",
-      "lifecycle": "lazy"
     }
   }
 }

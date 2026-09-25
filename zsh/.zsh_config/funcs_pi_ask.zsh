@@ -70,13 +70,40 @@ pi-ask-widget() {
 
 	local original=$BUFFER
 
+	# Suspend zsh-syntax-highlighting and zsh-autocomplete while the nested
+	# editor is open: their region highlights and completion menus corrupt
+	# the redraw of the printed question and answer.
+	local -a suspended=()
+	if (( $+functions[_zsh_highlight__zle-line-pre-redraw] )); then
+		add-zle-hook-widget -d zle-line-pre-redraw _zsh_highlight__zle-line-pre-redraw 2>/dev/null
+		add-zle-hook-widget -d zle-line-finish _zsh_highlight__zle-line-finish 2>/dev/null
+		suspended+=(highlight)
+	fi
+	region_highlight=()
+	if (( $+functions[.autocomplete:async:complete] )); then
+		add-zle-hook-widget -d line-pre-redraw .autocomplete:async:complete 2>/dev/null
+		suspended+=(autocomplete)
+	fi
+
 	# Nested line editor = the "Ask about commands" input box.
 	# Prefilled with the current buffer; Enter submits, Ctrl+C cancels.
+	zle -I
 	[[ -z ${original//[[:space:]]/} ]] && print -P '%F{245}ask about commands (Enter to ask, Ctrl+C to cancel):%f'
-	_PI_ASK_NESTED=1
-	zle recursive-edit
-	local rc=$?
-	_PI_ASK_NESTED=''
+	local rc
+	{
+		_PI_ASK_NESTED=1
+		zle recursive-edit
+		rc=$?
+	} always {
+		_PI_ASK_NESTED=''
+		if (( ${suspended[(I)highlight]} )); then
+			add-zle-hook-widget zle-line-pre-redraw _zsh_highlight__zle-line-pre-redraw 2>/dev/null
+			add-zle-hook-widget zle-line-finish _zsh_highlight__zle-line-finish 2>/dev/null
+		fi
+		if (( ${suspended[(I)autocomplete]} )); then
+			add-zle-hook-widget line-pre-redraw .autocomplete:async:complete 2>/dev/null
+		fi
+	}
 
 	local question=$BUFFER
 	if [[ $rc -ne 0 || -z ${question//[[:space:]]/} ]]; then
@@ -85,6 +112,11 @@ pi-ask-widget() {
 		zle redisplay
 		return 1
 	fi
+
+	# Reset the display to a known geometry before printing. Without this,
+	# a question that wrapped across rows in the nested editor leaves stray
+	# fragments on screen (zle redraws against stale row counts).
+	zle clear-screen
 
 	local tmpfile=${TMPDIR:-/tmp}/pi-ask.$$.out
 	_pi_ask_fetch_spinner "$question" "$tmpfile"
@@ -102,7 +134,6 @@ pi-ask-widget() {
 	fi
 
 	_pi_ask_split "$answer"
-	zle -I
 	print -Pn '%F{245}?%f '
 	print -r -- "$question"
 	print -r -- "$_PI_ASK_REST"

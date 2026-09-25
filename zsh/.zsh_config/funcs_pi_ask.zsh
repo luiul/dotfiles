@@ -1,7 +1,7 @@
 # Ask pi about shell commands, mimicking VS Code's terminal Cmd+I.
 # Ghostty maps Cmd+I to ^G (0x07), bound to pi-ask-widget below.
 # Flow: type or accept a question -> pi + ai-model-router/gpt-5.6-luna answers
-# -> answer is printed, the top command lands on the command line.
+# -> the suggestion is printed, then you pick: run it, insert it, or close.
 # Also available as a plain command: ask <question>
 
 : ${PI_ASK_MODEL:=ai-model-router/gpt-5.6-luna}
@@ -113,11 +113,6 @@ pi-ask-widget() {
 		return 1
 	fi
 
-	# Reset the display to a known geometry before printing. Without this,
-	# a question that wrapped across rows in the nested editor leaves stray
-	# fragments on screen (zle redraws against stale row counts).
-	zle clear-screen
-
 	local tmpfile=${TMPDIR:-/tmp}/pi-ask.$$.out
 	_pi_ask_fetch_spinner "$question" "$tmpfile"
 
@@ -138,9 +133,29 @@ pi-ask-widget() {
 	print -r -- "$question"
 	print -r -- "$_PI_ASK_REST"
 	print
-	BUFFER=$_PI_ASK_CMD
-	CURSOR=${#BUFFER}
-	zle redisplay
+
+	# VS Code-style chooser: show the suggestion, then let the user pick.
+	print -Pn '%F{245}⏎ run first · i insert first · esc close%f '
+	local key=''
+	read -k1 -s key
+	print -P '\r\033[K'
+	case $key in
+		($'\r'|$'\n')
+			BUFFER=$_PI_ASK_CMD
+			CURSOR=${#BUFFER}
+			zle accept-line
+			;;
+		(i|I)
+			BUFFER=$_PI_ASK_CMD
+			CURSOR=${#BUFFER}
+			zle redisplay
+			;;
+		(*)
+			BUFFER=$original
+			CURSOR=${#BUFFER}
+			zle redisplay
+			;;
+	esac
 }
 
 zle -N pi-ask-widget

@@ -60,6 +60,13 @@
 - Skills live in `~/pi-skills` (a git repo with a GitHub remote), symlinked into `~/.pi/agent/skills` and `~/.pi/agent/pi-hermes-memory/skills`. Not stowed in dotfiles.
 - After creating or patching a skill with `skill_manage`, commit and push `~/pi-skills` before ending the session. Conventional commits, direct to `main`.
 
+## Worktrees
+
+- Worktree lifecycle is owned by [worktrunk](https://worktrunk.dev) (`wt`), configured in `~/dotfiles/worktrunk/.config/worktrunk/config.toml`.
+- To create or switch a worktree as an agent: `WORKTRUNK_AGENT=1 wt switch --create <branch> --no-cd --yes --format json`
+- The env var skips only the VS Code window. All setup hooks still run (venv symlink, copy-ignored, known-repos registry, AGENTS.md links), so the worktree stays a normal registered worktree visible in `cop list` and understory.
+- Never use `cop new` (human facing, opens VS Code) or raw `git worktree add` (skips hooks and registry).
+
 ## HelloFresh Business Impact
 
 - The Jira ticket is the source of truth, harvest (`~/.harvest/`, CLI `harvest`, repo `~/projects/personal/harvest`) is its database, the PR is a projection. Never write the same impact data in two places.

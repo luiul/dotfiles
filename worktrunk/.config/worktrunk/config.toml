@@ -63,7 +63,15 @@ exclude = [".venv/", ".DS_Store"]
 [post-start]
 venv = "ln -sfn {{ repo_path }}/.venv {{ worktree_path }}/.venv"
 copy = "wt step copy-ignored --force"
-vscode = 'code -n {{ worktree_path }}'
+# Agent mode (https://github.com/luiul/dotfiles/issues/23): when WORKTRUNK_AGENT=1 is in
+# wt's environment (hooks inherit it), skip only the VS Code window. venv, copy, registry,
+# and agents-md still run, so the worktree is fully set up and registered. This is the
+# supported headless invocation for pi and other agents:
+#   WORKTRUNK_AGENT=1 wt switch --create <branch> --no-cd --yes --format json
+# Never `cop new` (human facing, opens VS Code) and never raw `git worktree add` (skips all
+# hooks, including the known-repos registration that `cop list` and understory depend on).
+# The `[ -n ... ] ||` guard short-circuits to exit 0 when skipping, so wt logs no failure.
+vscode = '[ -n "$WORKTRUNK_AGENT" ] || code -n {{ worktree_path }}'
 registry = "mkdir -p ~/.cache/wt && echo '{{ repo_path }}' >> ~/.cache/wt/known-repos && sort -u -o ~/.cache/wt/known-repos ~/.cache/wt/known-repos"
 # pi/Claude discover AGENTS.md/CLAUDE.md by walking up from cwd to the filesystem root,
 # concatenating every match along the way. From the main checkout ({{ repo_path }}, e.g.

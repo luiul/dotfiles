@@ -34,6 +34,13 @@
 # quits (it only exits filter mode); use q or ctrl-c to quit. The old ctrl-
 # bindings (ctrl-w/t/v/y/r) remain as aliases and also work mid-filter.
 #
+# Field splitting needs --delimiter '  +' (2+ spaces): fzf's default whitespace
+# split breaks {2} because the bucket label itself contains spaces since the
+# sprint dates were added ("S20 (28 Sep to 12 Oct)"), so {2} resolved to "(28"
+# and every jira call on a sprint ticket 404'd. `column -t` always separates
+# columns with 2+ spaces while every in-field space is single (bucket dates,
+# "On Hold", summaries), so the gap regex keeps {2} = KEY on every row.
+#
 # Every exit leaves a stdout trace: enter/w print what they are doing before
 # running, and quitting prints a confirmation from the script itself. The
 # action bindings use `become` (not `execute`+`abort`) for two reasons:
@@ -48,6 +55,7 @@ jira-today-list |
 		--header 'enter: open · w: worktree · t: move · v: view · y: copy · r: reload · /: filter · c: clear · q: quit' \
 		--height=90% --layout=reverse --border --info=inline \
 		--disabled \
+		--delimiter '  +' \
 		--preview 'jira issue view {2} --plain' \
 		--preview-window='down,50%,wrap,border-top' \
 		--bind 'j:down' \

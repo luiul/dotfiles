@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # List my open GLOA tickets in an interactive fzf picker. The ticket rows come
 # from the jira-today-list script (~/.local/bin), which groups tickets into
-# Sprint, one bucket per future sprint, and Backlog, and orders them by
-# workflow state; see its header comment for the details.
+# buckets S<n> (active and future sprints, with their dates) and B
+# (backlog), and orders them by workflow state; see its header comment for
+# the details.
 #
 # This is a script, not a zsh function (it replaced the jira-today function in
 # zsh/.zsh_config/funcs_jira.zsh), so that jira-today-move can exec back into

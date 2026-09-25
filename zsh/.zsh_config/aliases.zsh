@@ -7,17 +7,10 @@ alias ls="eza --group-directories-first --git --icons=always --classify=always"
 alias ll="eza -lh --group-directories-first --git --icons=always --classify=always"
 alias lt="eza --tree --level=2 --group-directories-first --git-ignore --icons=always --classify=always"
 
-# Long listing, newest last, recursive dir sizes, plus a grand total (du walks the tree)
+# Long listing, all files, newest last. No size walks (eza --total-size,
+# du -sh) here; sizes get their own commands.
 unalias la 2>/dev/null
-la() {
-  eza -lah --total-size --group-directories-first --git --icons=always --classify=always --time-style=relative --sort=modified --reverse "$@" || return
-  local target=.
-  if [[ $# -gt 0 ]]; then
-    [[ -d ${@[-1]} ]] || return
-    target=${@[-1]}
-  fi
-  print -r -- "total: $(command du -sh "$target" 2>/dev/null | cut -f1)"
-}
+alias la="eza -lah --group-directories-first --git --icons=always --classify=always --time-style=relative --sort=modified --reverse"
 
 # Clipboard
 alias copy='pbcopy'

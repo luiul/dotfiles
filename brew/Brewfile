@@ -113,6 +113,8 @@ brew "hishamkaram/slacktokens/slacktokens", trusted: true
 brew "raine/workmux/workmux", trusted: true
 # Slack CLI - Interact with Slack from command line
 brew "shaharia-lab/tap/slackcli", trusted: true
+# Web browser focusing on privacy
+cask "brave-browser@beta"
 # macOS notifications with Claude icon for Claude Code hooks
 cask "mlz11/tap/claude-notifier", trusted: true
 # OpenAI's coding agent that runs in your terminal

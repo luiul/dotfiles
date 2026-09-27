@@ -43,10 +43,10 @@
       "args": [
         "-y",
         "@playwright/mcp@latest",
-        "--browser",
-        "chrome",
+        "--executable-path",
+        "/Applications/Brave Browser Beta.app/Contents/MacOS/Brave Browser Beta",
         "--user-data-dir",
-        "/Users/luis.aceituno/.pi/agent/data/playwright-chrome"
+        "/Users/luis.aceituno/.pi/agent/data/playwright-brave-beta"
       ],
       "lifecycle": "lazy",
       "directTools": true

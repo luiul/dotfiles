@@ -1,7 +1,6 @@
 # filechanges extension: design and vocabulary
 
-Status: proposed redesign, for review. Not yet implemented.
-Current implementation: `pi/.pi/agent/extensions/filechanges.ts`.
+Status: implemented in `pi/.pi/agent/extensions/filechanges.ts` (https://github.com/luiul/dotfiles/issues/25).
 
 ## Purpose
 
@@ -77,15 +76,15 @@ Two terms disappear on purpose: batch (the old reset per prompt unit) and summar
 ## Panel rendering spec
 
 ```text
-Changed this session (3):
-Δ pi/.pi/agent/AGENTS.md (+1/-1)
-+ notes.md (+12/-0)
-- old.ts (+0/-40)
+Session changes (3):
+modified pi/.pi/agent/AGENTS.md (+1/-1)
+created  notes.md (+12/-0)
+deleted  old.ts (+0/-40)
 …and 2 more (see /filechanges)
 ```
 
-- Header: `Changed this session (N):` where N is the Session set size.
-- One glyph per kind: `Δ` modified, `+` created, `-` deleted. The same glyphs are used in List output. One rendering style everywhere.
+- Header: `Session changes (N):` where N is the Session set size.
+- One plain word per kind: `modified`, `created`, `deleted` (padded to a column). No glyphs, matching the status-bar style (`changed 3`, `ahead 2`). The same words are used in List output. One rendering style everywhere.
 - Counts always show both sides, even when one is zero. Uniform, no special cases.
 - Binary files show `(binary)` instead of counts.
 - Rows are sorted by most recently touched first.
@@ -113,11 +112,11 @@ Changed this session (3):
 - The settle time notification (the `Files changed (2): — total +2/-1` block). The Panel replaces it.
 - The footer status line (`last batch: Δ1 +1 (+2/-1)`).
 - The batch lifecycle: `awaitingFreshBatch`, clearing on the first change of a new prompt. The Session set just accumulates.
-- `labelFor` and the `modified` / `created` / `deleted` word style. Glyphs only.
+- The `new` / `edited` kind names in code. The kinds are `created` / `modified` / `deleted`, shown as plain words (see open question 3).
 - Net effect: about a third of the file goes away.
 
-## Open questions for review
+## Open questions (resolved)
 
-1. Header wording: `Changed this session (N):` (used above) or the shorter `Session changes (N):`.
-2. Clear semantics: after a Clear, counts for a file edited again are measured from the post Clear state, not from session start. Acceptable?
-3. Glyph set: `Δ` for modified reads well to me, but `~` or `✎` are options if `Δ` feels off.
+1. Header wording: resolved to the shorter `Session changes (N):`.
+2. Clear semantics: accepted. After a Clear, counts for a file edited again are measured from the post Clear state, not from session start.
+3. Kind marker: no glyphs. Plain words (`modified` / `created` / `deleted`), matching the statusline in the footer.

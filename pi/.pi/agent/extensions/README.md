@@ -40,6 +40,26 @@ bun scripts/test-rtk-extension.ts
 
 The script drives the real extension with a stubbed ExtensionAPI: rewrite contract, env-prefix detection, `RTK_DISABLED=1`, exit-2 warn-once, timeout-vs-missing handling, 30s re-probe and self-heal, too-old disable, and the bash output cap. A live check additionally runs `pi --no-extensions -e ~/.pi/agent/extensions/rtk.ts --thinking off -p '<prompt that runs a bash command>'` and confirms the rewritten command lands in `rtk gain`.
 
+## Session file changes
+
+`filechanges.ts` tracks which files the agent changed in this session and shows them in a persistent Panel above the editor. Design and vocabulary: [docs/filechanges-design.md](../../../../docs/filechanges-design.md) (implemented in [issue #25](https://github.com/luiul/dotfiles/issues/25)).
+
+Key behaviors:
+
+- One cumulative Session set per session, never reset per prompt. Counts are measured against each file's Original (first touch this session), not git HEAD, so pre-session dirt is not attributed to the agent. A file reverted to its Original drops off the list by itself.
+- Tracks `edit`/`write` at any path, plus `bash` changes inside a git repo (by diffing `git status` before/after each call). Rows render as plain words (`modified path (+1/-2)`), most recently touched first, capped at 8 rows plus an overflow line.
+- `/filechanges` prints the full set into the transcript, `/filechanges-clear` empties it and forgets all Originals (counts then restart from the post-Clear state).
+- The set persists via `pi.appendEntry()` on settle, so `/reload` restores the Panel. Originals are re-captured from `git show HEAD:<path>` in a repo; outside a repo restored counts stay frozen.
+- Ignore patterns via `filechanges.ignore` in `.pi/settings.json` (project wins over global); defaults cover lockfiles, `node_modules`, `dist`, `build`, `.env*`. Binary files are NUL-sniffed and shown as `(binary)`.
+
+Verification from the repository root:
+
+```sh
+bun scripts/test-filechanges-extension.ts
+```
+
+The script drives the real extension with a stubbed ExtensionAPI against a real temp git repo: accumulation across prompts, revert detection, bash-driven changes, the 8-row cap, Clear semantics, reload-restore with HEAD re-capture, and malformed-entry handling. A live check additionally runs `pi --no-extensions -e ~/.pi/agent/extensions/filechanges.ts --thinking off -p '<prompt that creates a file>'` and confirms a `filechanges:session-set` custom entry lands in the session jsonl. The script needs the pi-coding-agent package resolvable; a gitignored `node_modules` symlink to the global install covers that.
+
 ## Bedrock pricing overrides
 
 `pi/.pi/agent/models.json` contains official Bedrock pricing overrides for 54 currently enabled model IDs whose family rates were verified against AWS sources. Route and regional differences are preserved where represented by the installed pi catalog. Configured IDs without verified official pricing are intentionally absent and render as unknown rather than free. Pi reads these natively for its built-in cost display; no extension is involved. The same file also defines the `ai-model-router` provider, so do not delete it.

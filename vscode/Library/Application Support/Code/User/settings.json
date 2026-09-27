@@ -152,12 +152,13 @@
     "notebook.cellExecutionTimeVerbosity": "verbose",
     // === Git Settings ===
     "git.autoStash": true,
-    "git.autoRepositoryDetection": "openEditors",
     "git.openRepositoryInParentFolders": "always",
     "git.autofetch": false,
-    // TRIAL: no repo rescan on every file event. Cheaper SCM, but the git status
-    // badge can go stale until manual refresh. Revert if annoying.
-    "git.autorefresh": false,
+    // Must stay on. The "Open Changes" editor title button (git.openChange) only shows
+    // when scmActiveResourceHasChanges is set, and that key tracks the git extension's
+    // resource model. With autorefresh off, file events never trigger git status, the
+    // model goes stale, and the button disappears until a window reload.
+    "git.autorefresh": true,
     // Load-bearing, not cosmetic: dashkit's mycelium (canopy, understory) and coppice match
     // VS Code windows by parsing this title. Contract: the opened folder's full path before
     // the first " — " (${separator}), branch after it and never matched. ${rootPath}

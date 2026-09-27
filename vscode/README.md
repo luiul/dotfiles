@@ -149,8 +149,12 @@ These settings in `settings.json` are tuned for speed:
 
 - `editor.codeLens: false` (TRIAL): CodeLens providers re-run on every document
   change. Revert if reference/test lenses are missed.
-- `git.autorefresh: false` (TRIAL): no repo rescan on every file event. Cheaper SCM,
-  but the git status badge can go stale until manual refresh. Revert if annoying.
+- `git.autorefresh` must stay on (default). It was tried off to skip repo rescans on
+  file events, but the "Open Changes" editor title button (`git.openChange`) only
+  shows when `scmActiveResourceHasChanges` is set, and that key tracks the git
+  extension's resource model. With autorefresh off, file events never trigger
+  `git status`, the model goes stale, and the button disappears until a window
+  reload. Rescan cost is already limited by `files.watcherExclude`.
 
 Workspace-scoped extension disabling (gear icon on an extension > Disable (Workspace))
 is stored in VS Code's internal state, not in any file, so it cannot be stowed here.

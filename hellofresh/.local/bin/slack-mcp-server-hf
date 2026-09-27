@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Launches korotovsky/slack-mcp-server for the HelloFresh workspace, READ-ONLY
-# (see -enabled-tools in ~/dotfiles/pi/.pi/agent/mcp.json -- conversations_add_message
+# (see -enabled-tools in ~/dotfiles/pi/.pi/agent/mcp-adapter.json -- conversations_add_message
 # is intentionally not enabled; this tool is for reading Slack, not posting).
 #
 # Fully self-contained, fully automatic, no manual steps ever: pulls a fresh
 # xoxc/xoxd browser session straight from the Slack desktop app's local
 # storage via `slacktokens` on every launch. Since this is a `lifecycle:
-# lazy` MCP server (see mcp.json), it re-launches (and so re-extracts a fresh
+# lazy` MCP server (see mcp-adapter.json), it re-launches (and so re-extracts a fresh
 # cookie) each time pi needs it -- if the previous session died for any
 # reason, the very next Slack read just works again with no action from you
 # beyond having Slack.app open and signed in, which you'd want anyway.

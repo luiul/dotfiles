@@ -198,7 +198,7 @@ Same repo, same `project.name` now, regardless of which worktree (or the main ch
 
 ## Removed: code-review-graph (2026-09-09)
 
-This setup originally included code-review-graph (per-repo code graphs, a `crg-watch` daemon, and 5 curated MCP tools wired into pi). Removed after a usage audit showed zero MCP tool calls across every pi session since introduction, while the tool schemas cost ~2K tokens of system prompt per session. What was removed: the `uv` tool itself, the pi `mcp.json` server block, the `crg`/`crg-cleanup` worktrunk hooks, the Brewfile entry, every repo's `.code-review-graph/` cache (~900 MB total), and the `~/.code-review-graph` registry. The wt hooks were guarded by `command -v`, so no other config needed to change. The original evaluation (graphify vs codegraph vs code-review-graph) stays in [luiul/dotfiles#4](https://github.com/luiul/dotfiles/issues/4) for history.
+This setup originally included code-review-graph (per-repo code graphs, a `crg-watch` daemon, and 5 curated MCP tools wired into pi). Removed after a usage audit showed zero MCP tool calls across every pi session since introduction, while the tool schemas cost ~2K tokens of system prompt per session. What was removed: the `uv` tool itself, the pi `mcp-adapter.json` server block, the `crg`/`crg-cleanup` worktrunk hooks, the Brewfile entry, every repo's `.code-review-graph/` cache (~900 MB total), and the `~/.code-review-graph` registry. The wt hooks were guarded by `command -v`, so no other config needed to change. The original evaluation (graphify vs codegraph vs code-review-graph) stays in [luiul/dotfiles#4](https://github.com/luiul/dotfiles/issues/4) for history.
 
 ## Where this is tracked
 

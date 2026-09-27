@@ -47,7 +47,7 @@ The script drives the real extension with a stubbed ExtensionAPI: rewrite contra
 Key behaviors:
 
 - One cumulative Session set per session, never reset per prompt. Counts are measured against each file's Original (first touch this session), not git HEAD, so pre-session dirt is not attributed to the agent. A file reverted to its Original drops off the list by itself.
-- Tracks `edit`/`write` at any path, plus `bash` changes inside a git repo (by diffing `git status` before/after each call). Rows render as plain words (`modified path (+1/-2)`), most recently touched first, capped at 8 rows plus an overflow line.
+- Tracks `edit`/`write` at any path. `bash` changes are caught two ways: a `git status` diff before/after each call for the repo containing cwd, plus a path sniff of the command text (content snapshots of path tokens, `cd`-aware) for files anywhere else, shown as absolute paths. Rows render as plain words (`modified path (+1/-2)`), most recently touched first, capped at 8 rows plus an overflow line.
 - `/filechanges` prints the full set into the transcript, `/filechanges-clear` empties it and forgets all Originals (counts then restart from the post-Clear state).
 - The set persists via `pi.appendEntry()` on settle, so `/reload` restores the Panel. Originals are re-captured from `git show HEAD:<path>` in a repo; outside a repo restored counts stay frozen.
 - Ignore patterns via `filechanges.ignore` in `.pi/settings.json` (project wins over global); defaults cover lockfiles, `node_modules`, `dist`, `build`, `.env*`. Binary files are NUL-sniffed and shown as `(binary)`.
@@ -58,7 +58,7 @@ Verification from the repository root:
 bun scripts/test-filechanges-extension.ts
 ```
 
-The script drives the real extension with a stubbed ExtensionAPI against a real temp git repo: accumulation across prompts, revert detection, bash-driven changes, the 8-row cap, Clear semantics, reload-restore with HEAD re-capture, and malformed-entry handling. A live check additionally runs `pi --no-extensions -e ~/.pi/agent/extensions/filechanges.ts --thinking off -p '<prompt that creates a file>'` and confirms a `filechanges:session-set` custom entry lands in the session jsonl. The script needs the pi-coding-agent package resolvable; a gitignored `node_modules` symlink to the global install covers that.
+The script drives the real extension with a stubbed ExtensionAPI against a real temp git repo: accumulation across prompts, revert detection, bash-driven changes, bash changes outside the cwd repo via path sniffing (other repos, non-repo dirs, `cd` + relative redirects), the 8-row cap, Clear semantics, reload-restore with HEAD re-capture, and malformed-entry handling. A live check additionally runs `pi --no-extensions -e ~/.pi/agent/extensions/filechanges.ts --thinking off -p '<prompt that creates a file>'` and confirms a `filechanges:session-set` custom entry lands in the session jsonl. The script needs the pi-coding-agent package resolvable; a gitignored `node_modules` symlink to the global install covers that.
 
 ## Bedrock pricing overrides
 

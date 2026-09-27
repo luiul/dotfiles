@@ -17,9 +17,14 @@
  *
  * Tracking:
  * - `edit`/`write` tool calls are tracked at any path, inside or outside a
- *   repo. `bash` changes are detected by diffing `git status --porcelain`
- *   before/after each call, only when cwd is inside a git repo (known limit:
- *   bash changes outside a repo are not detected).
+ *   repo. `bash` changes are detected two ways: a `git status --porcelain`
+ *   diff before/after each call covers the repo containing cwd, and a
+ *   path-sniff of the command text covers everything else: every plausible
+ *   path token is content-snapshotted pre-call and re-read post-call, with
+ *   relative tokens resolved against a virtual cwd that follows `cd`. So
+ *   changes in other repos and non-repo dirs still show up. Sniff limits:
+ *   globs and paths constructed in code are not seen outside a repo,
+ *   directories are not enumerated, and files over 10 MB are skipped.
  * - Counts come from `git diff --no-index --numstat` (no npm dependency).
  *   Binary files are detected via a NUL-byte sniff and shown as "(binary)".
  * - Noisy paths (lockfiles, node_modules, build output, .env*) are excluded
@@ -58,7 +63,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isBashToolResult, isEditToolResult, isToolCallEventType, isWriteToolResult } from "@earendil-works/pi-coding-agent";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -71,6 +76,8 @@ const ENTRY_SESSION_SET = "filechanges:session-set";
 const PANEL_MAX_ROWS = 8;
 const LIST_MAX_ROWS = 30;
 const BINARY_SNIFF_BYTES = 8000;
+const BASH_SNIFF_MAX_CANDIDATES = 40;
+const BASH_SNIFF_MAX_BYTES = 10 * 1024 * 1024;
 
 const DEFAULT_IGNORE = [
 	"package-lock.json",
@@ -108,6 +115,12 @@ type PendingSnapshot = {
 	path: string;
 	absPath: string;
 	before: FileSnapshot;
+};
+
+type PendingBash = {
+	repoRoot: string | null;
+	before: Set<string>; // git porcelain paths of the cwd repo (empty when cwd is not in a repo)
+	candidates: Map<string, FileSnapshot>; // command-sniffed paths anywhere on disk, pre-call content
 };
 
 function stripAtPrefix(p: string): string {
@@ -247,6 +260,99 @@ function sanitizeRestored(item: any): Change | null {
 	};
 }
 
+/**
+ * Bash path-sniffing: best-effort extraction of file paths a command might
+ * touch, for change detection outside the cwd repo (where the git-status
+ * diff is blind). Heuristic by design: every plausible token becomes a
+ * candidate, gets content-snapshotted pre-call and re-read post-call, and
+ * only real content changes are tracked. False candidates (command names,
+ * flags, heredoc words) cost one failed stat each.
+ */
+function tokenizeBash(command: string): string[] {
+	const tokens: string[] = [];
+	let cur = "";
+	let quote: string | null = null;
+	const flush = () => {
+		if (cur.length > 0) tokens.push(cur);
+		cur = "";
+	};
+	for (let i = 0; i < command.length; i++) {
+		const c = command[i];
+		if (quote !== null) {
+			if (c === quote) quote = null;
+			else cur += c;
+			continue;
+		}
+		if (c === '"' || c === "'") {
+			quote = c;
+			continue;
+		}
+		if (c === "\\" && i + 1 < command.length) {
+			cur += command[++i];
+			continue;
+		}
+		if (/\s/.test(c) || "|;&<>()".includes(c)) {
+			flush();
+			continue;
+		}
+		cur += c;
+	}
+	flush();
+	return tokens;
+}
+
+/** Conservative filter: drop tokens that cannot be plain file paths (flags, globs, substitutions, assignments, URLs). */
+function looksLikePathToken(tok: string): boolean {
+	if (tok.length === 0 || tok.length > 512) return false;
+	if (tok.startsWith("-")) return false;
+	if (/[$`*?[\]{}()&|;<>=!#:]/.test(tok)) return false;
+	return true;
+}
+
+function expandHome(p: string): string {
+	if (p === "~") return homedir();
+	if (p.startsWith("~/")) return join(homedir(), p.slice(2));
+	return p;
+}
+
+/** Plausible file paths in a command, resolved against a virtual cwd that follows `cd` segments. */
+function extractBashCandidates(command: string, cwd: string): string[] {
+	const out: string[] = [];
+	const seen = new Set<string>();
+	let virtualCwd = cwd;
+	let expectCdTarget = false;
+	for (const tok of tokenizeBash(command)) {
+		if (expectCdTarget) {
+			expectCdTarget = false;
+			if (looksLikePathToken(tok)) virtualCwd = resolve(virtualCwd, expandHome(tok));
+			continue;
+		}
+		if (tok === "cd") {
+			expectCdTarget = true;
+			continue;
+		}
+		if (!looksLikePathToken(tok)) continue;
+		const abs = resolve(virtualCwd, expandHome(tok));
+		if (seen.has(abs)) continue;
+		seen.add(abs);
+		out.push(abs);
+		if (out.length >= BASH_SNIFF_MAX_CANDIDATES) break;
+	}
+	return out;
+}
+
+/** Content snapshot for a sniffed candidate. Regular files only, capped in size; anything else reads as absent. */
+async function readCandidateSnapshot(absPath: string): Promise<FileSnapshot> {
+	try {
+		const st = await stat(absPath);
+		if (!st.isFile() || st.size > BASH_SNIFF_MAX_BYTES) return { buf: null, binary: false };
+		const buf = await readFile(absPath);
+		return { buf, binary: isBinaryBuffer(buf) };
+	} catch {
+		return { buf: null, binary: false };
+	}
+}
+
 export default function (pi: ExtensionAPI) {
 	// The Session set: every Change since session start or the last Clear.
 	// Accumulates across prompts; never resets on its own.
@@ -256,7 +362,7 @@ export default function (pi: ExtensionAPI) {
 	// changes and counts stay measured from the session's perspective.
 	const originals = new Map<string, Original>();
 	const pendingByToolCallId = new Map<string, PendingSnapshot>();
-	const pendingBashSnapshots = new Map<string, { repoRoot: string; before: Set<string> } | null>();
+	const pendingBashSnapshots = new Map<string, PendingBash>();
 
 	// True if any file change was tracked since the last `agent_settled`. Drives
 	// whether that settle actually reconciles and persists anything.
@@ -493,8 +599,9 @@ export default function (pi: ExtensionAPI) {
 		}
 	}
 
-	// Capture before-snapshots for edit/write calls, and a git-status snapshot
-	// before bash calls (used to detect which files a bash command touched).
+	// Capture before-snapshots for edit/write calls. For bash calls, capture
+	// both a git-status snapshot of the cwd repo and content snapshots of the
+	// command's sniffed path tokens (covers changes outside that repo).
 	pi.on("tool_call", async (event, ctx) => {
 		if (isToolCallEventType("edit", event) || isToolCallEventType("write", event)) {
 			const { absPath, relPath } = normalizeToolPath(ctx.cwd, (event.input as any).path);
@@ -504,13 +611,18 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		if (isToolCallEventType("bash", event)) {
+			const input = event.input as any;
+			const command = typeof input?.command === "string" ? input.command : "";
+			const realCwd = await getRealCwd(ctx.cwd);
 			const repoRoot = await getRepoRoot(ctx.cwd);
-			if (!repoRoot) {
-				pendingBashSnapshots.set(event.toolCallId, null);
-				return;
-			}
-			const before = await snapshotGitStatus(repoRoot);
-			pendingBashSnapshots.set(event.toolCallId, { repoRoot, before });
+			const before = repoRoot ? await snapshotGitStatus(repoRoot) : new Set<string>();
+			const candidates = new Map<string, FileSnapshot>();
+			await Promise.all(
+				extractBashCandidates(command, realCwd).map(async (absPath) => {
+					candidates.set(absPath, await readCandidateSnapshot(absPath));
+				}),
+			);
+			pendingBashSnapshots.set(event.toolCallId, { repoRoot, before, candidates });
 		}
 	});
 
@@ -533,9 +645,26 @@ export default function (pi: ExtensionAPI) {
 		if (isBashToolResult(event)) {
 			const snap = pendingBashSnapshots.get(event.toolCallId);
 			pendingBashSnapshots.delete(event.toolCallId);
-			if (!snap) return; // not a git repo, or wasn't captured (e.g. errored before tool_call ran)
+			if (!snap) return; // wasn't captured (e.g. errored before tool_call ran)
 
-			const after = await snapshotGitStatus(snap.repoRoot);
+			const patterns = getIgnorePatterns(ctx.cwd);
+			const realCwd = await getRealCwd(ctx.cwd);
+
+			// Command-sniffed paths, tracked at any location, in or out of the
+			// cwd repo. Runs before the git diff so the pre-call content wins as
+			// the Original when both mechanisms see the same file.
+			for (const [absPath, beforeSnap] of snap.candidates) {
+				const afterSnap = await readCandidateSnapshot(absPath);
+				if (buffersEqual(beforeSnap.buf, afterSnap.buf)) continue;
+				const { relPath } = normalizeToolPath(realCwd, absPath);
+				if (isIgnored(relPath, patterns)) continue;
+				await trackChange(ctx, relPath, absPath, beforeSnap);
+			}
+
+			const repoRoot = snap.repoRoot;
+			if (!repoRoot) return; // cwd not in a repo: the sniff was the only detection
+
+			const after = await snapshotGitStatus(repoRoot);
 			const touched = new Set<string>();
 			for (const p of snap.before) if (!after.has(p)) touched.add(p);
 			for (const p of after) if (!snap.before.has(p)) touched.add(p);
@@ -544,11 +673,9 @@ export default function (pi: ExtensionAPI) {
 			// Resolve and filter BEFORE tracking: a bash call that only touched
 			// ignored paths (e.g. `npm install` bumping package-lock.json) must not
 			// mark the Session set dirty or surface irrelevant rows.
-			const patterns = getIgnorePatterns(ctx.cwd);
-			const realCwd = await getRealCwd(ctx.cwd);
 			const relevant: { repoRelPath: string; absPath: string; relPath: string }[] = [];
 			for (const repoRelPath of touched) {
-				const absPath = resolve(snap.repoRoot, repoRelPath);
+				const absPath = resolve(repoRoot, repoRelPath);
 				const { relPath } = normalizeToolPath(realCwd, absPath);
 				if (isIgnored(relPath, patterns)) continue;
 				relevant.push({ repoRelPath, absPath, relPath });
@@ -558,7 +685,7 @@ export default function (pi: ExtensionAPI) {
 			for (const { repoRelPath, absPath, relPath } of relevant) {
 				dirtySinceSettle = true;
 				if (!originals.has(relPath)) {
-					const beforeSnap = await readGitHeadSnapshot(snap.repoRoot, repoRelPath);
+					const beforeSnap = await readGitHeadSnapshot(repoRoot, repoRelPath);
 					ensureOriginal(relPath, absPath, beforeSnap);
 				}
 				await refreshChange(ctx, relPath);

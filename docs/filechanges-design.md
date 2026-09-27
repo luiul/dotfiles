@@ -13,7 +13,8 @@ Status: implemented in `pi/.pi/agent/extensions/filechanges.ts` (https://github.
 
 - The scope is the pi session. Not the current directory. Not the git repo.
 - `edit` and `write` tool calls are tracked at any path, inside or outside the repo.
-- `bash` changes are detected only inside a git repo (by diffing `git status` before and after each call). Bash changes outside a repo are not detected. Known limit.
+- `bash` changes are detected two ways. A `git status` diff before/after each call covers the repo containing cwd. A path sniff of the command text covers everything outside it: plausible path tokens are content-snapshotted before the call and re-read after, with relative tokens resolved against a virtual cwd that follows `cd`. Changes in other repos and non-repo dirs show up as absolute paths.
+- Sniff limits: globs and paths constructed in code (e.g. inside `python -c`) are not seen outside a repo. Directories are not enumerated. Files over 10 MB are skipped.
 - Counts are measured against the file's Original (first touch this session), not against git HEAD. If a file was already dirty before the session, only what the agent changed is counted.
 - Paths outside the current directory are shown as absolute paths.
 
@@ -56,7 +57,7 @@ One name per concept. These names will be used verbatim in code, comments, and c
 | Counts | `+added/-removed` lines vs. the Original, or `(binary)`. | `added` / `removed` (stay) |
 | Session set | The cumulative collection of Changes since session start or the last Clear. Never resets on its own. | `batch` |
 | Revert | A Change whose content equals its Original again. It leaves the Session set automatically. | (no name today) |
-| Tracking | Recording Changes: snapshots on `tool_call`, commit on `tool_result`, git diffing for bash. | `recordChange` → `trackChange` |
+| Tracking | Recording Changes: snapshots on `tool_call`, commit on `tool_result`, git diffing and command path sniffing for bash. | `recordChange` → `trackChange` |
 | Panel | The persistent widget above the Editor. Live view of the Session set, capped at 8 rows. | `widget` / `buildWidgetLines` |
 | List | `/filechanges`. Prints the full Session set into the Transcript. | `printSummary` |
 | Clear | `/filechanges-clear`. Empties the Session set, forgets all Originals. Tracking restarts from that point. | (stays) |
@@ -105,7 +106,7 @@ deleted  old.ts (+0/-40)
 - `/reload` or resumed session: the Session set is restored from the log. In a git repo, Originals are re-captured from `git show HEAD:<path>` so later edits keep sensible counts. Outside a repo, restored counts stay frozen as recorded.
 - Binary files: NUL byte sniff in the first 8000 bytes.
 - Ignored paths: `filechanges.ignore` in `.pi/settings.json` (project wins over global). Defaults cover lockfiles, `node_modules`, `dist`, `build`, `.env*`.
-- Bash outside a git repo: not detected (see Scope).
+- Bash outside the cwd repo: detected by path sniffing, best effort (see Scope).
 
 ## What gets removed from the current implementation
 

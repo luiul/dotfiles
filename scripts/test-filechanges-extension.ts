@@ -80,8 +80,8 @@ async function editFile(pi: MockPi, ctx: MockCtx, id: string, path: string, cont
 }
 
 // Simulate one bash tool call cycle; `during` runs while the call is "in flight".
-async function bash(pi: MockPi, ctx: MockCtx, id: string, during: () => Promise<void>) {
-  await fire(pi, "tool_call", { toolName: "bash", input: { command: "..." }, toolCallId: id }, ctx)
+async function bash(pi: MockPi, ctx: MockCtx, id: string, command: string, during: () => Promise<void>) {
+  await fire(pi, "tool_call", { toolName: "bash", input: { command }, toolCallId: id }, ctx)
   await during()
   await fire(pi, "tool_result", { toolName: "bash", toolCallId: id, isError: false }, ctx)
   await sleep(2)
@@ -127,7 +127,7 @@ await editFile(pi, ctx, "5", "a.txt", null)
 check("s2: deleting a created file reverts it", ctx.panel()?.[0] === "Session changes (1):" && !ctx.panel()?.join("\n").includes("a.txt"))
 
 // --- Scenario 3: bash-driven change detection (git repo) ---
-await bash(pi, ctx, "6", async () => {
+await bash(pi, ctx, "6", "echo x > bash-new.txt && echo more >> committed.txt", async () => {
   await writeFile(join(dir, "bash-new.txt"), "x\ny\n", "utf-8")
   await writeFile(join(dir, "committed.txt"), "base\nmore\n", "utf-8")
 })
@@ -136,7 +136,7 @@ check("s3: bash-created file tracked", s3panel.includes("created  bash-new.txt (
 check("s3: bash-modified file tracked (vs HEAD)", s3panel.includes("modified committed.txt (+1/-0)"))
 check("s3: header counts all rows", s3panel.startsWith("Session changes (3):"))
 // Ignored paths touched by bash must not appear.
-await bash(pi, ctx, "7", async () => {
+await bash(pi, ctx, "7", "echo '{}' > package-lock.json", async () => {
   await writeFile(join(dir, "package-lock.json"), "{}", "utf-8")
 })
 check("s3: ignored lockfile not tracked", !(ctx.panel()?.join("\n") ?? "").includes("package-lock.json"))
@@ -214,8 +214,75 @@ await ext(pi5 as any)
 await fire(pi5, "session_start", {}, ctx5)
 check("s7: outside-repo restore keeps frozen counts", ctx5.panel()?.join("\n") === `Session changes (1):\nmodified x.txt (+5/-2)`)
 
+// --- Scenario 8: bash changes OUTSIDE the cwd repo are tracked via path sniffing ---
+const dirOther = await mkdtemp(join(tmpdir(), "fc-other-"))
+await execFileAsync("git", ["init"], { cwd: dirOther })
+await writeFile(join(dirOther, "other-committed.txt"), "base\n", "utf-8")
+await execFileAsync("git", ["add", "."], { cwd: dirOther })
+await execFileAsync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "init"], { cwd: dirOther })
+// Pre-session dirt in the other repo: the Original must be the pre-call
+// content, not that repo's HEAD.
+await writeFile(join(dirOther, "other-committed.txt"), "base\ndirty\n", "utf-8")
+const dirNoRepo = await mkdtemp(join(tmpdir(), "fc-norepo-"))
+
+const pi6 = new MockPi()
+const ctx6 = new MockCtx(dir)
+await ext(pi6 as any)
+
+// 8a: absolute redirect target in another git repo.
+await bash(pi6, ctx6, "s8.1", `printf 'hello\n' > ${join(dirOther, "outside.txt")}`, async () => {
+  await writeFile(join(dirOther, "outside.txt"), "hello\n", "utf-8")
+})
+check(
+  "s8: created file in another repo is tracked (absolute path)",
+  ctx6.panel()?.join("\n").includes(`created  ${join(dirOther, "outside.txt")} (+1/-0)`) === true,
+)
+
+// 8b: modify a pre-dirty file in another repo: +1/-0 vs pre-call content, not +2/-0 vs its HEAD.
+await bash(pi6, ctx6, "s8.2", `echo new >> ${join(dirOther, "other-committed.txt")}`, async () => {
+  await writeFile(join(dirOther, "other-committed.txt"), "base\ndirty\nnew\n", "utf-8")
+})
+check(
+  "s8: counts vs pre-call content, not the other repo's HEAD",
+  ctx6.panel()?.join("\n").includes(`modified ${join(dirOther, "other-committed.txt")} (+1/-0)`) === true,
+)
+
+// 8c: relative path after `cd` into a non-repo dir (virtual cwd).
+await bash(pi6, ctx6, "s8.3", `cd ${dirNoRepo} && echo hi > plain.txt`, async () => {
+  await writeFile(join(dirNoRepo, "plain.txt"), "hi\n", "utf-8")
+})
+check(
+  "s8: relative path after cd into a non-repo dir is tracked",
+  ctx6.panel()?.join("\n").includes(`created  ${join(dirNoRepo, "plain.txt")} (+1/-0)`) === true,
+)
+
+// 8d: a command that only reads an outside file tracks nothing new.
+await bash(pi6, ctx6, "s8.4", `cat ${join(dirOther, "outside.txt")}`, async () => {})
+check("s8: read-only command tracks nothing", ctx6.panel()?.[0] === "Session changes (3):")
+
+// 8e: deleting an outside created file reverts it off the set.
+await bash(pi6, ctx6, "s8.5", `rm ${join(dirNoRepo, "plain.txt")}`, async () => {
+  await rm(join(dirNoRepo, "plain.txt"))
+})
+check(
+  "s8: deleting an outside created file reverts it",
+  ctx6.panel()?.[0] === "Session changes (2):" && !ctx6.panel()?.join("\n").includes("plain.txt"),
+)
+
+// 8f: an in-repo file named in the command is tracked once, not duplicated by the git diff.
+await bash(pi6, ctx6, "s8.6", "echo z > sniff-inrepo.txt", async () => {
+  await writeFile(join(dir, "sniff-inrepo.txt"), "z\n", "utf-8")
+})
+const s8rows = (ctx6.panel() ?? []).filter((l) => l.includes("sniff-inrepo.txt"))
+check(
+  "s8: in-repo sniffed file appears exactly once",
+  s8rows.length === 1 && s8rows[0].startsWith("created  sniff-inrepo.txt (+1/-0)"),
+)
+
 await rm(dir, { recursive: true, force: true })
 await rm(dirPlain, { recursive: true, force: true })
+await rm(dirOther, { recursive: true, force: true })
+await rm(dirNoRepo, { recursive: true, force: true })
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

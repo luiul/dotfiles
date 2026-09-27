@@ -38,7 +38,9 @@
 
 ## Commits
 
-- Complete all file changes before staging or committing; let the user review first.
+- Do not stage or commit on your own. Leave changes as unstaged modifications in the working tree; the user reviews them with VS Code's "Open Changes" diff view, which works best on uncommitted changes. Run `git add` and `git commit` only after the user approves.
+- After approval, push per repo convention: dotfiles and other personal projects push straight to the repo's default branch, no pull request needed. The default branch can be named `main`, `master`, `live`, or anything else; find it with `git remote show origin` ("HEAD branch"). HelloFresh repos use feature branches and pull requests.
+- Standing instructions that explicitly say to commit (e.g. the Pi Skills section) override the review gate for their scope.
 - Use conventional commits: `type: short description` (e.g. `fix: venv info display`, `feat: add terminal keybindings`). Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `style`, `perf`, `ci`, `test`.
 - No `Co-Authored-By` lines.
 

@@ -10,6 +10,7 @@ When creating or editing files, place them inside the correct stow package so th
 
 ## Workflow
 
-- Commit directly to `main` (no branches/PRs for this repo)
+- Leave changes unstaged in the working tree until the user approves them; they review with VS Code's "Open Changes" diff view.
+- After approval: stage, commit on `main`, and push straight to `origin/main`. No feature branches or pull requests for this repo (same as other personal projects; HelloFresh repos require pull requests).
 - Conventional commit messages (e.g. `fix: venv info display`, `feat: add terminal keybindings`)
 - IMPORTANT: Do NOT add `Co-Authored-By` lines to commits

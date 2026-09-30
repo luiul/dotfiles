@@ -4,9 +4,26 @@
 
 ## Autonomy
 
+Work in two modes: planning and execution. Pick the mode from the request.
+
+- Planning: the request is vague, large, or open to interpretation, or the user asks for a plan or design.
+- Execution: the request is specific and unambiguous, or a plan is approved.
+- If the mode is unclear, weigh the cost of a wrong guess. Cheap to redo: execute. Expensive or hard to reverse: plan.
+- Small, clear requests skip planning. Fix the typo, run the command, report back.
+
+### Planning
+
+- Ask clarifying questions before proposing anything. Keep going until goal, scope, and constraints are clear.
+- Ask in rounds: number the questions, add a recommended answer to each, then wait.
+- Present the plan before touching files: what changes, where, and the risks.
+- After approval, switch to execution. Do not re-ask what the plan already settled.
+
+### Execution
+
 - Default to acting over asking: make the reasonable call and proceed on judgment calls you're equipped to make.
 - Ask only when genuinely blocked: a decision only the user can make, input that can't be inferred, or an action that's destructive, hard to reverse, or visible to others (force-push, `rm -rf`, sending messages, posting publicly, etc.).
 - Don't ask "should I proceed?" or "want me to also do X?" when the answer is inferable from the request. Do it and report what changed.
+- Standing rules elsewhere in this file still apply. The Commits gate and the Scratch Files triggers are not judgment calls.
 
 ## Writing Style
 
@@ -14,12 +31,19 @@
 - Follow ASD-STE100 (Simplified Technical English), lighter variant: short sentences (aim for 20 words or fewer), one idea per sentence, active voice, no filler or hedging.
 - No hyphens (`-`) or em dashes (`—`) as punctuation in prose. Rewrite with commas, periods, parentheses, or colons instead. Hyphens are still fine in compound words (e.g. `well-formatted`), command flags (e.g. `--no-verify`), and markdown list markers.
 - Scope: chat replies, scratch files, docs, READMEs, tickets, commit messages. Code, identifiers, commands, and quoted text are exempt.
+- Do not hard-wrap prose in markdown files at a fixed column (no 80-char limit). Write flowing long lines: one bullet per line, one sentence or logical unit per line.
 - Always link to PRs and online resources. When you mention a PR, Jira ticket, Slack thread, doc, or any resource with a URL, include the full clickable URL (e.g. https://github.com/hellofresh/schema-registry/pull/4222), not just `schema-registry#4222` or `GLOA-338`.
 
 ## Reporting Back
 
 - Start substantial replies with a `TLDR:` line at the top. One or two short sentences: the outcome, the answer, or what changed. Details go below.
 - Add it when the reply reports completed work, research findings, or a plan. Skip it for short answers, questions back to me, and quick confirmations.
+
+## Verification
+
+- Verify work before reporting it done: run the code, query, or test and check the output.
+- For data changes: run the query, check row counts, and spot-check values against a known baseline.
+- If you cannot verify, say so in the reply and state what you checked instead.
 
 ## Python
 
@@ -34,7 +58,7 @@
 
 - Track bigger projects, multi-step plans, and design docs as GitHub issues (`gh issue create`; update via `gh issue comment` or body edits), not markdown files committed to the repo root.
 - Reserve in-repo markdown for code-adjacent docs (READMEs, setup notes). Plans, roadmaps, and trackers belong in issues.
-- If GitHub Issues is disabled, use that platform's tracker instead (HelloFresh repos use Jira; see the HelloFresh context).
+- If the team uses a different tracker, use that instead. HelloFresh repos use Jira: see `~/projects/hellofresh/AGENTS.md`.
 
 ## Commits
 

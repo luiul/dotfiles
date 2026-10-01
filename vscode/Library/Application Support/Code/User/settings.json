@@ -7,7 +7,7 @@
     "workbench.tree.renderIndentGuides": "always",
     // "workbench.tree.indent": 14,
     "workbench.list.openMode": "doubleClick",
-    "workbench.fontAliasing": "antialiased",
+    // "workbench.fontAliasing": "antialiased",
     // UI font (file explorer, sidebar, tabs) via Custom UI Style: same as Zed
     "custom-ui-style.font.sansSerif": "'JetBrainsMono Nerd Font Mono', -apple-system, sans-serif",
     "custom-ui-style.stylesheet": {
@@ -54,7 +54,7 @@
     // === Editor Settings ===
     "editor.fontFamily": "'JetBrainsMono Nerd Font Mono', Menlo, DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
     "editor.fontSize": 12,
-    // "editor.fontWeight": 200,
+    "editor.fontWeight": 300,
     "editor.fontLigatures": false,
     "editor.wordWrap": "on",
     "editor.smoothScrolling": false,
@@ -127,6 +127,7 @@
     // === Terminal Settings ===
     "terminal.integrated.fontFamily": "'JetBrainsMono Nerd Font Mono', Menlo, DejaVu Sans Mono, Source Code Pro, Inconsolata, Monaco, Courier New, monospace",
     "terminal.integrated.fontSize": 12,
+    "terminal.integrated.fontWeight": 300,
     "terminal.integrated.defaultProfile.osx": "zsh",
     "terminal.integrated.persistentSessionScrollback": 100,
     "terminal.integrated.lineHeight": 1.3,

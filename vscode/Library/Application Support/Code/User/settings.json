@@ -136,6 +136,10 @@
     "terminal.integrated.cursorStyle": "line",
     "terminal.integrated.cursorStyleInactive": "none",
     "terminal.integrated.cursorWidth": 2,
+    // Dim the panes that don't have focus (editors and terminals), like Zed's
+    // inactive pane dimming. Makes it obvious where typed input will go.
+    "accessibility.dimUnfocused.enabled": true,
+    "accessibility.dimUnfocused.opacity": 0.7,
     // === Diff Editor Settings ===
     "diffEditor.wordWrap": "inherit",
     "diffEditor.experimental.showMoves": true,

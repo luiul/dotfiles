@@ -34,6 +34,9 @@
         ".monaco-workbench .part.panel > .title .monaco-action-bar .action-label": "font-size: 11px !important; line-height: 24px !important; padding-top: 0 !important; padding-bottom: 0 !important;"
     },
     "workbench.colorCustomizations": {
+        // Blue outline on the focused pane, like Zed's pane.focused_border.
+        // Also tints focus outlines in lists and inputs.
+        "focusBorder": "#008cff",
         "tab.activeBorderTop": "#ff00ee",
         "notebook.focusedCellBackground": "#0099ff30",
         "editor.findMatchBackground": "#8ffa876b",

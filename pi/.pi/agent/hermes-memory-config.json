@@ -4,5 +4,7 @@
   "llmThinkingOverride": "off",
   "childExtensionPaths": [
     "/Users/luis.aceituno/.pi/agent/extensions/aws-sso-refresh.ts"
-  ]
+  ],
+  "quickCheckOnOpen": false,
+  "sessionRetentionDays": 60
 }

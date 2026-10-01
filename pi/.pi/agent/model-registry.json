@@ -1,0 +1,10 @@
+{
+  "probeRegionOverrides": {
+    "global.openai.gpt-5.6-sol": "us-east-1"
+  },
+  "routerModelOverrides": {
+    "deepseek-ai/DeepSeek-V4-Flash-0731": {
+      "maxTokens": 262144
+    }
+  }
+}

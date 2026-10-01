@@ -7,7 +7,6 @@
     "moonshotai/Kimi-K3*",
     "claude-sonnet-5*",
     "claude-opus-5*",
-    "claude-opus-4-8*",
     "claude-haiku-4-5*",
     "gpt-5.6-luna*",
     "zai-org/GLM-5*",
@@ -33,7 +32,7 @@
   "enableInstallTelemetry": false,
   "enableAnalytics": false,
   "quietStartup": true,
-  "lastChangelogVersion": "0.87.1",
+  "lastChangelogVersion": "0.99.2",
   "theme": "dark",
   "outputPad": 0,
   "packages": [

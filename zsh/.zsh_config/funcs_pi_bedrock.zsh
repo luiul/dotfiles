@@ -1,9 +1,9 @@
 # pi + AWS Bedrock model/region switching
 #
-# pi has no per-model region config (see pi/.pi/agent/bin/sync-enabled-models.sh
-# for the full story): it always invokes Bedrock in whatever AWS_REGION is
-# exported, or the sso-bedrock profile's configured region (eu-west-1) if
-# unset. `enabledModels`/Ctrl+P only ever offers the subset usable in that one
+# pi has no per-model region config (see the pi-model-sync tool,
+# https://github.com/luiul/pi-model-sync, for the full story): it always
+# invokes Bedrock in whatever AWS_REGION is exported, or the sso-bedrock
+# profile's configured region (eu-west-1) if unset. `enabledModels`/Ctrl+P only ever offers the subset usable in that one
 # default region. Everything else (us./jp./au.-prefixed models, and any
 # ON_DEMAND model only deployed to a non-default region) is invocable, but
 # only after switching AWS_REGION first -- these functions do that lookup so
@@ -12,13 +12,13 @@
 #
 # Data source: pi/.pi/agent/bedrock-models.json, a { modelId: region } map of
 # every probe-verified-usable model across all regions scanned by
-# sync-enabled-models.sh. Regenerate it by re-running that script.
+# pi-model-sync. Regenerate it with `pi-model-sync sync`.
 
 typeset -g PI_BEDROCK_MODELS_JSON="${PI_BEDROCK_MODELS_JSON:-$HOME/dotfiles/pi/.pi/agent/bedrock-models.json}"
 
 _pi_bedrock_map_check() {
 	if [[ ! -f "$PI_BEDROCK_MODELS_JSON" ]]; then
-		print -P "%F{red}✗%f $PI_BEDROCK_MODELS_JSON not found. Run: sync-enabled-models.sh"
+		print -P "%F{red}✗%f $PI_BEDROCK_MODELS_JSON not found. Run: pi-model-sync sync"
 		return 1
 	fi
 	command -v jq &>/dev/null || { print -P "%F{red}✗%f jq not found"; return 1 }

@@ -60,8 +60,10 @@ exclude = [".venv/", ".DS_Store"]
 # Symlink .venv (shared, handled separately), copy other gitignored files (.vscode/settings.json,
 # .env, etc.) via reflink, open the new worktree in VS Code, and register the repo so `coppice list`
 # (or `coppice remove`) can find its worktrees later from anywhere.
+# The venv link is guarded on the target existing: repos without a venv (e.g. research) would
+# otherwise get a dangling symlink, since ln -sfn never checks.
 [post-start]
-venv = "ln -sfn {{ repo_path }}/.venv {{ worktree_path }}/.venv"
+venv = '[ -d "{{ repo_path }}/.venv" ] && ln -sfn {{ repo_path }}/.venv {{ worktree_path }}/.venv || true'
 copy = "wt step copy-ignored --force"
 # Agent mode (https://github.com/luiul/dotfiles/issues/23): when WORKTRUNK_AGENT=1 is in
 # wt's environment (hooks inherit it), skip only the VS Code window. venv, copy, registry,

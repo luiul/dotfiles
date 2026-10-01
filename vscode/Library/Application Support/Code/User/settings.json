@@ -11,10 +11,10 @@
     // UI font (file explorer, sidebar, tabs) via Custom UI Style: same as Zed
     "custom-ui-style.font.sansSerif": "'JetBrainsMono Nerd Font Mono', -apple-system, sans-serif",
     "custom-ui-style.stylesheet": {
-        // ".monaco-workbench": "font-weight: 200;"
+        // Lighter UI font weight, matches editor/terminal weight 300.
         // Smaller UI font. VS Code sets explicit px sizes on many parts, so each
         // must be overridden individually (a bare .monaco-workbench rule loses).
-        ".monaco-workbench": "font-size: 11px;",
+        ".monaco-workbench": "font-size: 11px; font-weight: 300;",
         // Sidebar, panel and editor part contents (file explorer, search, SCM, ...)
         ".monaco-workbench .part > .content": "font-size: 11px !important;",
         // Editor tab labels

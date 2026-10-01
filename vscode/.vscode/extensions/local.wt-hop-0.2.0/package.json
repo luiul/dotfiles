@@ -1,0 +1,27 @@
+{
+  "name": "wt-hop",
+  "displayName": "WT Hop",
+  "description": "Jump to any repo or git worktree and land in its terminal. Append-only workspace changes: no window reload, no extension host restart, existing terminals survive and are reused.",
+  "version": "0.2.0",
+  "publisher": "local",
+  "private": true,
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onCommand:wtHop.switch",
+    "onCommand:wtHop.refresh"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "wtHop.switch",
+        "title": "WT Hop: Switch Project/Worktree"
+      },
+      {
+        "command": "wtHop.refresh",
+        "title": "WT Hop: Refresh Repo/Worktree List"
+      }
+    ]
+  }
+}

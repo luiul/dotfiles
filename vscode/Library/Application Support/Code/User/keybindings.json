@@ -43,6 +43,11 @@
         "key": "alt+cmd+r",
         "command": "workbench.action.toggleMaximizedPanel"
     },
+    // WT Hop: jump to any repo/worktree, land in its terminal (pi session)
+    {
+        "key": "alt+cmd+h",
+        "command": "wtHop.switch"
+    },
     // Send Shift+Enter as CSI-u so TUIs (pi) can tell it from plain Enter.
     // Needed because terminal.integrated.enableKittyKeyboardProtocol stays off (Cmd+M fix).
     {

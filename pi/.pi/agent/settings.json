@@ -9,6 +9,8 @@
     "claude-opus-5*",
     "claude-haiku-4-5*",
     "gpt-5.6-luna*",
+    "gpt-6-luna*",
+    "gpt-6-sol*",
     "zai-org/GLM-5*",
     "deepseek-ai/DeepSeek-V4*",
     "eu.anthropic.claude-sonnet-5*",
@@ -27,7 +29,11 @@
     "us.anthropic.claude-opus-4-8*",
     "us.anthropic.claude-haiku-4-5*",
     "global.openai.gpt-5.6-luna*",
-    "us.openai.gpt-5.6-luna*"
+    "us.openai.gpt-5.6-luna*",
+    "global.openai.gpt-6-luna*",
+    "us.openai.gpt-6-luna*",
+    "global.openai.gpt-6-sol*",
+    "us.openai.gpt-6-sol*"
   ],
   "enableInstallTelemetry": false,
   "enableAnalytics": false,

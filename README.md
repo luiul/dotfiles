@@ -22,9 +22,9 @@ The script is idempotent and prompts before each step. It will:
 
 Each top-level directory is a stow package that mirrors `$HOME`:
 
-`aws`, `borders`, `brew`, `claude`, `datagrip`, `ghostty`, `git`, `hellofresh`, `hunk`, `karabiner`, `macos`, `pi`, `pip`, `rectangle`, `rtk`, `ruff`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `sublime`, `vscode`, `worktrunk`, `zed`, `zsh`
+`aws`, `borders`, `brew`, `claude`, `datagrip`, `ghostty`, `git`, `hellofresh`, `hunk`, `karabiner`, `macos`, `pi`, `pip`, `rectangle`, `rtk`, `ruff`, `snapzy`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `sublime`, `vscode`, `worktrunk`, `zed`, `zsh`
 
-Three packages are tracked but **not stowed** (export-only, see below): `karabiner`, `rectangle`, and `datagrip`.
+Four packages are tracked but **not stowed** (export-only, see below): `karabiner`, `rectangle`, `datagrip`, and `snapzy`.
 
 One package is stowed only in part: `macos` stows `Library/LaunchAgents/` normally but excludes
 `Library/LaunchDaemons/` (system-wide, no per-user path stow can target correctly) — see
@@ -91,6 +91,10 @@ Karabiner-Elements rewrites `~/.config/karabiner/karabiner.json` in place whenev
 ## DataGrip
 
 JetBrains IDEs rewrite config files with atomic saves (write temp + rename), which would replace a stow symlink with a real file on the first edit in the UI. The `datagrip` package is therefore a tracked snapshot, not stowed: the four data sources (Snowflake, the Databricks query engine, and the two global-ops Databricks connections) plus their introspection scopes. Passwords and OAuth tokens live in the macOS keychain, never in the XML. Restore or refresh the snapshot with the `cp` commands in `datagrip/README.md`.
+
+## Snapzy
+
+Snapzy rewrites `~/.config/snapzy/config.toml` with atomic saves (write temp + rename, `atomically: true` in `SnapzyConfigurationService.swift`), which would replace a stow symlink with a real file on every settings sync. The `snapzy` package is therefore a tracked snapshot, not stowed. Restore or refresh the snapshot with the `cp` commands in `snapzy/README.md`.
 
 ## Claude Code settings
 

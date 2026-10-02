@@ -4,7 +4,7 @@
  * pi has no per-model region config: its amazon-bedrock provider always
  * invokes in whatever AWS_REGION is exported (or the sso-bedrock profile's
  * configured region, eu-west-1, if unset) -- see the pi-model-sync tool
- * (https://github.com/luiul/pi-model-sync) for the full story. It also writes
+ * (https://github.com/luiul/orchard) for the full story. It also writes
  * bedrock-models.json, a probe-verified { modelId: region } map covering
  * every region this account has usable Bedrock models in (not just the
  * default). enabledModels in settings.json is the full cross-region set from

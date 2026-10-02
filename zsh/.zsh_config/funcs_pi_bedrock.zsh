@@ -1,7 +1,7 @@
 # pi + AWS Bedrock model/region switching
 #
 # pi has no per-model region config (see the pi-model-sync tool,
-# https://github.com/luiul/pi-model-sync, for the full story): it always
+# https://github.com/luiul/orchard, for the full story): it always
 # invokes Bedrock in whatever AWS_REGION is exported, or the sso-bedrock
 # profile's configured region (eu-west-1) if unset. `enabledModels`/Ctrl+P only ever offers the subset usable in that one
 # default region. Everything else (us./jp./au.-prefixed models, and any

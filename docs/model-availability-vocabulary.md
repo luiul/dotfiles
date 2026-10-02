@@ -1,6 +1,6 @@
 # Model availability vocabulary
 
-Status: implemented, 2026-10-01 (agreed 2026-09-30, see Decisions). The tool is `pi-model-sync` (https://github.com/luiul/pi-model-sync). Tracked in https://github.com/luiul/dotfiles/issues/27.
+Status: implemented, 2026-10-01 (agreed 2026-09-30, see Decisions). The tool is `pi-model-sync` (https://github.com/luiul/orchard). Tracked in https://github.com/luiul/dotfiles/issues/27.
 Scope: the setup that discovers which models pi can use, and the tool that keeps pi's config matching reality. The tool works for both providers: amazon-bedrock and ai-model-router.
 
 This document fixes one meaning per term. Every term maps to a concrete file, command, or API in the current setup. When we discuss the new tool, use these terms and say which rung of the ladder you mean.
@@ -79,4 +79,4 @@ This drift was the concrete motivation for the tool. The first `pi-model-sync sy
 3. **One unified report across both providers.** One row per model, provider column, one flag per rung. The ladder gives the shared format for free.
 4. **The tool reports and writes artifacts**: `enabledModels`, `bedrock-models.json`, `models.json`. It never auto-edits curated patterns (same rule as today). It flags dead patterns and invocable models no pattern covers; a human edits the list.
 5. **The eu/us/global-only constraint is removed.** `CURATED_PATTERNS` in `sync-enabled-models.sh` pins Anthropic Bedrock patterns to `eu.`, `us.`, `global.` only. The probe run already verifies 17 `jp.`/`au.`/`apac.` models into the region map (example: `au.anthropic.claude-opus-5`), but no pattern can match them, so the picker never offers them. The new tool derives prefix coverage from the regions actually scanned instead of hardcoding three.
-6. **The fetcher is a Python CLI managed with uv.** Same stack as coppice (`~/projects/personal/coppice`, https://github.com/luiul/coppice): typer, rich, hatchling, src layout, ruff, ty, pytest. It lives in its own repo `~/projects/personal/pi-model-sync` (name agreed 2026-09-30) and replaces `sync-enabled-models.sh` once it reaches parity. The Zed sync (`sync-zed-router-models.sh`) is out of scope and stays untouched.
+6. **The fetcher is a Python CLI managed with uv.** Same stack as coppice (`~/projects/personal/coppice`, https://github.com/luiul/coppice): typer, rich, hatchling, src layout, ruff, ty, pytest. It lives in its own repo `~/projects/personal/orchard` (renamed from `pi-model-sync`; name agreed 2026-09-30) and replaces `sync-enabled-models.sh` once it reaches parity. The Zed sync (`sync-zed-router-models.sh`) is out of scope and stays untouched.

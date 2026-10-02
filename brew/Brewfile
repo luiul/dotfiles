@@ -139,6 +139,8 @@ cask "keycastr"
 cask "obsidian"
 # Quick Look generator for Markdown files
 cask "qlmarkdown"
+# Native screenshots, recording, annotation, and editing from the menu bar
+cask "snapzy"
 # Pluggable Terraform linter
 cask "terraform-linters/tap/tflint", trusted: true
 # Multiplayer code editor

@@ -46,7 +46,7 @@ The script drives the real extension with a stubbed ExtensionAPI: rewrite contra
 
 Key behaviors:
 
-- One cumulative Session set per session, never reset per prompt. Counts are measured against each file's Original (first touch this session), not git HEAD, so pre-session dirt is not attributed to the agent. A file reverted to its Original drops off the list by itself.
+- One cumulative Session set per session, never reset per prompt. Counts are measured against each file's Original (first touch this session), not git HEAD, so pre-session dirt is not attributed to the agent. A file reverted to its Original drops off the list by itself, and its Original is forgotten: reconciled files (e.g. committed mid-session) are not re-scanned at settle, so edits from a parallel session or another terminal are never attributed to this one. A later touch captures a fresh Original.
 - Tracks `edit`/`write` at any path. `bash` changes are caught two ways: a `git status` diff before/after each call for the repo containing cwd, plus a path sniff of the command text (content snapshots of path tokens, `cd`-aware) for files anywhere else, shown as absolute paths. Rows render as plain words (`modified path (+1/-2)`), most recently touched first, capped at 8 rows plus an overflow line.
 - `/filechanges` prints the full set into the transcript, `/filechanges-clear` empties it and forgets all Originals (counts then restart from the post-Clear state).
 - The set persists via `pi.appendEntry()` on settle, so `/reload` restores the Panel. Originals are re-captured from `git show HEAD:<path>` in a repo; outside a repo restored counts stay frozen.

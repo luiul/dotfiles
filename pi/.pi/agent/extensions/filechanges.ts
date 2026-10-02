@@ -13,12 +13,18 @@
  * - Session set: every Change since session start or the last Clear. It
  *   accumulates across prompts and never resets on its own.
  * - Revert: when a file's content equals its Original again, its Change
- *   leaves the Session set automatically (content compare, not line counts).
+ *   leaves the Session set automatically (content compare, not line counts)
+ *   and its Original is forgotten. A reconciled file is never re-scanned at
+ *   settle, so edits made outside this session (a parallel pi session, another
+ *   terminal) are not attributed to it. A later touch captures a fresh
+ *   Original, which also keeps that external drift out of the counts.
  *
  * Tracking:
  * - `edit`/`write` tool calls are tracked at any path, inside or outside a
- *   repo. `bash` changes are detected two ways: a `git status --porcelain`
- *   diff before/after each call covers the repo containing cwd, and a
+ *   repo. Paths that reconcile to their Original (e.g. a `git commit` that
+ *   brings a file to HEAD content) are forgotten right away, not re-scanned
+ *   at every settle. `bash` changes are detected two ways: a `git status
+ *   --porcelain` diff before/after each call covers the repo containing cwd, and a
  *   path-sniff of the command text covers everything else: every plausible
  *   path token is content-snapshotted pre-call and re-read post-call, with
  *   relative tokens resolved against a virtual cwd that follows `cd`. So
@@ -359,7 +365,10 @@ export default function (pi: ExtensionAPI) {
 	const sessionSet = new Map<string, Change>();
 	// One Original per touched file, captured at first touch. Later touches of
 	// the same file compare against it, so no-op tool calls don't erase real
-	// changes and counts stay measured from the session's perspective.
+	// changes and counts stay measured from the session's perspective. An
+	// Original is forgotten as soon as the file reconciles to it (Revert), so
+	// the settle sweep never hoists external edits to reconciled files (e.g.
+	// from a parallel session) into this session's set.
 	const originals = new Map<string, Original>();
 	const pendingByToolCallId = new Map<string, PendingSnapshot>();
 	const pendingBashSnapshots = new Map<string, PendingBash>();
@@ -499,8 +508,12 @@ export default function (pi: ExtensionAPI) {
 
 		const current = await readFileSnapshot(original.absPath);
 		if (buffersEqual(original.snapshot.buf, current.buf)) {
-			// Revert: back to its Original, so it drops off the Session set by itself.
+			// Revert: back to its Original. Drop the Change AND forget the Original.
+			// Keeping a stale Original would re-scan the file at every future settle
+			// and attribute external edits (parallel sessions, other terminals) to
+			// this session; a later touch captures a fresh Original instead.
 			sessionSet.delete(path);
+			originals.delete(path);
 			return;
 		}
 
@@ -700,6 +713,9 @@ export default function (pi: ExtensionAPI) {
 		if (!dirtySinceSettle) return;
 		// Final consistency sweep: catches drift from e.g. a bash command that
 		// touched an already-tracked file a second time within the same turn.
+		// Only still-diverged files hold an Original at this point (reconciled
+		// ones were forgotten), so the sweep can't pull in external edits to
+		// files this session is done with.
 		for (const path of [...originals.keys()]) {
 			await refreshChange(ctx, path);
 		}

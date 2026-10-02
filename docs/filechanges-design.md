@@ -56,7 +56,7 @@ One name per concept. These names will be used verbatim in code, comments, and c
 | Kind | `created`, `modified`, or `deleted`. Derived from Original vs. current (missing on one side). | `kind` (stays) |
 | Counts | `+added/-removed` lines vs. the Original, or `(binary)`. | `added` / `removed` (stay) |
 | Session set | The cumulative collection of Changes since session start or the last Clear. Never resets on its own. | `batch` |
-| Revert | A Change whose content equals its Original again. It leaves the Session set automatically. | (no name today) |
+| Revert | A Change whose content equals its Original again. It leaves the Session set automatically, and its Original is forgotten with it. | (no name today) |
 | Tracking | Recording Changes: snapshots on `tool_call`, commit on `tool_result`, git diffing and command path sniffing for bash. | `recordChange` → `trackChange` |
 | Panel | The persistent widget above the Editor. Live view of the Session set, capped at 8 rows. | `widget` / `buildWidgetLines` |
 | List | `/filechanges`. Prints the full Session set into the Transcript. | `printSummary` |
@@ -72,6 +72,7 @@ Two terms disappear on purpose: batch (the old reset per prompt unit) and summar
 - The Original is captured once, at first touch. Later touches of the same file compare against it.
 - The compare happens after every tool result, so the Panel is always live.
 - Revert is automatic. It needs no user action and no extra state.
+- A reconciled file is forgotten completely (Change and Original). A later touch captures a fresh Original, so edits made outside this session (a parallel pi session, another terminal) are never attributed to it.
 - Persist runs at settle time, only when something changed since the last settle (the `dirty` flag).
 
 ## Panel rendering spec
@@ -102,7 +103,7 @@ deleted  old.ts (+0/-40)
 
 ## Edge cases
 
-- Revert: a file changed back to its Original drops off the list by itself (content compare, not line counting).
+- Revert: a file changed back to its Original drops off the list by itself (content compare, not line counting), and its Original is forgotten. This also covers commit-style reconciles: a `git commit` in a bash call brings files to HEAD content, and they must not linger as stale Originals that later pick up external edits.
 - `/reload` or resumed session: the Session set is restored from the log. In a git repo, Originals are re-captured from `git show HEAD:<path>` so later edits keep sensible counts. Outside a repo, restored counts stay frozen as recorded.
 - Binary files: NUL byte sniff in the first 8000 bytes.
 - Ignored paths: `filechanges.ignore` in `.pi/settings.json` (project wins over global). Defaults cover lockfiles, `node_modules`, `dist`, `build`, `.env*`.

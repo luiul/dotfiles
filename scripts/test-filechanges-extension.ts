@@ -279,10 +279,51 @@ check(
   s8rows.length === 1 && s8rows[0].startsWith("created  sniff-inrepo.txt (+1/-0)"),
 )
 
+// --- Scenario 9: external edits after a reconcile are not attributed (parallel-session leak) ---
+// A file that reconciles to its Original must be forgotten entirely. Otherwise
+// the settle sweep re-scans it forever and hoists edits made by a parallel pi
+// session or another terminal into this session's set.
+const dir9 = await mkdtemp(join(tmpdir(), "fc-ext-"))
+await execFileAsync("git", ["init"], { cwd: dir9 })
+await writeFile(join(dir9, "file.txt"), "base\n", "utf-8")
+await execFileAsync("git", ["add", "."], { cwd: dir9 })
+await execFileAsync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "init"], { cwd: dir9 })
+
+const pi7 = new MockPi()
+const ctx7 = new MockCtx(dir9)
+await ext(pi7 as any)
+
+// 9a: a bash call that commits a dirty file reconciles it to HEAD content.
+await writeFile(join(dir9, "file.txt"), "base\ndirty\n", "utf-8") // pre-call dirt
+await bash(pi7, ctx7, "s9.1", "git add . && git commit -m snap", async () => {
+  await execFileAsync("git", ["add", "."], { cwd: dir9 })
+  await execFileAsync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "snap"], { cwd: dir9 })
+})
+check("s9: committed file reconciles to nothing", ctx7.panel() === undefined)
+await fire(pi7, "agent_settled", {}, ctx7)
+// A parallel session (no tool events here) edits the committed file. A legit
+// change then makes the next settle run the sweep over remaining Originals.
+await writeFile(join(dir9, "file.txt"), "base\nexternal\n", "utf-8")
+await editFile(pi7, ctx7, "s9.2", "other.txt", "x\n")
+await fire(pi7, "agent_settled", {}, ctx7)
+const s9panel = ctx7.panel()?.join("\n") ?? ""
+check(
+  "s9: external edit to reconciled file not attributed",
+  !s9panel.includes("file.txt") && s9panel.includes("created  other.txt (+1/-0)"),
+)
+
+// 9b: same leak via Revert: a reverted file must forget its Original too.
+await editFile(pi7, ctx7, "s9.3", "tmp.txt", "a\n") // created, in set
+await editFile(pi7, ctx7, "s9.4", "tmp.txt", null) // deleted again: Revert
+await writeFile(join(dir9, "tmp.txt"), "external\n", "utf-8") // parallel session recreates it
+await fire(pi7, "agent_settled", {}, ctx7)
+check("s9: external recreate after revert not attributed", !(ctx7.panel()?.join("\n") ?? "").includes("tmp.txt"))
+
 await rm(dir, { recursive: true, force: true })
 await rm(dirPlain, { recursive: true, force: true })
 await rm(dirOther, { recursive: true, force: true })
 await rm(dirNoRepo, { recursive: true, force: true })
+await rm(dir9, { recursive: true, force: true })
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

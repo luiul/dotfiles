@@ -38,6 +38,7 @@
   "enableInstallTelemetry": false,
   "enableAnalytics": false,
   "quietStartup": true,
+  "fullscreenCopyOnSelect": false,
   "lastChangelogVersion": "1.0.0",
   "theme": "dark",
   "outputPad": 0,
@@ -50,5 +51,8 @@
   ],
   "markdown": {
     "codeBlockIndent": ""
-  }
+  },
+  "extensions": [
+    "-builtin:mcp"
+  ]
 }

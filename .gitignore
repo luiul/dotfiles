@@ -5,6 +5,8 @@
 .DS_Store
 # Ignore project-level Claude data (the claude/ stow package is tracked separately)
 /.claude/
+# Repo-local VS Code workspace settings: window.title must stay user-level only (dashkit parses it)
+/.vscode/
 # Real .env contains secrets — only example.env is tracked
 /.env
 # Snowflake CLI runtime files

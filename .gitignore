@@ -18,3 +18,4 @@ ssh/.ssh/*
 # AWS — config has an account ID + SSO portal URL; only the example is tracked
 aws/.aws/config
 node_modules/
+.playwright-mcp/

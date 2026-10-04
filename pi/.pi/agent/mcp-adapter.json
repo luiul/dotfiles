@@ -8,7 +8,7 @@
       "type": "http",
       "url": "https://genai-lab-api.eu.foundations.shared.int.hellofresh.io/mcp/v2",
       "lifecycle": "lazy",
-      "directTools": true
+      "directTools": false
     },
     "excalidraw": {
       "type": "http",
@@ -27,7 +27,6 @@
       "args": [
         "--transport",
         "stdio",
-        "-no-cache",
         "-enabled-tools",
         "conversations_history,conversations_replies,conversations_search_messages,channels_list"
       ],
@@ -38,14 +37,20 @@
       "command": "npx",
       "args": [
         "-y",
-        "@playwright/mcp@latest",
+        "@playwright/mcp@0.0.83",
         "--executable-path",
         "/Applications/Brave Browser Beta.app/Contents/MacOS/Brave Browser Beta",
         "--user-data-dir",
         "/Users/luis.aceituno/.pi/agent/data/playwright-brave-beta"
       ],
       "lifecycle": "lazy",
-      "directTools": true
+      "directTools": false
+    },
+    "playwriter": {
+      "command": "playwriter",
+      "args": [],
+      "lifecycle": "lazy",
+      "directTools": false
     }
   }
 }

@@ -5,12 +5,15 @@
  * (here, `AWS_PROFILE=sso-bedrock`). SSO sessions expire after a few hours,
  * after which every model call fails with "The SSO session ... has expired".
  *
- * This validates the session on startup and before every agent turn
- * (`before_agent_start`, which pi awaits before the model is called), so an
- * expired session is refreshed via `aws sso login` (opens the browser) before
- * the next prompt instead of failing the call. The pre-turn check is throttled
- * (VALIDATE_TTL_MS) and concurrent refreshes share one login. `/sso` forces a
- * refresh on demand.
+ * Fully lazy: nothing runs at startup or when selecting a Bedrock model.
+ * The only automatic check is `before_agent_start` (which pi awaits before
+ * the model is called), and only when the selected model is on
+ * amazon-bedrock, so an expired session is refreshed via `aws sso login`
+ * (opens the browser) right before the one call that needs it, never
+ * earlier. Sessions on any other provider (e.g. the AI Model Router) never
+ * pay for the STS probe (~1s) or a surprise browser login. The check is
+ * throttled (VALIDATE_TTL_MS) and concurrent refreshes share one login.
+ * `/sso` forces a refresh on demand.
  */
 
 import { execFile } from "node:child_process";
@@ -138,14 +141,16 @@ async function ensureSession(ctx: ExtensionContext, force = false): Promise<bool
 }
 
 export default function (pi: ExtensionAPI) {
-	// Fresh process start only, not every /new or /resume.
-	pi.on("session_start", async (event, ctx) => {
-		if (event.reason === "startup") await ensureSession(ctx, true);
-	});
+	// Only Bedrock needs AWS credentials; sessions on any other provider
+	// (e.g. the AI Model Router) skip the STS probe entirely.
+	const usingBedrock = (ctx: ExtensionContext): boolean => ctx.model?.provider === "amazon-bedrock";
 
-	// Refresh before each turn so a mid-session expiry never reaches the model.
+	// Lazily refresh right before each Bedrock turn, and only then: no checks
+	// at startup or on model select, so an expired session never triggers a
+	// browser login until a Bedrock model is actually called. Mid-session
+	// expiry is caught here too, before it can reach the model.
 	pi.on("before_agent_start", async (_event, ctx) => {
-		await ensureSession(ctx);
+		if (usingBedrock(ctx)) await ensureSession(ctx);
 	});
 
 	pi.registerCommand("sso", {

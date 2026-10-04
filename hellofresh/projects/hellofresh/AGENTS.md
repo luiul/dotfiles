@@ -249,12 +249,19 @@ Installed (`aws --version` → aws-cli v2). Auth is HelloFresh SSO via the share
 ### Logging in
 
 ```bash
-# One browser login authorizes every profile that shares the hfsso session
+awslogin        # lazy: checks the cached session, only opens the browser when expired
+```
+
+`awslogin` (zsh function in `~/dotfiles/zsh/.zsh_config/funcs_aws.zsh`) wraps the manual flow below: it runs `aws sts get-caller-identity` first and skips the browser login when the session is still valid. One browser login authorizes every profile that shares the `hfsso` session, so the optional profile argument (`awslogin sso-bi`) rarely matters.
+
+Manual equivalent:
+
+```bash
 aws sso login --profile sso-bi
 aws sts get-caller-identity --profile sso-bi   # verify
 ```
 
-The session token expires after a few hours; re-run `aws sso login` when calls start returning `Error loading SSO Token`.
+The session token expires after a few hours; re-run `awslogin` (or `aws sso login`) when calls start returning `Error loading SSO Token`.
 
 ### Profiles (accounts and roles)
 

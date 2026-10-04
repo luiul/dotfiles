@@ -65,6 +65,14 @@ The script drives the real extension with a stubbed ExtensionAPI against a real 
 `pi/.pi/agent/models.json` contains official Bedrock pricing overrides for 54 currently enabled model IDs whose family rates were verified against AWS sources. Route and regional differences are preserved where represented by the installed pi catalog. Configured IDs without verified official pricing are intentionally absent and render as unknown rather than free. Pi reads these natively for its built-in cost display; no extension is involved. The same file also defines the `ai-model-router` provider, so do not delete it.
 
 
+## AWS SSO auto-refresh (Bedrock only)
+
+`aws-sso-refresh.ts` keeps the `sso-bedrock` AWS SSO session valid so Bedrock model calls never fail with an expired-token error. It validates via `aws sts get-caller-identity` and refreshes through `aws sso login` (browser flow) when needed.
+
+Fully lazy: nothing runs at startup or on model select. The only automatic check is `before_agent_start`, and only when the selected model is on `amazon-bedrock` (throttled to one STS probe per 5 minutes), so an expired session triggers the browser login right before the one call that needs it, never earlier. Sessions on any other provider, such as the AI Model Router, never pay the ~1s probe and never get a surprise browser login. Concurrent processes share one login through a lockfile in tmpdir, and one retry absorbs transient STS failures under contention. `/sso` forces a refresh on demand. The user barely uses Bedrock with pi (AI Model Router is the default), so eager login was removed entirely.
+
+Verification: `bun scripts/test-aws-sso-refresh-extension.ts` (mock harness + fake `aws` binary, asserts no startup/model_select handlers and login only at turn time). Live: put a logging fake `aws` first in PATH, run `pi --no-extensions -e ~/.pi/agent/extensions/aws-sso-refresh.ts --thinking off -p ok` (router default, expect no logged call), then again with `--provider amazon-bedrock --model eu.anthropic.claude-haiku-4-5-20251001-v1:0` and an expired fake state (expect `sts get-caller-identity` x2 then `sso login` x1, no browser).
+
 ## ste-lite (lazy Simplified Technical English guard)
 
 `ste-lite/` implements the plan in [issue #12](https://github.com/luiul/dotfiles/issues/12): a small, first-party pi extension that nudges assistant replies and file-edit prose toward ASD-STE100-style Simplified Technical English (short sentences, approved-word swaps, no filler/hedging, no passive-voice walls of text).

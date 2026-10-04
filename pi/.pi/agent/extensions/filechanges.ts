@@ -44,16 +44,23 @@
  *
  * Rendering:
  * - Panel: a persistent widget above the editor, live on every change. It
- *   shows the Mode's scope: the Round by default (`Changes last round (N):`),
- *   the whole Session set in all mode (`Session changes (N):`). One row per
- *   Change (`modified path (+1/-2)`), most recently touched first, capped at
- *   8 rows plus one trailing line (pi truncates widgets past 10 lines). The
- *   trailing line is the overflow when there is one, else a pointer to the
- *   Changes the Round hides. Hidden when the Session set is empty; an empty
- *   Round with a non-empty Session set shows a one-line hint instead.
- * - `/filechanges` prints the Mode's scope into the transcript as dim lines
- *   (up to 30 rows, then an overflow note). `/filechanges round` and
- *   `/filechanges all` print one scope without changing the Mode.
+ *   shows the Mode's scope: the Round by default, the whole Session set in
+ *   all mode. The header is bold and carries the scope's totals:
+ *   `Changes last round (N): +A/-R` (totals hidden when both sides are zero,
+ *   e.g. binary-only). One row per Change, most recently touched first,
+ *   capped at 8 rows plus one trailing line (pi truncates widgets past 10
+ *   lines). The trailing line is the overflow when there is one, else a
+ *   pointer to the Changes the Round hides. Hidden when the Session set is
+ *   empty; an empty Round with a non-empty Session set shows a one-line hint
+ *   instead.
+ * - Colors are semantic, from the pi theme: the kind word by meaning
+ *   (created = success, modified = warning, deleted = error), the path in
+ *   text, counts in toolDiffAdded/toolDiffRemoved with zero counts dimmed,
+ *   `(binary)` muted. The same scheme renders in the Panel and the List.
+ *   The no-UI fallback (console.log) stays plain.
+ * - `/filechanges` prints the Mode's scope into the transcript (up to 30
+ *   rows, then an overflow note). `/filechanges round` and `/filechanges all`
+ *   print one scope without changing the Mode.
  * - `/filechanges-mode` toggles the Mode.
  * - `/filechanges-clear` empties the Session set and the Round and forgets
  *   all Originals. Tracking restarts from that point: a file edited again
@@ -190,25 +197,51 @@ function countsText(t: Change): string {
 	return t.binary ? "(binary)" : `(+${t.added}/-${t.removed})`;
 }
 
-/** Shared row renderer, used by the Panel and by `/filechanges`. Plain words, no glyphs. */
+/** Semantic color per Kind: color does the scannability job glyphs would, so the words stay plain. */
+const KIND_COLORS: Record<Kind, string> = { created: "success", modified: "warning", deleted: "error" };
+
+/** Shared row renderer, used by the Panel and by `/filechanges`. Plain words, no glyphs; color carries the meaning. */
 function formatChangeLine(t: Change, theme?: any): string {
 	const label = t.kind.padEnd(9); // "modified" is the longest kind at 8 chars
 	if (!theme) return `${label}${t.path} ${countsText(t)}`;
-	const prefix = theme.fg("muted", label) + theme.fg("muted", `${t.path} `);
+	const prefix = theme.fg(KIND_COLORS[t.kind], label) + theme.fg("text", `${t.path} `);
 	let counts: string;
 	if (t.binary) {
 		counts = theme.fg("muted", "(binary)");
 	} else {
-		const plus = t.added === 0 ? theme.fg("text", `+${t.added}`) : theme.fg("success", `+${t.added}`);
-		const minus = t.removed === 0 ? theme.fg("text", `-${t.removed}`) : theme.fg("error", `-${t.removed}`);
-		counts = theme.fg("text", "(") + plus + theme.fg("text", "/") + minus + theme.fg("text", ")");
+		const plus = t.added === 0 ? theme.fg("dim", `+${t.added}`) : theme.fg("toolDiffAdded", `+${t.added}`);
+		const minus = t.removed === 0 ? theme.fg("dim", `-${t.removed}`) : theme.fg("toolDiffRemoved", `-${t.removed}`);
+		counts = theme.fg("dim", "(") + plus + theme.fg("dim", "/") + minus + theme.fg("dim", ")");
 	}
 	return prefix + counts;
 }
 
-/** Panel/List header for one scope. Round is the default view; "all" is the whole Session set. */
-function headerText(mode: Mode, count: number): string {
-	return mode === "round" ? `Changes last round (${count}):` : `Session changes (${count}):`;
+/** Line-count totals over one scope. Binary rows carry no counts and add nothing. */
+function totalsOf(items: Change[]): { added: number; removed: number } {
+	let added = 0;
+	let removed = 0;
+	for (const t of items) {
+		if (t.binary) continue;
+		added += t.added;
+		removed += t.removed;
+	}
+	return { added, removed };
+}
+
+/**
+ * Panel/List header for one scope: bold label plus the scope's totals, e.g.
+ * `Changes last round (3): +45/-12`. Round is the default view; "all" is the
+ * whole Session set. Totals are hidden when both sides are zero (binary-only
+ * scopes), leaving a bare `Changes last round (N):`.
+ */
+function formatHeader(mode: Mode, items: Change[], theme?: any): string {
+	const base = mode === "round" ? `Changes last round (${items.length}):` : `Session changes (${items.length}):`;
+	const { added, removed } = totalsOf(items);
+	if (added === 0 && removed === 0) return theme ? theme.bold(base) : base;
+	if (!theme) return `${base} +${added}/-${removed}`;
+	const plus = added === 0 ? theme.fg("dim", `+${added}`) : theme.fg("toolDiffAdded", `+${added}`);
+	const minus = removed === 0 ? theme.fg("dim", `-${removed}`) : theme.fg("toolDiffRemoved", `-${removed}`);
+	return theme.bold(base) + " " + plus + theme.fg("dim", "/") + minus;
 }
 
 /**
@@ -223,7 +256,7 @@ function buildPanelLines(items: Change[], sessionSize: number, mode: Mode, theme
 		const hint = `No changes last round (${sessionSize} this session): /filechanges-mode`;
 		return [theme ? theme.fg("muted", hint) : hint];
 	}
-	const lines: string[] = [theme ? theme.fg("muted", headerText(mode, items.length)) : headerText(mode, items.length)];
+	const lines: string[] = [formatHeader(mode, items, theme)];
 
 	const shown = items.slice(0, PANEL_MAX_ROWS);
 	for (const t of shown) lines.push(formatChangeLine(t, theme));
@@ -494,7 +527,7 @@ export default function (pi: ExtensionAPI) {
 		updateUi(ctx);
 	}
 
-	/** `/filechanges`: print one scope into the transcript as dim lines. A `round`/`all` arg picks a scope once without changing the Mode. */
+	/** `/filechanges`: print one scope into the transcript, colored like the Panel. A `round`/`all` arg picks a scope once without changing the Mode. */
 	function listSessionSet(ctx: ExtensionContext, args: string) {
 		const arg = args.trim();
 		const view: Mode = arg === "all" || arg === "round" ? arg : mode;
@@ -508,11 +541,15 @@ export default function (pi: ExtensionAPI) {
 			else console.log(`[filechanges] ${msg}`);
 			return;
 		}
+		const theme = ctx.hasUI ? ctx.ui.theme : undefined;
 		const shown = items.slice(0, LIST_MAX_ROWS);
-		const lines = [headerText(view, items.length), ...shown.map((t) => formatChangeLine(t))];
-		if (items.length > shown.length) lines.push(`  …and ${items.length - shown.length} more`);
-		else if (view === "round" && sessionSet.size > items.length) {
-			lines.push(`  …and ${sessionSet.size - items.length} more this session (see /filechanges-mode)`);
+		const lines = [formatHeader(view, items, theme), ...shown.map((t) => formatChangeLine(t, theme))];
+		if (items.length > shown.length) {
+			const more = `  …and ${items.length - shown.length} more`;
+			lines.push(theme ? theme.fg("dim", more) : more);
+		} else if (view === "round" && sessionSet.size > items.length) {
+			const more = `  …and ${sessionSet.size - items.length} more this session (see /filechanges-mode)`;
+			lines.push(theme ? theme.fg("dim", more) : more);
 		}
 		const body = lines.join("\n");
 		if (ctx.hasUI) ctx.ui.notify(body, "info");

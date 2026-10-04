@@ -85,7 +85,7 @@ Two terms disappear on purpose: batch (the old reset per prompt unit) and summar
 Round mode (the default):
 
 ```text
-Changes last round (2):
+Changes last round (2): +13/-1
 modified pi/.pi/agent/AGENTS.md (+1/-1)
 created  notes.md (+12/-0)
 …and 1 more this session (see /filechanges-mode)
@@ -94,14 +94,14 @@ created  notes.md (+12/-0)
 All mode:
 
 ```text
-Session changes (3):
+Session changes (3): +13/-41
 modified pi/.pi/agent/AGENTS.md (+1/-1)
 created  notes.md (+12/-0)
 deleted  old.ts (+0/-40)
 …and 2 more (see /filechanges)
 ```
 
-- Header: `Changes last round (N):` in round mode, `Session changes (N):` in all mode. N is the number of Changes in the shown scope.
+- Header: `Changes last round (N): +A/-R` in round mode, `Session changes (N): +A/-R` in all mode. N is the number of Changes in the shown scope; A and R are its line-count totals. The header is bold. Totals are hidden when both sides are zero (e.g. binary-only scopes), leaving a bare `Changes last round (N):`.
 - One plain word per kind: `modified`, `created`, `deleted` (padded to a column). No glyphs, matching the status-bar style (`changed 3`, `ahead 2`). The same words are used in List output. One rendering style everywhere.
 - Counts always show both sides, even when one is zero. Uniform, no special cases.
 - Binary files show `(binary)` instead of counts.
@@ -109,13 +109,13 @@ deleted  old.ts (+0/-40)
 - Cap of 8 rows, then at most one trailing line. Header plus 8 rows plus the trailing line is 10 lines, exactly pi's widget limit. The trailing line is the overflow (`…and N more (see /filechanges)`) when there is one; otherwise, in round mode with more Changes in the Session set, `…and N more this session (see /filechanges-mode)`.
 - Empty Round with a non-empty Session set: one muted line, `No changes last round (N this session): /filechanges-mode`.
 - Empty Session set: the Panel is hidden.
-- Colors come from the pi theme: counts in success/error, the rest muted. Opaque enough for light and dark mode.
+- Colors are semantic, from the pi theme: the kind word by meaning (created = success, modified = warning, deleted = error), the path in text, counts in `toolDiffAdded`/`toolDiffRemoved` with zero counts dim, `(binary)` muted, the header bold with colored totals. Color does the scannability job glyphs would, keeping the resolved no-glyphs decision. The List uses the same scheme. The no-UI fallback (console.log) stays plain. Opaque enough for light and dark mode.
 
 ## Commands
 
 | Command | Effect |
 | --- | --- |
-| `/filechanges` | Prints the Mode's scope into the Transcript as dim lines (up to 30 rows, then an overflow note). `/filechanges round` and `/filechanges all` print one scope once without changing the Mode. |
+| `/filechanges` | Prints the Mode's scope into the Transcript, colored like the Panel (up to 30 rows, then an overflow note). `/filechanges round` and `/filechanges all` print one scope once without changing the Mode. |
 | `/filechanges-mode` | Toggles the Mode between `round` and `all`. The Mode persists, so a `/reload` keeps the chosen view. |
 | `/filechanges-clear` | Empties the Session set and the Round and forgets all Originals. The Panel hides. Tracking continues; the next change starts a fresh accumulation from that point. |
 

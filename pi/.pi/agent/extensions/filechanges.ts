@@ -12,6 +12,11 @@
  *   path, a kind (created/modified/deleted), and +added/-removed counts.
  * - Session set: every Change since session start or the last Clear. It
  *   accumulates across prompts and never resets on its own.
+ * - Round: the Changes touched since the last agent_start (one prompt) or
+ *   the last Clear. Kept as the set of paths touched; rendered by
+ *   intersecting with the Session set, so a Revert drops out by itself.
+ * - Mode: which scope the Panel and List show, "round" (default) or "all".
+ *   Toggled by /filechanges-mode or ctrl+shift+c.
  * - Revert: when a file's content equals its Original again, its Change
  *   leaves the Session set automatically (content compare, not line counts)
  *   and its Original is forgotten. A reconciled file is never re-scanned at
@@ -38,21 +43,31 @@
  *   (project) or `~/.pi/agent/settings.json` (global), project wins.
  *
  * Rendering:
- * - Panel: a persistent widget above the editor, live on every change. One
- *   row per Change (`modified path (+1/-2)`), most recently touched first,
- *   capped at 8 rows plus an overflow line (pi truncates widgets past 10
- *   lines). Hidden when the Session set is empty.
- * - `/filechanges` prints the full Session set into the transcript as dim
- *   lines (up to 30 rows, then an overflow note).
- * - `/filechanges-clear` empties the Session set and forgets all Originals.
- *   Tracking restarts from that point: a file edited again gets a fresh
- *   Original, so its counts are measured from the post-Clear state.
+ * - Panel: a persistent widget above the editor, live on every change. It
+ *   shows the Mode's scope: the Round by default (`Changes last round (N):`),
+ *   the whole Session set in all mode (`Session changes (N):`). One row per
+ *   Change (`modified path (+1/-2)`), most recently touched first, capped at
+ *   8 rows plus one trailing line (pi truncates widgets past 10 lines). The
+ *   trailing line is the overflow when there is one, else a pointer to the
+ *   Changes the Round hides. Hidden when the Session set is empty; an empty
+ *   Round with a non-empty Session set shows a one-line hint instead.
+ * - `/filechanges` prints the Mode's scope into the transcript as dim lines
+ *   (up to 30 rows, then an overflow note). `/filechanges round` and
+ *   `/filechanges all` print one scope without changing the Mode.
+ * - `/filechanges-mode` toggles the Mode (also ctrl+shift+c).
+ * - `/filechanges-clear` empties the Session set and the Round and forgets
+ *   all Originals. Tracking restarts from that point: a file edited again
+ *   gets a fresh Original, so its counts are measured from the post-Clear
+ *   state.
  *
  * Persistence:
- * - On `agent_settled`, the Session set is persisted via `pi.appendEntry()`,
- *   but only when something changed since the last settle (the dirty flag).
- * - On `session_start`/`session_tree` the set is restored, so `/reload` or a
- *   resumed session doesn't blank the Panel. Inside a git repo, Originals are
+ * - On `agent_settled`, the Session set, the Round, and the Mode are
+ *   persisted via `pi.appendEntry()`, but only when something changed since
+ *   the last settle (the dirty flag).
+ * - On `session_start`/`session_tree` they are restored, so `/reload` or a
+ *   resumed session doesn't blank the Panel. Entries written before the Round
+ *   existed restore with the Round covering every restored Change, so the
+ *   default Round view keeps showing their rows. Inside a git repo, Originals are
  *   re-captured from `git show HEAD:<path>` so edits after a reload keep
  *   sensible counts; outside a repo, restored counts stay frozen as recorded.
  * - Display-only persistence: there is no revert/accept-decline here.
@@ -105,6 +120,9 @@ type Original = { absPath: string; snapshot: FileSnapshot };
 
 type Kind = "created" | "modified" | "deleted";
 const KINDS = new Set<string>(["created", "modified", "deleted"]);
+
+/** Which scope the Panel and List show: the Round (default) or all session changes. */
+type Mode = "round" | "all";
 
 /** One file whose current content differs from its Original. */
 type Change = {
@@ -188,17 +206,32 @@ function formatChangeLine(t: Change, theme?: any): string {
 	return prefix + counts;
 }
 
-/** Panel content: header plus up to PANEL_MAX_ROWS rows plus an overflow line (10 lines, pi's widget limit). */
-function buildPanelLines(sessionSet: Map<string, Change>, theme?: any): string[] | undefined {
-	if (sessionSet.size === 0) return undefined;
-	const items = [...sessionSet.values()].sort((a, b) => b.updatedAt - a.updatedAt);
-	const header = `Session changes (${items.length}):`;
-	const lines: string[] = [theme ? theme.fg("muted", header) : header];
+/** Panel/List header for one scope. Round is the default view; "all" is the whole Session set. */
+function headerText(mode: Mode, count: number): string {
+	return mode === "round" ? `Changes last round (${count}):` : `Session changes (${count}):`;
+}
+
+/**
+ * Panel content for one scope: header, up to PANEL_MAX_ROWS rows, and at most
+ * one trailing line (10 lines total, pi's widget limit). The trailing line is
+ * the overflow when there is one, else a pointer to the Changes the Round
+ * hides. Empty Round with a non-empty Session set: a one-line hint.
+ */
+function buildPanelLines(items: Change[], sessionSize: number, mode: Mode, theme?: any): string[] | undefined {
+	if (items.length === 0) {
+		if (sessionSize === 0 || mode === "all") return undefined;
+		const hint = `No changes last round (${sessionSize} this session): /filechanges-mode`;
+		return [theme ? theme.fg("muted", hint) : hint];
+	}
+	const lines: string[] = [theme ? theme.fg("muted", headerText(mode, items.length)) : headerText(mode, items.length)];
 
 	const shown = items.slice(0, PANEL_MAX_ROWS);
 	for (const t of shown) lines.push(formatChangeLine(t, theme));
 	if (items.length > shown.length) {
 		const more = `…and ${items.length - shown.length} more (see /filechanges)`;
+		lines.push(theme ? theme.fg("dim", more) : more);
+	} else if (mode === "round" && sessionSize > items.length) {
+		const more = `…and ${sessionSize - items.length} more this session (see /filechanges-mode)`;
 		lines.push(theme ? theme.fg("dim", more) : more);
 	}
 	return lines;
@@ -363,6 +396,13 @@ export default function (pi: ExtensionAPI) {
 	// The Session set: every Change since session start or the last Clear.
 	// Accumulates across prompts; never resets on its own.
 	const sessionSet = new Map<string, Change>();
+	// The Round: display paths touched since the last agent_start (one prompt)
+	// or Clear. Rendered by intersecting with the Session set, so a Revert
+	// drops out by itself. The settle sweep does not add to it: still-diverged
+	// files from earlier rounds stay out of the current one.
+	const roundPaths = new Set<string>();
+	// The current view scope. Round is the default; persisted with the set.
+	let mode: Mode = "round";
 	// One Original per touched file, captured at first touch. Later touches of
 	// the same file compare against it, so no-op tool calls don't erase real
 	// changes and counts stay measured from the session's perspective. An
@@ -404,13 +444,19 @@ export default function (pi: ExtensionAPI) {
 		return ignoreCache.patterns;
 	}
 
+	/** Changes in one scope, most recently touched first. */
+	function changesIn(view: Mode): Change[] {
+		const items = [...sessionSet.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+		return view === "round" ? items.filter((c) => roundPaths.has(c.path)) : items;
+	}
+
 	function updateUi(ctx: ExtensionContext) {
 		if (!ctx?.hasUI) return;
-		ctx.ui.setWidget("filechanges", buildPanelLines(sessionSet, ctx.ui.theme));
+		ctx.ui.setWidget("filechanges", buildPanelLines(changesIn(mode), sessionSet.size, mode, ctx.ui.theme));
 	}
 
 	function persistSessionSet() {
-		pi.appendEntry(ENTRY_SESSION_SET, { items: [...sessionSet.values()], timestamp: Date.now() });
+		pi.appendEntry(ENTRY_SESSION_SET, { items: [...sessionSet.values()], round: [...roundPaths], mode, timestamp: Date.now() });
 	}
 
 	async function restoreSessionSet(ctx: ExtensionContext) {
@@ -420,12 +466,18 @@ export default function (pi: ExtensionAPI) {
 		}
 		sessionSet.clear();
 		originals.clear();
+		roundPaths.clear();
 		if (data?.items && Array.isArray(data.items)) {
 			for (const item of data.items) {
 				const change = sanitizeRestored(item);
 				if (change) sessionSet.set(change.path, change);
 			}
 		}
+		mode = data?.mode === "all" ? "all" : "round";
+		// Entries from before the Round existed carry no `round`: cover every
+		// restored Change, so the default Round view keeps showing their rows.
+		const restoredRound: unknown[] = Array.isArray(data?.round) ? data.round : [...sessionSet.keys()];
+		for (const p of restoredRound) if (typeof p === "string") roundPaths.add(p);
 		// Re-capture Originals from git HEAD so edits after a reload keep sensible
 		// counts. Files outside the repo keep no Original: their restored counts
 		// stay frozen as recorded until the next touch captures a fresh Original.
@@ -442,20 +494,39 @@ export default function (pi: ExtensionAPI) {
 		updateUi(ctx);
 	}
 
-	/** `/filechanges`: print the full Session set into the transcript as dim lines. */
-	function listSessionSet(ctx: ExtensionContext) {
-		if (sessionSet.size === 0) {
-			if (ctx.hasUI) ctx.ui.notify("filechanges: no files changed this session.", "info");
-			else console.log("[filechanges] no files changed this session.");
+	/** `/filechanges`: print one scope into the transcript as dim lines. A `round`/`all` arg picks a scope once without changing the Mode. */
+	function listSessionSet(ctx: ExtensionContext, args: string) {
+		const arg = args.trim();
+		const view: Mode = arg === "all" || arg === "round" ? arg : mode;
+		const items = changesIn(view);
+		if (items.length === 0) {
+			const msg =
+				view === "round" && sessionSet.size > 0
+					? `filechanges: no changes last round (${sessionSet.size} this session: /filechanges-mode).`
+					: "filechanges: no files changed this session.";
+			if (ctx.hasUI) ctx.ui.notify(msg, "info");
+			else console.log(`[filechanges] ${msg}`);
 			return;
 		}
-		const items = [...sessionSet.values()].sort((a, b) => b.updatedAt - a.updatedAt);
 		const shown = items.slice(0, LIST_MAX_ROWS);
-		const lines = [`Session changes (${items.length}):`, ...shown.map((t) => formatChangeLine(t))];
+		const lines = [headerText(view, items.length), ...shown.map((t) => formatChangeLine(t))];
 		if (items.length > shown.length) lines.push(`  …and ${items.length - shown.length} more`);
+		else if (view === "round" && sessionSet.size > items.length) {
+			lines.push(`  …and ${sessionSet.size - items.length} more this session (see /filechanges-mode)`);
+		}
 		const body = lines.join("\n");
 		if (ctx.hasUI) ctx.ui.notify(body, "info");
 		else console.log(`[filechanges] ${body}`);
+	}
+
+	/** Flip the Mode and persist it so a /reload keeps the chosen view. */
+	function toggleMode(ctx: ExtensionContext) {
+		mode = mode === "round" ? "all" : "round";
+		updateUi(ctx);
+		persistSessionSet();
+		const msg = mode === "round" ? "filechanges: showing changes last round." : "filechanges: showing all session changes.";
+		if (ctx.hasUI) ctx.ui.notify(msg, "info");
+		else console.log(`[filechanges] ${msg}`);
 	}
 
 	/** Line-count diff via `git diff --no-index --numstat` (works outside a repo too, no npm dep). */
@@ -537,6 +608,7 @@ export default function (pi: ExtensionAPI) {
 
 	async function trackChange(ctx: ExtensionContext, path: string, absPath: string, beforeSnap: FileSnapshot): Promise<void> {
 		dirtySinceSettle = true;
+		roundPaths.add(path);
 		ensureOriginal(path, absPath, beforeSnap);
 		await refreshChange(ctx, path);
 		updateUi(ctx);
@@ -697,6 +769,7 @@ export default function (pi: ExtensionAPI) {
 
 			for (const { repoRelPath, absPath, relPath } of relevant) {
 				dirtySinceSettle = true;
+				roundPaths.add(relPath);
 				if (!originals.has(relPath)) {
 					const beforeSnap = await readGitHeadSnapshot(repoRoot, repoRelPath);
 					ensureOriginal(relPath, absPath, beforeSnap);
@@ -726,16 +799,36 @@ export default function (pi: ExtensionAPI) {
 		persistSessionSet();
 	});
 
+	// A new prompt starts a new Round: the Panel switches to the changes this
+	// prompt produces. The Session set is untouched (all mode still shows it).
+	pi.on("agent_start", async (_event, ctx) => {
+		roundPaths.clear();
+		updateUi(ctx);
+	});
+
 	pi.on("session_start", async (_event, ctx) => restoreSessionSet(ctx));
 	pi.on("session_tree", async (_event, ctx) => restoreSessionSet(ctx));
 
 	pi.registerCommand("filechanges", {
-		description: "List files changed this session",
-		handler: async (_args, ctx) => {
+		description: "List changed files for the current view (append 'round' or 'all' to pick a view once)",
+		handler: async (args, ctx) => {
 			await ctx.waitForIdle();
 			updateUi(ctx);
-			listSessionSet(ctx);
+			listSessionSet(ctx, args);
 		},
+	});
+
+	pi.registerCommand("filechanges-mode", {
+		description: "Toggle the filechanges view between the last round and all session changes (ctrl+shift+c)",
+		handler: async (_args, ctx) => {
+			await ctx.waitForIdle();
+			toggleMode(ctx);
+		},
+	});
+
+	pi.registerShortcut("ctrl+shift+c", {
+		description: "Toggle filechanges view: last round vs all session changes",
+		handler: (ctx) => toggleMode(ctx),
 	});
 
 	pi.registerCommand("filechanges-clear", {
@@ -744,6 +837,7 @@ export default function (pi: ExtensionAPI) {
 			await ctx.waitForIdle();
 			sessionSet.clear();
 			originals.clear();
+			roundPaths.clear();
 			dirtySinceSettle = false;
 			updateUi(ctx);
 			// Persist the empty set so a /reload doesn't resurrect the cleared list.

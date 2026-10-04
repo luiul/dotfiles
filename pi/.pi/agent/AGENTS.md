@@ -113,3 +113,12 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Fallback when a plain image file is required (e.g. Marp decks): keep the `.drawio`/`.mmd` source next to the rendered image and export with the `drawio` CLI (see the `export-drawio-diagrams-as-images-via-cli` skill).
 - Check the rendered diagram in GitHub light and dark mode before merging.
 
+## Browser Automation
+
+- Default tool: playwriter CLI (`playwriter -s <session> -e '<playwright JS>'`). It drives the real Brave browsers through an extension bridge, so logged-in sessions work and bot detection sees a real browser. Reference: `~/.pi/agent/skills/playwriter/SKILL.md` (context-mode source `playwriter-skill`).
+- Two browsers carry the extension: the Brave Beta automation profile (`~/.pi/agent/data/playwright-brave-beta`, default target) and the daily stable Brave (work sessions). List them with `playwriter browser list`, pin a session with `playwriter session new --browser <key>`.
+- Consent model: agent-created tabs (`context.newPage()`) work directly. Pre-existing tabs need one manual extension-icon click each.
+- Use Playwright MCP for clean-room tasks where no login state should exist.
+- Read-only scraping of bot-protected sites: cookie replay via curl stays the fallback (skill `scrape-logged-in-site-via-browser-cookie-replay`).
+- Keep the playwriter MCP entry in proxy mode (directTools:false). Its `execute` tool description is 53KB and would bloat the standing prompt. Use the CLI.
+

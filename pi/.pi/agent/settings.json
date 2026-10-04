@@ -38,8 +38,8 @@
   "enableInstallTelemetry": false,
   "enableAnalytics": false,
   "quietStartup": true,
-  "fullscreenCopyOnSelect": true,
-  "lastChangelogVersion": "1.0.0",
+  "fullscreenCopyOnSelect": false,
+  "lastChangelogVersion": "1.0.2",
   "theme": "dark",
   "outputPad": 0,
   "packages": [

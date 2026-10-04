@@ -115,8 +115,8 @@ Work in two modes: planning and execution. Pick the mode from the request.
 
 ## Browser Automation
 
-- Default tool: playwriter CLI (`playwriter -s <session> -e '<playwright JS>'`). It drives the real Brave browsers through an extension bridge, so logged-in sessions work and bot detection sees a real browser. Reference: `~/.pi/agent/skills/playwriter/SKILL.md` (context-mode source `playwriter-skill`).
-- Two browsers carry the extension: the Brave Beta automation profile (`~/.pi/agent/data/playwright-brave-beta`, default target) and the daily stable Brave (work sessions). List them with `playwriter browser list`, pin a session with `playwriter session new --browser <key>`.
+- Default tool: playwriter CLI (`playwriter -s <session> -e '<playwright JS>'`). It drives the real Brave browser through an extension bridge, so logged-in sessions work and bot detection sees a real browser. Full reference: `~/.pi/agent/skills/playwriter/SKILL.md` (context-mode source `playwriter-skill`); setup doc: `docs/browser-automation.md` in the dotfiles repo.
+- Use it ONLY against the Brave Beta automation profile (`~/.pi/agent/data/playwright-brave-beta`). Never drive the daily stable Brave; it deliberately has no extension.
 - Consent model: agent-created tabs (`context.newPage()`) work directly. Pre-existing tabs need one manual extension-icon click each.
 - Use Playwright MCP for clean-room tasks where no login state should exist.
 - Read-only scraping of bot-protected sites: cookie replay via curl stays the fallback (skill `scrape-logged-in-site-via-browser-cookie-replay`).

@@ -19,6 +19,9 @@ clipboard-trim-trailing-spaces = true
 
 # Keybindings
 keybind = global:control+command+shift+option+r=toggle_quick_terminal
+# Only consume cmd+c when Ghostty itself has a selection; otherwise pass the
+# key through to the app (pi binds super+c to copy its fullscreen selection).
+keybind = performable:cmd+c=copy_to_clipboard
 
 # Padding
 window-padding-x = 8

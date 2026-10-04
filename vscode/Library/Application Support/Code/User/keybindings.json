@@ -56,6 +56,17 @@
         "args": { "text": "\u001b[13;2u" },
         "when": "terminalFocus"
     },
+    // Send Cmd+C as Ctrl+X to the terminal when nothing is selected, so pi's
+    // fullscreen copy key (app.message.copy on ctrl+x, super+c) fires inside the
+    // TUI. When text IS selected the default copySelection binding still wins, so
+    // normal copy is unchanged. Kitty protocol stays off, so super+c never reaches
+    // pi here; sending ctrl+x directly sidesteps that.
+    {
+        "key": "cmd+c",
+        "command": "workbench.action.terminal.sendSequence",
+        "args": { "text": "\u0018" },
+        "when": "terminalFocus && !terminalTextSelected"
+    },
     // Markdown All in One — Remove default keybindings that conflict with macOS shortcuts
     {
         "key": "cmd+b",

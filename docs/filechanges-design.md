@@ -44,7 +44,7 @@ Flow, matching the numbered edges:
 3. The Renderer updates the Panel via `setWidget`.
 4. On `agent_settled` the Session set, the Round, and the Mode are persisted to the session log (only when dirty). On session start they are restored.
 5. `/filechanges` prints the Mode's scope into the Transcript.
-6. `/filechanges-mode` (or ctrl+shift+c) toggles the Mode.
+6. `/filechanges-mode` toggles the Mode.
 7. `/filechanges-clear` empties the Tracker (Session set, Round, and Originals).
 
 ## Vocabulary
@@ -59,7 +59,7 @@ One name per concept. These names will be used verbatim in code, comments, and c
 | Counts | `+added/-removed` lines vs. the Original, or `(binary)`. | `added` / `removed` (stay) |
 | Session set | The cumulative collection of Changes since session start or the last Clear. Never resets on its own. | `batch` |
 | Round | The Changes touched since the last `agent_start` (one prompt) or the last Clear. Kept as the set of paths touched, rendered by intersecting with the Session set, so a Revert drops out by itself. | (new) |
-| Mode | Which scope the Panel and List show: `round` (default) or `all`. Toggled by `/filechanges-mode` or ctrl+shift+c. | (new) |
+| Mode | Which scope the Panel and List show: `round` (default) or `all`. Toggled by `/filechanges-mode`. | (new) |
 | Revert | A Change whose content equals its Original again. It leaves the Session set automatically, and its Original is forgotten with it. | (no name today) |
 | Tracking | Recording Changes: snapshots on `tool_call`, commit on `tool_result`, git diffing and command path sniffing for bash. | `recordChange` → `trackChange` |
 | Panel | The persistent widget above the Editor. Live view of the Mode's scope, capped at 8 rows. | `widget` / `buildWidgetLines` |
@@ -116,7 +116,7 @@ deleted  old.ts (+0/-40)
 | Command | Effect |
 | --- | --- |
 | `/filechanges` | Prints the Mode's scope into the Transcript as dim lines (up to 30 rows, then an overflow note). `/filechanges round` and `/filechanges all` print one scope once without changing the Mode. |
-| `/filechanges-mode` | Toggles the Mode between `round` and `all`. Also bound to ctrl+shift+c. The Mode persists, so a `/reload` keeps the chosen view. |
+| `/filechanges-mode` | Toggles the Mode between `round` and `all`. The Mode persists, so a `/reload` keeps the chosen view. |
 | `/filechanges-clear` | Empties the Session set and the Round and forgets all Originals. The Panel hides. Tracking continues; the next change starts a fresh accumulation from that point. |
 
 ## Edge cases

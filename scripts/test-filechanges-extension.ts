@@ -15,16 +15,12 @@ const execFileAsync = promisify(execFile)
 class MockPi {
   handlers: Record<string, Function[]> = {}
   commands: Record<string, { description: string; handler: Function }> = {}
-  shortcuts: Record<string, { description?: string; handler: Function }> = {}
   appended: { type: string; data: any }[] = []
   on(event: string, fn: Function) {
     ;(this.handlers[event] ??= []).push(fn)
   }
   registerCommand(name: string, def: { description: string; handler: Function }) {
     this.commands[name] = def
-  }
-  registerShortcut(key: string, def: { description?: string; handler: Function }) {
-    this.shortcuts[key] = def
   }
   appendEntry(type: string, data: any) {
     this.appended.push({ type, data })
@@ -367,11 +363,11 @@ await pi8.commands["filechanges"].handler("all", ctx8)
 check("s10: /filechanges all lists the session", ctx8.notifications[0]?.startsWith("Session changes (3):") === true)
 check("s10: the arg does not change the mode", ctx8.panel()?.[0] === "Changes last round (1):")
 
-// Toggle via command and via shortcut.
+// Toggle via command.
 await pi8.commands["filechanges-mode"].handler("", ctx8)
 check("s10: /filechanges-mode switches to all", ctx8.panel()?.[0] === "Session changes (3):")
-await pi8.shortcuts["ctrl+shift+c"].handler(ctx8)
-check("s10: ctrl+shift+c switches back to round", ctx8.panel()?.[0] === "Changes last round (1):")
+await pi8.commands["filechanges-mode"].handler("", ctx8)
+check("s10: /filechanges-mode switches back to round", ctx8.panel()?.[0] === "Changes last round (1):")
 
 // Mode and Round persist across reload.
 await fire(pi8, "agent_settled", {}, ctx8)

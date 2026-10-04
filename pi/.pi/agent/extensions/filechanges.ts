@@ -16,7 +16,7 @@
  *   the last Clear. Kept as the set of paths touched; rendered by
  *   intersecting with the Session set, so a Revert drops out by itself.
  * - Mode: which scope the Panel and List show, "round" (default) or "all".
- *   Toggled by /filechanges-mode or ctrl+shift+c.
+ *   Toggled by /filechanges-mode.
  * - Revert: when a file's content equals its Original again, its Change
  *   leaves the Session set automatically (content compare, not line counts)
  *   and its Original is forgotten. A reconciled file is never re-scanned at
@@ -54,7 +54,7 @@
  * - `/filechanges` prints the Mode's scope into the transcript as dim lines
  *   (up to 30 rows, then an overflow note). `/filechanges round` and
  *   `/filechanges all` print one scope without changing the Mode.
- * - `/filechanges-mode` toggles the Mode (also ctrl+shift+c).
+ * - `/filechanges-mode` toggles the Mode.
  * - `/filechanges-clear` empties the Session set and the Round and forgets
  *   all Originals. Tracking restarts from that point: a file edited again
  *   gets a fresh Original, so its counts are measured from the post-Clear
@@ -819,17 +819,13 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("filechanges-mode", {
-		description: "Toggle the filechanges view between the last round and all session changes (ctrl+shift+c)",
+		description: "Toggle the filechanges view between the last round and all session changes",
 		handler: async (_args, ctx) => {
 			await ctx.waitForIdle();
 			toggleMode(ctx);
 		},
 	});
 
-	pi.registerShortcut("ctrl+shift+c", {
-		description: "Toggle filechanges view: last round vs all session changes",
-		handler: (ctx) => toggleMode(ctx),
-	});
 
 	pi.registerCommand("filechanges-clear", {
 		description: "Clear the session change list and restart tracking",

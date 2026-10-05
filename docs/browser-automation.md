@@ -7,7 +7,7 @@ Setup for letting agents (pi, Claude Code) drive a real browser with logged-in s
 | Component | What | Where |
 |---|---|---|
 | playwriter CLI | npm global package, currently 0.7.0. Sessions, relay control, MCP mode | `/opt/homebrew/bin/playwriter` (`npm i -g playwriter`) |
-| playwriter extension | Chrome Web Store extension, id `jfeammnjpkecdekppnclgkkffahnhfhe` | Installed ONLY in the Brave Beta automation profile: `~/.pi/agent/data/playwright-brave-beta/Default/Extensions/` |
+| playwriter extension | Loaded UNPACKED from the npm package via `--load-extension` at browser launch (the Web Store install kept getting flagged as corrupted and removed, twice on 2026-10-04) | `/opt/homebrew/lib/node_modules/playwriter/dist/extension`, loaded into the Brave Beta automation profile only |
 | Relay daemon | WebSocket bridge between CLI and extension | `localhost:19988`, auto-starts on first CLI command, no manual service |
 | pi MCP entry | `playwriter` server in `~/.pi/agent/mcp-adapter.json`, proxy mode (`directTools: false`), lazy | Live file + snapshot at `pi/.pi/agent/mcp-adapter.json` |
 | Skill | Full playwriter CLI reference, loaded on demand | `~/pi-skills/pi-native/playwriter/SKILL.md`, also indexed in context-mode as source `playwriter-skill` |
@@ -43,6 +43,10 @@ playwriter -s 1 -e 'await state.page.locator("aria-ref=e5").click()'
 - Brave can flag the extension as corrupted and remove it mid-session (integrity check, likely after a hard kill of the browser). Reinstall from the Web Store as above. Never install offline by copying a crx into the profile: tampering with Secure Preferences is what triggers the corruption flag in the first place.
 - Only one MCP server can hold the profile at a time; a second one fails with "Browser is already in use". Release it by quitting the browser gracefully (SIGTERM the main browser pid only, not a blanket pkill, or the next launch shows "Restore pages?").
 - Two Brave Beta instances can run side by side (default profile vs automation profile). AppleScript `tell application "Brave Browser Beta"` can hit the wrong one or launch the default-profile one. Identify the automation browser by pid: `ps aux | grep "MacOS/Brave Browser Beta" | grep playwright-brave-beta` (note: `pgrep -x` fails because the process name is truncated to 15 chars).
+- Canonical launch of the automation browser with the unpacked extension (what the apartment-hunt session uses):
+  `open -na "Brave Browser Beta" --args --user-data-dir=$HOME/.pi/agent/data/playwright-brave-beta --load-extension=/opt/homebrew/lib/node_modules/playwriter/dist/extension`
+  While a manually launched instance holds the profile, Playwright MCP stays locked out ("Browser is already in use"). That is expected; playwriter is the primary path.
+- Playwriter browser keys (`install:Brave:...`) regenerate when the extension is reloaded or reinstalled. Do not hardcode keys; a plain `playwriter session new` binds to the one connected browser. A session bound to a dead key cannot be reset; delete it and create a new one.
 - Removing the extension is harder: the Chrome Web Store blocks CDP navigation (`Page.navigate: Not allowed`) and chrome:// WebUI ignores synthetic CGEvent clicks. What works: pyobjc `AXUIElement` tree walk + `AXPress` on the "Remove extension" link, then `AXPress` on the confirm dialog's "Remove" button. Note the daily Brave windows live in a separate macOS Space (portrait display); `tell application "Brave Browser" to make new window` lands in the active Space and is the reliable way to get a capturable, clickable window.
 
 ## Not done, deliberately

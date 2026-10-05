@@ -32,33 +32,31 @@
 # If Slack ever does force a real sign-out, you'll need to sign back into
 # Slack.app yourself (that step can't be scripted -- it's SSO/MFA-gated by
 # design) -- the very next call to this wrapper then picks up the fresh
-# cookie automatically, no separate re-auth command needed.
+# cookie automatically, no separate re-auth command needed. In pi this whole
+# cycle is automatic: the slack-auth-recovery extension notices the
+# invalid_auth tool failure, validates a freshly extracted session via
+# `slack-hf-session --check`, kills the dead server so the next call
+# relaunches this wrapper with the fresh session, and tells the model to
+# retry -- you only hear about it when Slack.app itself is signed out.
+#
+# Note: slack-mcp-server validates the tokens itself at startup (auth.test;
+# it exits with a fatal 'Authentication failed' log on invalid_auth), so this
+# wrapper intentionally does not duplicate that check -- a dead token means a
+# failed launch, which pi's slack-auth-recovery extension handles.
 #
 # Usage: slack-mcp-server-hf [args passed through to slack-mcp-server]
 set -euo pipefail
 
-WORKSPACE_HOST="hellofresh.slack.com"
-
-command -v slacktokens >/dev/null || { echo "slacktokens not installed. brew install hishamkaram/slacktokens/slacktokens" >&2; exit 1; }
+command -v slack-hf-session >/dev/null || { echo "slack-hf-session not installed (expected in ~/.local/bin)" >&2; exit 1; }
 command -v slack-mcp-server >/dev/null || { echo "slack-mcp-server not installed. npm install -g slack-mcp-server" >&2; exit 1; }
 
-SLACK_MCP_XOXC_TOKEN=$(slacktokens -tokens | python3 -c "
-import json, sys
-d = json.load(sys.stdin)
-key = 'https://${WORKSPACE_HOST}/'
-if key not in d:
-    print(f'workspace {key} not found among: ' + ', '.join(d.keys()), file=sys.stderr)
-    sys.exit(1)
-print(d[key]['token'])
-")
-
-SLACK_MCP_XOXD_TOKEN=$(slacktokens -cookie | python3 -c "
-import json, sys, urllib.parse
-print(urllib.parse.unquote(json.load(sys.stdin)['value']))
-")
+SESSION=$(slack-hf-session)
+SLACK_MCP_XOXC_TOKEN=$(printf '%s' "$SESSION" | python3 -c 'import json, sys; print(json.load(sys.stdin)["xoxc"])')
+SLACK_MCP_XOXD_TOKEN=$(printf '%s' "$SESSION" | python3 -c 'import json, sys; print(json.load(sys.stdin)["xoxd"])')
 
 export SLACK_MCP_XOXC_TOKEN
 export SLACK_MCP_XOXD_TOKEN
+unset SESSION
 export SLACK_MCP_USER_AGENT="${SLACK_MCP_USER_AGENT:-Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36}"
 export SLACK_MCP_CUSTOM_TLS="${SLACK_MCP_CUSTOM_TLS:-true}"
 

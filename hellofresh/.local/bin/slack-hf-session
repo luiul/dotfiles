@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Extract a fresh HelloFresh Slack web session (xoxc token + xoxd cookie) from
+# the local Slack desktop app via slacktokens, or validate one against Slack.
+#
+#   slack-hf-session            print one JSON line: {"xoxc":"...","xoxd":"..."}
+#                               (xoxd URL-decoded, ready for SLACK_MCP_XOXD_TOKEN)
+#   slack-hf-session --check    also validate the session with Slack's auth.test;
+#                               exit 1 when Slack rejects it (nothing on stdout)
+#
+# This is the single source of truth for session extraction, shared by
+# slack-mcp-server-hf (launch-time extraction for the MCP server) and pi's
+# slack-auth-recovery extension (decides whether an automatic connector
+# relaunch can succeed after Slack invalidated the previous session).
+#
+# Extraction retries a few times because the desktop app's local storage can
+# be briefly locked or mid-write. Note the asymmetry: SLACK_MCP_XOXD_TOKEN
+# wants the cookie URL-decoded, while a raw `Cookie: d=...` header (curl
+# --check below) wants it URL-encoded exactly as stored.
+#
+# Exit 0 on success; exit 1 otherwise, with the reason on stderr.
+set -euo pipefail
+
+WORKSPACE_HOST="hellofresh.slack.com"
+ATTEMPTS=3
+USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+command -v slacktokens >/dev/null || { echo "slacktokens not installed. brew install hishamkaram/slacktokens/slacktokens" >&2; exit 1; }
+
+XOXC=""
+XOXD_RAW=""
+
+extract() {
+  local tokens cookie
+  tokens=$(slacktokens -tokens) || return 1
+  cookie=$(slacktokens -cookie) || return 1
+  XOXC=$(printf '%s' "$tokens" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+key = 'https://${WORKSPACE_HOST}/'
+if key not in d:
+    sys.exit('workspace ' + key + ' not found among: ' + ', '.join(d.keys()))
+print(d[key]['token'])
+") || return 1
+  XOXD_RAW=$(printf '%s' "$cookie" | python3 -c "
+import json, sys
+print(json.load(sys.stdin)['value'])
+") || return 1
+  [[ -n "$XOXC" && -n "$XOXD_RAW" ]]
+}
+
+for _ in $(seq 1 "$ATTEMPTS"); do
+  if extract; then break; fi
+  sleep 1
+done
+if [[ -z "$XOXC" || -z "$XOXD_RAW" ]]; then
+  echo "failed to extract a Slack session from the desktop app (${ATTEMPTS} attempts) -- is Slack.app installed and signed in?" >&2
+  exit 1
+fi
+
+if [[ "${1:-}" == "--check" ]]; then
+  RESP=$(curl -sS --max-time 10 -X POST "https://slack.com/api/auth.test" \
+    -H "Authorization: Bearer $XOXC" -H "Cookie: d=$XOXD_RAW" \
+    -A "$USER_AGENT") || { echo "auth.test request itself failed (network?)" >&2; exit 1; }
+  printf '%s' "$RESP" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if not d.get('ok'):
+    sys.exit('auth.test rejected the extracted session: ' + str(d.get('error')))
+" || exit 1
+fi
+
+# xoxd goes out URL-decoded (what SLACK_MCP_XOXD_TOKEN expects); the raw form
+# was only needed for the Cookie header above.
+XOXC="$XOXC" XOXD_RAW="$XOXD_RAW" python3 -c "
+import json, os, urllib.parse
+print(json.dumps({'xoxc': os.environ['XOXC'], 'xoxd': urllib.parse.unquote(os.environ['XOXD_RAW'])}))
+"

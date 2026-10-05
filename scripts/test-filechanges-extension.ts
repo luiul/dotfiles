@@ -515,12 +515,20 @@ await fire(piSC, "session_start", {}, ctxSC)
 const stateColorPanel = (ctxSC.panel() ?? []).join("\n")
 check(
   "s12: restore recomputes state words, colored by meaning",
-  stateColorPanel.includes("<dim>committed</dim>") && stateColorPanel.includes("<success>staged</success>"),
+  stateColorPanel.includes("<dim>committed</dim>") && stateColorPanel.includes("<accent>staged</accent>"),
 )
 const plainStateLine = (ctxSC.panel() ?? []).find((l) => l.includes("plain.txt")) ?? ""
 check(
   "s12: restored non-repo row has no state markup",
   plainStateLine.includes("plain.txt") && !/(untracked|staged|committed)/.test(plainStateLine),
+)
+
+// A post-restore edit re-dirties the committed file: unstaged renders muted (never warning yellow).
+await editFile(piSC, ctxSC, "st6", "tracked.txt", "base\nedit\nagain\n")
+await fire(piSC, "agent_settled", {}, ctxSC)
+check(
+  "s12: unstaged renders muted, not warning",
+  ((ctxSC.panel() ?? []).find((l) => l.includes("tracked.txt")) ?? "").includes("<muted>unstaged</muted>"),
 )
 
 await rm(dir, { recursive: true, force: true })

@@ -65,9 +65,10 @@
  * - Colors are semantic, from the pi theme: the kind word by meaning
  *   (created = success, modified = warning, deleted = error), the path in
  *   text, counts in toolDiffAdded/toolDiffRemoved with zero counts dimmed,
- *   `(binary)` muted, and the Repo state word by meaning (staged = success,
- *   committed = dim, untracked = muted, unstaged = warning, conflicted =
- *   error). The same scheme renders in the Panel and the List.
+ *   `(binary)` muted, and the Repo state word as quiet metadata (staged =
+ *   accent, committed = dim, untracked = muted, unstaged = muted, conflicted
+ *   = error, the only state red is spent on). The same scheme renders in the
+ *   Panel and the List.
  *   The no-UI fallback (console.log) stays plain.
  * - `/filechanges` prints the Mode's scope into the transcript (up to 30
  *   rows, then an overflow note). `/filechanges round` and `/filechanges all`
@@ -238,8 +239,16 @@ function countsText(t: Change): string {
 /** Semantic color per Kind: color does the scannability job glyphs would, so the words stay plain. */
 const KIND_COLORS: Record<Kind, string> = { created: "success", modified: "warning", deleted: "error" };
 
-/** Semantic color per Repo state: staged is in the index (success), committed is safe (dim), untracked is muted, unstaged is warning, conflicted is error. */
-const REPO_STATE_COLORS: Record<RepoState, string> = { untracked: "muted", staged: "success", unstaged: "warning", conflicted: "error", committed: "dim" };
+/**
+ * Semantic color per Repo state. The state axis stays quiet metadata so it
+ * cannot clash with the kind hues on the same row: accent marks "in the
+ * index" (staged), committed is dim (done), untracked and unstaged are muted
+ * (normal work states, no alarm), and conflicted is the only state red is
+ * spent on. Warning is deliberately unused here: the normal work state must
+ * not render as an alarm, and a `modified ... unstaged` row must not read
+ * yellow-yellow.
+ */
+const REPO_STATE_COLORS: Record<RepoState, string> = { untracked: "muted", staged: "accent", unstaged: "muted", conflicted: "error", committed: "dim" };
 
 /** Shared row renderer, used by the Panel and by `/filechanges`. Plain words, no glyphs; color carries the meaning. */
 function formatChangeLine(t: Change, theme?: any): string {

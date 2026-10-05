@@ -128,7 +128,7 @@ Each Change in a git repo carries one trailing state word, shown in the Panel an
 
 Files outside any repo have no Repo state and show no annotation. Multiple repos are supported: the Session set is grouped by repo root (the cwd repo by containment, other repos by a cached `git rev-parse` per directory), with one porcelain call per repo per refresh.
 
-Colors are semantic: `staged` = success, `committed` = dim, `untracked` = muted, `unstaged` = warning, `conflicted` = error.
+Colors keep the state axis quiet so it cannot clash with the kind hues on the same row: `staged` = accent (in the index, ready to commit), `committed` = dim (done), `untracked` = muted, `unstaged` = muted (normal work state, no alarm), `conflicted` = error (the only state red is spent on). Warning is deliberately unused on this axis: the normal work state must not render as an alarm, and a `modified ... unstaged` row must not read yellow-yellow.
 
 Refresh points: `agent_start` (each new prompt), `agent_settled`, every bash result (reusing the after-snapshot, so a `git add` or `git commit` flips the word immediately, with no extra status call), session restore, and `/filechanges` (the List always prints current state). Edit/write results do not refresh: a row can lack the word mid-round, and the settle fixes it. Between refresh points the word can be stale, e.g. when you stage in VS Code during a round.
 

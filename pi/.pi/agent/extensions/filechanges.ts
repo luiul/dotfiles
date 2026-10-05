@@ -17,6 +17,14 @@
  *   intersecting with the Session set, so a Revert drops out by itself.
  * - Mode: which scope the Panel and List show, "round" (default) or "all".
  *   Toggled by /filechanges-mode.
+ * - Repo state: each Change's git status word (untracked, staged, unstaged,
+ *   conflicted, committed), from `git status --porcelain -z` XY codes plus
+ *   `git ls-files` per repo (silence means committed only when git tracks
+ *   the path, so ignored files get no word). Files outside any repo have no
+ *   state. Refreshed on agent_start, agent_settled, bash results, restore,
+ *   and /filechanges; never persisted. Between refreshes the word can be
+ *   stale (e.g. staging in VS Code mid-round). Not on edit/write results: a
+ *   row can lack the word mid-round and the settle fixes it.
  * - Revert: when a file's content equals its Original again, its Change
  *   leaves the Session set automatically (content compare, not line counts)
  *   and its Original is forgotten. A reconciled file is never re-scanned at
@@ -48,15 +56,18 @@
  *   all mode. The header is bold and carries the scope's totals:
  *   `Changes last round (N): +A/-R` (totals hidden when both sides are zero,
  *   e.g. binary-only). One row per Change, most recently touched first,
- *   capped at 8 rows plus one trailing line (pi truncates widgets past 10
- *   lines). The trailing line is the overflow when there is one, else a
+ *   carrying its Repo state word after the counts when the file is in a git
+ *   repo, capped at 8 rows plus one trailing line (pi truncates widgets past
+ *   10 lines). The trailing line is the overflow when there is one, else a
  *   pointer to the Changes the Round hides. Hidden when the Session set is
  *   empty; an empty Round with a non-empty Session set shows a one-line hint
  *   instead.
  * - Colors are semantic, from the pi theme: the kind word by meaning
  *   (created = success, modified = warning, deleted = error), the path in
  *   text, counts in toolDiffAdded/toolDiffRemoved with zero counts dimmed,
- *   `(binary)` muted. The same scheme renders in the Panel and the List.
+ *   `(binary)` muted, and the Repo state word by meaning (staged = success,
+ *   committed = dim, untracked = muted, unstaged = warning, conflicted =
+ *   error). The same scheme renders in the Panel and the List.
  *   The no-UI fallback (console.log) stays plain.
  * - `/filechanges` prints the Mode's scope into the transcript (up to 30
  *   rows, then an overflow note). `/filechanges round` and `/filechanges all`
@@ -77,6 +88,7 @@
  *   default Round view keeps showing their rows. Inside a git repo, Originals are
  *   re-captured from `git show HEAD:<path>` so edits after a reload keep
  *   sensible counts; outside a repo, restored counts stay frozen as recorded.
+ *   Repo state is not persisted; restore recomputes it from git.
  * - Display-only persistence: there is no revert/accept-decline here.
  *
  * On notification delivery: `ctx.ui.notify`/`setWidget` are fire-and-forget
@@ -94,7 +106,7 @@ import { execFile } from "node:child_process";
 import { mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -128,6 +140,31 @@ type Original = { absPath: string; snapshot: FileSnapshot };
 type Kind = "created" | "modified" | "deleted";
 const KINDS = new Set<string>(["created", "modified", "deleted"]);
 
+/**
+ * Repo state: the file's git status as one plain word. Derived from
+ * `git status --porcelain -z` XY codes: `??` = untracked, X set = staged
+ * (something is in the index; `MM` included, there is no "partially
+ * staged"), Y-only = unstaged, unmerged = conflicted. Absent from porcelain:
+ * committed when `git ls-files` tracks the path, no state otherwise (ignored
+ * files, so the word never lies). Undefined for files outside any repo.
+ */
+type RepoState = "untracked" | "staged" | "unstaged" | "conflicted" | "committed";
+
+/**
+ * Map a porcelain XY code to a Repo state. `tracked` (from `git ls-files`)
+ * decides what porcelain silence means: absent and tracked = committed,
+ * absent and untracked = no state (git does not know the file).
+ */
+function repoStateFromXY(xy: string | undefined, tracked: boolean): RepoState | undefined {
+	if (xy === undefined) return tracked ? "committed" : undefined;
+	if (xy === "??") return "untracked";
+	const x = xy[0];
+	const y = xy[1];
+	if (x === "U" || y === "U" || (x === "A" && y === "A") || (x === "D" && y === "D")) return "conflicted";
+	if (x !== " ") return "staged";
+	return "unstaged";
+}
+
 /** Which scope the Panel and List show: the Round (default) or all session changes. */
 type Mode = "round" | "all";
 
@@ -140,6 +177,7 @@ type Change = {
 	removed: number;
 	binary: boolean;
 	updatedAt: number;
+	repoState?: RepoState; // git status word; undefined outside a repo and for git-ignored files
 };
 
 type PendingSnapshot = {
@@ -200,10 +238,13 @@ function countsText(t: Change): string {
 /** Semantic color per Kind: color does the scannability job glyphs would, so the words stay plain. */
 const KIND_COLORS: Record<Kind, string> = { created: "success", modified: "warning", deleted: "error" };
 
+/** Semantic color per Repo state: staged is in the index (success), committed is safe (dim), untracked is muted, unstaged is warning, conflicted is error. */
+const REPO_STATE_COLORS: Record<RepoState, string> = { untracked: "muted", staged: "success", unstaged: "warning", conflicted: "error", committed: "dim" };
+
 /** Shared row renderer, used by the Panel and by `/filechanges`. Plain words, no glyphs; color carries the meaning. */
 function formatChangeLine(t: Change, theme?: any): string {
 	const label = t.kind.padEnd(9); // "modified" is the longest kind at 8 chars
-	if (!theme) return `${label}${t.path} ${countsText(t)}`;
+	if (!theme) return `${label}${t.path} ${countsText(t)}${t.repoState ? ` ${t.repoState}` : ""}`;
 	const prefix = theme.fg(KIND_COLORS[t.kind], label) + theme.fg("text", `${t.path} `);
 	let counts: string;
 	if (t.binary) {
@@ -213,7 +254,8 @@ function formatChangeLine(t: Change, theme?: any): string {
 		const minus = t.removed === 0 ? theme.fg("dim", `-${t.removed}`) : theme.fg("toolDiffRemoved", `-${t.removed}`);
 		counts = theme.fg("dim", "(") + plus + theme.fg("dim", "/") + minus + theme.fg("dim", ")");
 	}
-	return prefix + counts;
+	const state = t.repoState ? " " + theme.fg(REPO_STATE_COLORS[t.repoState], t.repoState) : "";
+	return prefix + counts + state;
 }
 
 /** Line-count totals over one scope. Binary rows carry no counts and add nothing. */
@@ -454,6 +496,8 @@ export default function (pi: ExtensionAPI) {
 	let repoRootCache: { cwd: string; root: string | null } | null = null;
 	let realCwdCache: { cwd: string; real: string } | null = null;
 	let ignoreCache: { cwd: string; patterns: string[] } | null = null;
+	// Repo root per file directory, for tracked files outside the cwd repo.
+	const fileRepoRootCache = new Map<string, string | null>();
 
 	// git reports resolved paths, so bash-detected files need the resolved cwd
 	// too (e.g. macOS /var -> /private/var), otherwise display paths fall back
@@ -489,7 +533,9 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	function persistSessionSet() {
-		pi.appendEntry(ENTRY_SESSION_SET, { items: [...sessionSet.values()], round: [...roundPaths], mode, timestamp: Date.now() });
+		// Repo state is display-only and recomputed on restore, so it is stripped here.
+		const items = [...sessionSet.values()].map(({ repoState, ...rest }) => rest);
+		pi.appendEntry(ENTRY_SESSION_SET, { items, round: [...roundPaths], mode, timestamp: Date.now() });
 	}
 
 	async function restoreSessionSet(ctx: ExtensionContext) {
@@ -523,6 +569,8 @@ export default function (pi: ExtensionAPI) {
 				originals.set(change.path, { absPath: change.absPath, snapshot });
 			}
 		}
+		// Repo state is not persisted; recompute it from git on restore.
+		await refreshRepoStates(ctx);
 		dirtySinceSettle = false;
 		updateUi(ctx);
 	}
@@ -675,25 +723,28 @@ export default function (pi: ExtensionAPI) {
 	// the default human-readable format which C-style-escapes unicode/special
 	// characters into a form that isn't valid JSON and is easy to mis-unescape.
 	// Renames/copies emit two tokens: the path first, then the origin path.
-	function parsePorcelainZ(stdout: string): Set<string> {
-		const paths = new Set<string>();
+	// The XY code is kept per path: bash change detection diffs the key sets,
+	// Repo state reads the codes.
+	function parsePorcelainZ(stdout: string): Map<string, string> {
+		const statuses = new Map<string, string>(); // repo-relative path -> XY
 		const tokens = stdout.split("\0").filter((t) => t.length > 0);
 		let i = 0;
 		while (i < tokens.length) {
 			const entry = tokens[i];
+			const xy = entry.slice(0, 2);
 			const statusX = entry[0];
 			const statusY = entry[1];
-			paths.add(entry.slice(3));
+			statuses.set(entry.slice(3), xy);
 			if (statusX === "R" || statusX === "C" || statusY === "R" || statusY === "C") {
 				i++;
-				if (i < tokens.length) paths.add(tokens[i]);
+				if (i < tokens.length) statuses.set(tokens[i], xy);
 			}
 			i++;
 		}
-		return paths;
+		return statuses;
 	}
 
-	async function snapshotGitStatus(repoRoot: string): Promise<Set<string>> {
+	async function snapshotGitStatus(repoRoot: string): Promise<Map<string, string>> {
 		try {
 			const res = await execFileAsync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], {
 				cwd: repoRoot,
@@ -702,7 +753,7 @@ export default function (pi: ExtensionAPI) {
 			return parsePorcelainZ(res.stdout);
 		} catch (e: any) {
 			if (e?.code === "ENOENT") gitAvailable = false;
-			return new Set();
+			return new Map();
 		}
 	}
 
@@ -721,6 +772,100 @@ export default function (pi: ExtensionAPI) {
 		}
 	}
 
+	// --- Repo state (git status annotation) ---
+
+	/** Repo root containing a file, cached per directory. Files outside any repo (or in deleted dirs) get null. */
+	async function getRepoRootForFile(absPath: string): Promise<string | null> {
+		const dir = dirname(absPath);
+		const cached = fileRepoRootCache.get(dir);
+		if (cached !== undefined) return cached;
+		let root: string | null = null;
+		if (gitAvailable) {
+			try {
+				const res = await execFileAsync("git", ["rev-parse", "--show-toplevel"], { cwd: dir });
+				root = res.stdout.trim() || null;
+			} catch (e: any) {
+				if (e?.code === "ENOENT") gitAvailable = false;
+			}
+		}
+		fileRepoRootCache.set(dir, root);
+		return root;
+	}
+
+	/** Canonical absolute path for containment checks and repo-relative paths (git reports resolved paths), even for deleted files. */
+	async function resolveExistingPath(absPath: string): Promise<string> {
+		try {
+			return await realpath(absPath);
+		} catch {
+			try {
+				return join(await realpath(dirname(absPath)), basename(absPath));
+			} catch {
+				return absPath;
+			}
+		}
+	}
+
+	/** Paths git tracks in a repo (`git ls-files`): decides what porcelain silence means for Repo state. */
+	async function listTrackedFiles(repoRoot: string): Promise<Set<string>> {
+		try {
+			const res = await execFileAsync("git", ["ls-files", "-z"], { cwd: repoRoot, maxBuffer: 10 * 1024 * 1024 });
+			return new Set(res.stdout.split("\0").filter((p) => p.length > 0));
+		} catch (e: any) {
+			if (e?.code === "ENOENT") gitAvailable = false;
+			return new Set();
+		}
+	}
+
+	/**
+	 * Recompute every Change's Repo state: group the Session set by repo, then
+	 * one `git status --porcelain -z` + `git ls-files -z` per repo. `known`
+	 * reuses a porcelain snapshot the caller already took (bash detection), so
+	 * that repo's status call is skipped. Files in the cwd repo are matched by
+	 * containment; files elsewhere resolve their own repo root. Returns true
+	 * when any state changed, so the caller repaints only then. Called on
+	 * agent_start, agent_settled, bash results, restore, and /filechanges (not
+	 * on edit/write results: a row can lack the word mid-round and the settle
+	 * fixes it).
+	 */
+	async function refreshRepoStates(ctx: ExtensionContext, known?: { repoRoot: string; statuses: Map<string, string> }): Promise<boolean> {
+		if (sessionSet.size === 0 || !gitAvailable) return false;
+		const cwdRoot = await getRepoRoot(ctx.cwd);
+		const byRepo = new Map<string, { change: Change; rel: string }[]>();
+		let changed = false;
+		for (const change of sessionSet.values()) {
+			const realAbs = await resolveExistingPath(change.absPath);
+			let root: string | null = null;
+			if (cwdRoot) {
+				const rel = relative(cwdRoot, realAbs);
+				if (rel !== "" && !rel.startsWith("..") && !isAbsolute(rel)) root = cwdRoot;
+			}
+			if (!root) root = await getRepoRootForFile(realAbs);
+			if (!root) {
+				if (change.repoState !== undefined) {
+					change.repoState = undefined;
+					changed = true;
+				}
+				continue;
+			}
+			const rel = relative(root, realAbs).split(sep).join("/");
+			const list = byRepo.get(root) ?? [];
+			if (list.length === 0) byRepo.set(root, list);
+			list.push({ change, rel });
+		}
+		for (const [root, entries] of byRepo) {
+			const statuses = known && root === known.repoRoot ? known.statuses : await snapshotGitStatus(root);
+			const tracked = await listTrackedFiles(root);
+			for (const { change, rel } of entries) {
+				const next = repoStateFromXY(statuses.get(rel), tracked.has(rel));
+				if (change.repoState !== next) {
+					change.repoState = next;
+					changed = true;
+				}
+			}
+		}
+		return changed;
+	}
+
 	// Capture before-snapshots for edit/write calls. For bash calls, capture
 	// both a git-status snapshot of the cwd repo and content snapshots of the
 	// command's sniffed path tokens (covers changes outside that repo).
@@ -737,14 +882,14 @@ export default function (pi: ExtensionAPI) {
 			const command = typeof input?.command === "string" ? input.command : "";
 			const realCwd = await getRealCwd(ctx.cwd);
 			const repoRoot = await getRepoRoot(ctx.cwd);
-			const before = repoRoot ? await snapshotGitStatus(repoRoot) : new Set<string>();
-			const candidates = new Map<string, FileSnapshot>();
+			const beforeMap = repoRoot ? await snapshotGitStatus(repoRoot) : new Map<string, string>();
+				const candidates = new Map<string, FileSnapshot>();
 			await Promise.all(
 				extractBashCandidates(command, realCwd).map(async (absPath) => {
 					candidates.set(absPath, await readCandidateSnapshot(absPath));
 				}),
 			);
-			pendingBashSnapshots.set(event.toolCallId, { repoRoot, before, candidates });
+			pendingBashSnapshots.set(event.toolCallId, { repoRoot, before: new Set(beforeMap.keys()), candidates });
 		}
 	});
 
@@ -786,34 +931,40 @@ export default function (pi: ExtensionAPI) {
 			const repoRoot = snap.repoRoot;
 			if (!repoRoot) return; // cwd not in a repo: the sniff was the only detection
 
-			const after = await snapshotGitStatus(repoRoot);
+			const after = await snapshotGitStatus(repoRoot); // repo-relative path -> porcelain XY
+			const afterPaths = new Set(after.keys());
 			const touched = new Set<string>();
-			for (const p of snap.before) if (!after.has(p)) touched.add(p);
-			for (const p of after) if (!snap.before.has(p)) touched.add(p);
-			if (touched.size === 0) return;
+			for (const p of snap.before) if (!afterPaths.has(p)) touched.add(p);
+			for (const p of afterPaths) if (!snap.before.has(p)) touched.add(p);
 
-			// Resolve and filter BEFORE tracking: a bash call that only touched
-			// ignored paths (e.g. `npm install` bumping package-lock.json) must not
-			// mark the Session set dirty or surface irrelevant rows.
-			const relevant: { repoRelPath: string; absPath: string; relPath: string }[] = [];
-			for (const repoRelPath of touched) {
-				const absPath = resolve(repoRoot, repoRelPath);
-				const { relPath } = normalizeToolPath(realCwd, absPath);
-				if (isIgnored(relPath, patterns)) continue;
-				relevant.push({ repoRelPath, absPath, relPath });
-			}
-			if (relevant.length === 0) return;
-
-			for (const { repoRelPath, absPath, relPath } of relevant) {
-				dirtySinceSettle = true;
-				roundPaths.add(relPath);
-				if (!originals.has(relPath)) {
-					const beforeSnap = await readGitHeadSnapshot(repoRoot, repoRelPath);
-					ensureOriginal(relPath, absPath, beforeSnap);
+			if (touched.size > 0) {
+				// Resolve and filter BEFORE tracking: a bash call that only touched
+				// ignored paths (e.g. `npm install` bumping package-lock.json) must not
+				// mark the Session set dirty or surface irrelevant rows.
+				const relevant: { repoRelPath: string; absPath: string; relPath: string }[] = [];
+				for (const repoRelPath of touched) {
+					const absPath = resolve(repoRoot, repoRelPath);
+					const { relPath } = normalizeToolPath(realCwd, absPath);
+					if (isIgnored(relPath, patterns)) continue;
+					relevant.push({ repoRelPath, absPath, relPath });
 				}
-				await refreshChange(ctx, relPath);
+				for (const { repoRelPath, absPath, relPath } of relevant) {
+					dirtySinceSettle = true;
+					roundPaths.add(relPath);
+					if (!originals.has(relPath)) {
+						const beforeSnap = await readGitHeadSnapshot(repoRoot, repoRelPath);
+						ensureOriginal(relPath, absPath, beforeSnap);
+					}
+					await refreshChange(ctx, relPath);
+				}
 			}
-			updateUi(ctx);
+
+			// Repo states move even when content does not (`git add` / `git commit`
+			// flip only the index, leaving the porcelain path set unchanged), so
+			// refresh them off the after-snapshot and repaint when either content
+			// or state changed.
+			const statesChanged = await refreshRepoStates(ctx, { repoRoot, statuses: after });
+			if (touched.size > 0 || statesChanged) updateUi(ctx);
 		}
 	});
 
@@ -829,6 +980,7 @@ export default function (pi: ExtensionAPI) {
 		for (const path of [...originals.keys()]) {
 			await refreshChange(ctx, path);
 		}
+		await refreshRepoStates(ctx);
 		dirtySinceSettle = false;
 		updateUi(ctx);
 		// Persist even when the sweep reverted every Change: the empty entry
@@ -840,6 +992,8 @@ export default function (pi: ExtensionAPI) {
 	// prompt produces. The Session set is untouched (all mode still shows it).
 	pi.on("agent_start", async (_event, ctx) => {
 		roundPaths.clear();
+		// Staging/committing between prompts (e.g. in VS Code) is picked up here.
+		await refreshRepoStates(ctx);
 		updateUi(ctx);
 	});
 
@@ -850,6 +1004,8 @@ export default function (pi: ExtensionAPI) {
 		description: "List changed files for the current view (append 'round' or 'all' to pick a view once)",
 		handler: async (args, ctx) => {
 			await ctx.waitForIdle();
+			// Refresh first so the List always prints current git state, even if it moved outside pi.
+			await refreshRepoStates(ctx);
 			updateUi(ctx);
 			listSessionSet(ctx, args);
 		},

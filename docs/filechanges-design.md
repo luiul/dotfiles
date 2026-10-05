@@ -60,6 +60,7 @@ One name per concept. These names will be used verbatim in code, comments, and c
 | Session set | The cumulative collection of Changes since session start or the last Clear. Never resets on its own. | `batch` |
 | Round | The Changes touched since the last `agent_start` (one prompt) or the last Clear. Kept as the set of paths touched, rendered by intersecting with the Session set, so a Revert drops out by itself. | (new) |
 | Mode | Which scope the Panel and List show: `round` (default) or `all`. Toggled by `/filechanges-mode`. | (new) |
+| Repo state | A Change's git status word: `untracked`, `staged`, `unstaged`, `conflicted`, or `committed`. Derived from `git status --porcelain -z` XY codes plus `git ls-files`; porcelain silence means `committed` only when git tracks the path. Files outside any repo, and git-ignored files, have no Repo state. Refreshed at refresh points, never persisted. | (new) |
 | Revert | A Change whose content equals its Original again. It leaves the Session set automatically, and its Original is forgotten with it. | (no name today) |
 | Tracking | Recording Changes: snapshots on `tool_call`, commit on `tool_result`, git diffing and command path sniffing for bash. | `recordChange` → `trackChange` |
 | Panel | The persistent widget above the Editor. Live view of the Mode's scope, capped at 8 rows. | `widget` / `buildWidgetLines` |
@@ -86,8 +87,8 @@ Round mode (the default):
 
 ```text
 Changes last round (2): +13/-1
-modified pi/.pi/agent/AGENTS.md (+1/-1)
-created  notes.md (+12/-0)
+modified pi/.pi/agent/AGENTS.md (+1/-1) unstaged
+created  notes.md (+12/-0) untracked
 …and 1 more this session (see /filechanges-mode)
 ```
 
@@ -95,9 +96,9 @@ All mode:
 
 ```text
 Session changes (3): +13/-41
-modified pi/.pi/agent/AGENTS.md (+1/-1)
-created  notes.md (+12/-0)
-deleted  old.ts (+0/-40)
+modified pi/.pi/agent/AGENTS.md (+1/-1) committed
+created  notes.md (+12/-0) untracked
+deleted  old.ts (+0/-40) unstaged
 …and 2 more (see /filechanges)
 ```
 
@@ -105,11 +106,33 @@ deleted  old.ts (+0/-40)
 - One plain word per kind: `modified`, `created`, `deleted` (padded to a column). No glyphs, matching the status-bar style (`changed 3`, `ahead 2`). The same words are used in List output. One rendering style everywhere.
 - Counts always show both sides, even when one is zero. Uniform, no special cases.
 - Binary files show `(binary)` instead of counts.
+- Repo state: one trailing plain word per row after the counts (`modified a.txt (+3/-1) staged`), the same in the Panel and the List. Rows without a Repo state (files outside any repo, git-ignored files) show nothing. See [Repo state](#repo-state).
 - Rows are sorted by most recently touched first.
 - Cap of 8 rows, then at most one trailing line. Header plus 8 rows plus the trailing line is 10 lines, exactly pi's widget limit. The trailing line is the overflow (`…and N more (see /filechanges)`) when there is one; otherwise, in round mode with more Changes in the Session set, `…and N more this session (see /filechanges-mode)`.
 - Empty Round with a non-empty Session set: one muted line, `No changes last round (N this session): /filechanges-mode`.
 - Empty Session set: the Panel is hidden.
 - Colors are semantic, from the pi theme: the kind word by meaning (created = success, modified = warning, deleted = error), the path in text, counts in `toolDiffAdded`/`toolDiffRemoved` with zero counts dim, `(binary)` muted, the header bold with colored totals. Color does the scannability job glyphs would, keeping the resolved no-glyphs decision. The List uses the same scheme. The no-UI fallback (console.log) stays plain. Opaque enough for light and dark mode.
+
+## Repo state
+
+Each Change in a git repo carries one trailing state word, shown in the Panel and the List after the counts.
+
+| Porcelain | Repo state | Meaning |
+| --- | --- | --- |
+| `??` | `untracked` | Not in git. Typical for `created` files. |
+| X set (`M `, `A `, `MM`, ...) | `staged` | Something is in the index. `MM` included: there is no separate "partially staged" state. |
+| ` M`, ` D` | `unstaged` | Tracked, dirty worktree, nothing staged. |
+| Unmerged (`UU`, `AA`, `DD`, ...) | `conflicted` | Merge conflict. |
+| Absent from porcelain, in `git ls-files` | `committed` | Matches HEAD, index clean (e.g. after a mid-session `git commit`). |
+| Absent from porcelain, not in `ls-files` | (none) | Ignored or otherwise unknown to git: no word, never a wrong one. |
+
+Files outside any repo have no Repo state and show no annotation. Multiple repos are supported: the Session set is grouped by repo root (the cwd repo by containment, other repos by a cached `git rev-parse` per directory), with one porcelain call per repo per refresh.
+
+Colors are semantic: `staged` = success, `committed` = dim, `untracked` = muted, `unstaged` = warning, `conflicted` = error.
+
+Refresh points: `agent_start` (each new prompt), `agent_settled`, every bash result (reusing the after-snapshot, so a `git add` or `git commit` flips the word immediately, with no extra status call), session restore, and `/filechanges` (the List always prints current state). Edit/write results do not refresh: a row can lack the word mid-round, and the settle fixes it. Between refresh points the word can be stale, e.g. when you stage in VS Code during a round.
+
+Repo state is display-only and is not persisted in the session entry. Restore recomputes it from git, the same way Originals are re-captured from HEAD.
 
 ## Commands
 
@@ -123,6 +146,7 @@ deleted  old.ts (+0/-40)
 
 - Revert: a file changed back to its Original drops off the list by itself (content compare, not line counting), and its Original is forgotten. This also covers commit-style reconciles: a `git commit` in a bash call brings files to HEAD content, and they must not linger as stale Originals that later pick up external edits.
 - `/reload` or resumed session: the Session set, the Round, and the Mode are restored from the log. Entries written before the Round existed restore with the Round covering every restored Change, so the default Round view keeps showing their rows. In a git repo, Originals are re-captured from `git show HEAD:<path>` so later edits keep sensible counts. Outside a repo, restored counts stay frozen as recorded.
+- Repo state staleness: the word refreshes only at the refresh points (see Repo state). Staging or committing outside pi mid-round shows up at the next settle, prompt, bash call, or `/filechanges`.
 - Binary files: NUL byte sniff in the first 8000 bytes.
 - Ignored paths: `filechanges.ignore` in `.pi/settings.json` (project wins over global). Defaults cover lockfiles, `node_modules`, `dist`, `build`, `.env*`.
 - Bash outside the cwd repo: detected by path sniffing, best effort (see Scope).

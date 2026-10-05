@@ -2,8 +2,9 @@
 // with the Round/All views). Drives the real extension file with a stubbed
 // ExtensionAPI, real temp files, and a real temp git repo, asserting Session
 // set accumulation, Revert, bash-driven detection, Clear semantics,
-// reload-restore, Round/All mode toggling, semantic color coding, and
-// header totals.
+// reload-restore, Round/All mode toggling, semantic color coding,
+// header totals, and Repo state annotation (unstaged/staged/committed/untracked,
+// refresh-point timing, non-repo files, restore recompute).
 import { execFile } from "node:child_process"
 import { mkdtemp, rm, writeFile, unlink } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -444,6 +445,84 @@ check(
     (ctxC.notifications[0] ?? "").includes("<warning>modified </warning>"),
 )
 
+// --- Scenario 12: Repo state annotation ---
+const dirS = await mkdtemp(join(tmpdir(), "fc-state-"))
+await execFileAsync("git", ["init"], { cwd: dirS })
+await writeFile(join(dirS, "tracked.txt"), "base\n", "utf-8")
+await execFileAsync("git", ["add", "."], { cwd: dirS })
+await execFileAsync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "init"], { cwd: dirS })
+
+const piS = new MockPi()
+const ctxS = new MockCtx(dirS)
+await ext(piS as any)
+
+// 12a: edit/write results are not a refresh point; the settle annotates the dirty row.
+await editFile(piS, ctxS, "st1", "tracked.txt", "base\nedit\n")
+check(
+  "s12: row carries no state before a refresh point",
+  ctxS.panel()?.join("\n") === `Changes last round (1): +1/-0\nmodified tracked.txt (+1/-0)`,
+)
+await fire(piS, "agent_settled", {}, ctxS)
+check(
+  "s12: settle annotates a dirty tracked file as unstaged",
+  ctxS.panel()?.join("\n") === `Changes last round (1): +1/-0\nmodified tracked.txt (+1/-0) unstaged`,
+)
+
+// 12b: `git add` changes only the index (porcelain path set unchanged); the bash result still flips the word.
+await bash(piS, ctxS, "st2", "git add tracked.txt", async () => {
+  await execFileAsync("git", ["add", "tracked.txt"], { cwd: dirS })
+})
+check("s12: bash git add flips to staged", ctxS.panel()?.join("\n").includes("tracked.txt (+1/-0) staged") === true)
+
+// 12c: `git commit` clears the porcelain entry; the row stays (counts are vs the Original) and reads committed.
+await bash(piS, ctxS, "st3", "git commit -m snap", async () => {
+  await execFileAsync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "snap"], { cwd: dirS })
+})
+check(
+  "s12: bash git commit flips to committed, row stays",
+  ctxS.panel()?.join("\n").includes("modified tracked.txt (+1/-0) committed") === true,
+)
+
+// 12d: a created file is untracked.
+await editFile(piS, ctxS, "st4", "new.txt", "n\n")
+await fire(piS, "agent_settled", {}, ctxS)
+check("s12: created file is untracked", ctxS.panel()?.join("\n").includes("created  new.txt (+1/-0) untracked") === true)
+
+// 12e: a stage made outside pi (e.g. in VS Code) stays stale until the next refresh point (agent_start here).
+await piS.commands["filechanges-mode"].handler("", ctxS) // all mode: agent_start would otherwise hide the rows
+await execFileAsync("git", ["add", "new.txt"], { cwd: dirS })
+check("s12: external stage is stale until a refresh point", ctxS.panel()?.join("\n").includes("new.txt (+1/-0) untracked") === true)
+await fire(piS, "agent_start", {}, ctxS)
+check("s12: agent_start picks up the external stage", ctxS.panel()?.join("\n").includes("new.txt (+1/-0) staged") === true)
+
+// 12f: a file outside any repo gets no state word.
+const dirS2 = await mkdtemp(join(tmpdir(), "fc-stateplain-"))
+await fire(piS, "tool_call", { toolName: "write", input: { path: join(dirS2, "plain.txt") }, toolCallId: "st5" }, ctxS)
+await writeFile(join(dirS2, "plain.txt"), "p\n", "utf-8")
+await fire(piS, "tool_result", { toolName: "write", toolCallId: "st5", isError: false }, ctxS)
+await fire(piS, "agent_settled", {}, ctxS)
+check(
+  "s12: non-repo file carries no state word",
+  (ctxS.panel() ?? []).find((l) => l.includes("plain.txt")) === `created  ${join(dirS2, "plain.txt")} (+1/-0)`,
+)
+
+// 12g: states are not persisted; restore recomputes them from git and colors them by meaning.
+const piSC = new MockPi()
+const ctxSC = new MockCtx(dirS, { colorize: true })
+ctxSC.branchEntries = [{ type: "custom", customType: "filechanges:session-set", data: piS.latestSessionSetEntry() }]
+await ext(piSC as any)
+await fire(piSC, "session_start", {}, ctxSC)
+const stateColorPanel = (ctxSC.panel() ?? []).join("\n")
+check(
+  "s12: restore recomputes state words, colored by meaning",
+  stateColorPanel.includes("<dim>committed</dim>") && stateColorPanel.includes("<success>staged</success>"),
+)
+const plainStateLine = (ctxSC.panel() ?? []).find((l) => l.includes("plain.txt")) ?? ""
+check(
+  "s12: restored non-repo row has no state markup",
+  plainStateLine.includes("plain.txt") && !/(untracked|staged|committed)/.test(plainStateLine),
+)
+
 await rm(dir, { recursive: true, force: true })
 await rm(dir10, { recursive: true, force: true })
 await rm(dirPlain, { recursive: true, force: true })
@@ -451,6 +530,8 @@ await rm(dirOther, { recursive: true, force: true })
 await rm(dirNoRepo, { recursive: true, force: true })
 await rm(dir9, { recursive: true, force: true })
 await rm(dirC, { recursive: true, force: true })
+await rm(dirS, { recursive: true, force: true })
+await rm(dirS2, { recursive: true, force: true })
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

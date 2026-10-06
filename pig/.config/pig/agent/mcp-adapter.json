@@ -1,0 +1,56 @@
+{
+  "settings": {
+    "toolPrefix": "server",
+    "idleTimeout": 10
+  },
+  "mcpServers": {
+    "kb": {
+      "type": "http",
+      "url": "https://genai-lab-api.eu.foundations.shared.int.hellofresh.io/mcp/v2",
+      "lifecycle": "lazy",
+      "directTools": false
+    },
+    "excalidraw": {
+      "type": "http",
+      "url": "https://mcp.excalidraw.com",
+      "lifecycle": "lazy",
+      "directTools": false
+    },
+    "drawio": {
+      "type": "http",
+      "url": "https://mcp.draw.io/mcp",
+      "lifecycle": "lazy",
+      "directTools": false
+    },
+    "slack": {
+      "command": "slack-mcp-server-hf",
+      "args": [
+        "--transport",
+        "stdio",
+        "-enabled-tools",
+        "conversations_history,conversations_replies,conversations_search_messages,channels_list"
+      ],
+      "lifecycle": "lazy",
+      "directTools": true
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.83",
+        "--executable-path",
+        "/Applications/Brave Browser Beta.app/Contents/MacOS/Brave Browser Beta",
+        "--user-data-dir",
+        "/Users/luis.aceituno/.config/pig/agent/data/playwright-brave-beta"
+      ],
+      "lifecycle": "lazy",
+      "directTools": false
+    },
+    "playwriter": {
+      "command": "playwriter",
+      "args": [],
+      "lifecycle": "lazy",
+      "directTools": false
+    }
+  }
+}

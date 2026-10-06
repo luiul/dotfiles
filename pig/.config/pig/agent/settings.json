@@ -1,0 +1,59 @@
+{
+  "defaultProvider": "ai-model-router",
+  "defaultModel": "moonshotai/Kimi-K3",
+  "enabledModels": [
+    "gpt-5.6-luna:max",
+    "global.openai.gpt-5.6-luna:max",
+    "moonshotai/Kimi-K3*",
+    "claude-sonnet-5*",
+    "claude-opus-5*",
+    "claude-haiku-4-5*",
+    "gpt-5.6-luna*",
+    "gpt-6-luna*",
+    "gpt-6-sol*",
+    "zai-org/GLM-5*",
+    "deepseek-ai/DeepSeek-V4*",
+    "eu.anthropic.claude-sonnet-5*",
+    "eu.anthropic.claude-sonnet-4-6*",
+    "eu.anthropic.claude-opus-5*",
+    "eu.anthropic.claude-opus-4-8*",
+    "eu.anthropic.claude-haiku-4-5*",
+    "global.anthropic.claude-sonnet-5*",
+    "global.anthropic.claude-sonnet-4-6*",
+    "global.anthropic.claude-opus-5*",
+    "global.anthropic.claude-opus-4-8*",
+    "global.anthropic.claude-haiku-4-5*",
+    "us.anthropic.claude-sonnet-5*",
+    "us.anthropic.claude-sonnet-4-6*",
+    "us.anthropic.claude-opus-5*",
+    "us.anthropic.claude-opus-4-8*",
+    "us.anthropic.claude-haiku-4-5*",
+    "global.openai.gpt-5.6-luna*",
+    "us.openai.gpt-5.6-luna*",
+    "global.openai.gpt-6-luna*",
+    "us.openai.gpt-6-luna*",
+    "global.openai.gpt-6-sol*",
+    "us.openai.gpt-6-sol*"
+  ],
+  "enableInstallTelemetry": false,
+  "enableAnalytics": false,
+  "quietStartup": true,
+  "fullscreenCopyOnSelect": false,
+  "lastChangelogVersion": "1.0.4",
+  "theme": "dark",
+  "outputPad": 0,
+  "packages": [
+    "npm:@tintinweb/pi-subagents",
+    "npm:pi-web-access",
+    "npm:pi-mcp-adapter",
+    "npm:context-mode",
+    "npm:pi-hermes-memory"
+  ],
+  "markdown": {
+    "codeBlockIndent": ""
+  },
+  "defaultThinkingLevel": "high",
+  "extensions": [
+    "-builtin:mcp"
+  ]
+}

@@ -1,0 +1,12 @@
+# Files in this package that stow must NOT symlink into $HOME.
+# settings.json, auth.json and mcp-adapter.json are tracked snapshots, not
+# stowed: pig rewrites settings.json at runtime (changelog version, deviceId),
+# and mcp-adapter.json differs from pi's live file (playwright profile points
+# at pig's own data dir). The live files at ~/.config/pig/agent are the source
+# of truth. Refresh the snapshots with:
+#   cp ~/.config/pig/agent/settings.json pig/.config/pig/agent/settings.json
+#   cp ~/.config/pig/agent/mcp-adapter.json pig/.config/pig/agent/mcp-adapter.json
+settings.json
+auth.json
+mcp-adapter.json
+\.stow-local-ignore

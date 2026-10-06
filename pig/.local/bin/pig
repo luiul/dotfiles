@@ -1,0 +1,13 @@
+#!/bin/sh
+# Wrapper around the real pig binary (/opt/homebrew/bin/pig, npm global).
+#
+# PiG resolves its agent dir from XDG_CONFIG_HOME (~/.config/pig/agent) and
+# ignores PI_CODING_AGENT_DIR, but the pi-hermes-memory extension reads that
+# variable as its state root (memory DB, MEMORY.md, USER.md, projects-memory;
+# see resolveAgentRoot in pi-hermes-memory src/paths.ts). Point it at pi's
+# agent dir so pig and pi share one memory store. Unset would default to the
+# same path; the export only pins the intent. Sessions are shared separately:
+# ~/.config/pig/agent/sessions is a symlink to ~/.pi/agent/sessions.
+# See ~/dotfiles/AGENTS.md, section "PiG".
+export PI_CODING_AGENT_DIR="$HOME/.pi/agent"
+exec /opt/homebrew/bin/pig "$@"

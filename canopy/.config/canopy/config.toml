@@ -1,0 +1,6 @@
+# canopy: the complete set of tracked agent CLI kinds (replace semantics,
+# this list is everything canopy tracks, there is no merge with the
+# built-in default of just "pi"). Matching: exact executable basename in
+# ps output, a controlling tty, and no denylisted second token.
+# Schema and matching rules: https://github.com/luiul/canopy#configuration
+agents = ["pi", "pig", "claude"]

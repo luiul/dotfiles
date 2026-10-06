@@ -63,7 +63,7 @@ One name per concept. These names will be used verbatim in code, comments, and c
 | Repo state | A Change's git status word: `untracked`, `staged`, `unstaged`, `conflicted`, or `committed`. Derived from `git status --porcelain -z` XY codes plus `git ls-files`; porcelain silence means `committed` only when git tracks the path. Files outside any repo, and git-ignored files, have no Repo state. Refreshed at refresh points, never persisted. | (new) |
 | Revert | A Change whose content equals its Original again. It leaves the Session set automatically, and its Original is forgotten with it. | (no name today) |
 | Tracking | Recording Changes: snapshots on `tool_call`, commit on `tool_result`, git diffing and command path sniffing for bash. | `recordChange` → `trackChange` |
-| Panel | The persistent widget above the Editor. Live view of the Mode's scope, capped at 8 rows. | `widget` / `buildWidgetLines` |
+| Panel | The persistent widget above the Editor. Live view of the Mode's scope, capped at 8 rows, framed by a dim left gutter. | `widget` / `buildWidgetLines` |
 | List | `/filechanges`. Prints the Mode's scope into the Transcript. | `printSummary` |
 | Clear | `/filechanges-clear`. Empties the Session set and the Round, forgets all Originals. Tracking restarts from that point. | (stays) |
 | Persist | Saving the Session set, the Round, and the Mode into the session log so the Panel survives `/reload`. | `persistBatch` / `ENTRY_BATCH` |
@@ -86,20 +86,20 @@ Two terms disappear on purpose: batch (the old reset per prompt unit) and summar
 Round mode (the default):
 
 ```text
-Changes last round (2): +13/-1
-modified pi/.pi/agent/AGENTS.md (+1/-1) unstaged
-created  notes.md (+12/-0) untracked
-…and 1 more this session (see /filechanges-mode)
+│ Changes last round (2): +13/-1
+│ modified pi/.pi/agent/AGENTS.md (+1/-1) unstaged
+│ created  notes.md (+12/-0) untracked
+│ …and 1 more this session (see /filechanges-mode)
 ```
 
 All mode:
 
 ```text
-Session changes (3): +13/-41
-modified pi/.pi/agent/AGENTS.md (+1/-1) committed
-created  notes.md (+12/-0) untracked
-deleted  old.ts (+0/-40) unstaged
-…and 2 more (see /filechanges)
+│ Session changes (3): +13/-41
+│ modified pi/.pi/agent/AGENTS.md (+1/-1) committed
+│ created  notes.md (+12/-0) untracked
+│ deleted  old.ts (+0/-40) unstaged
+│ …and 2 more (see /filechanges)
 ```
 
 - Header: `Changes last round (N): +A/-R` in round mode, `Session changes (N): +A/-R` in all mode. N is the number of Changes in the shown scope; A and R are its line-count totals. The header is bold. Totals are hidden when both sides are zero (e.g. binary-only scopes), leaving a bare `Changes last round (N):`.
@@ -111,6 +111,7 @@ deleted  old.ts (+0/-40) unstaged
 - Cap of 8 rows, then at most one trailing line. Header plus 8 rows plus the trailing line is 10 lines, exactly pi's widget limit. The trailing line is the overflow (`…and N more (see /filechanges)`) when there is one; otherwise, in round mode with more Changes in the Session set, `…and N more this session (see /filechanges-mode)`.
 - Empty Round with a non-empty Session set: one muted line, `No changes last round (N this session): /filechanges-mode`.
 - Empty Session set: the Panel is hidden.
+- Gutter: every Panel line is prefixed with a dim `│ ` (box-drawing vertical bar plus one space), quote-block style. The continuous bar separates the Panel from the transcript above it without adding emphasis (no background) or spending any of the 10 widget lines. Panel only: the List is requested transcript output, not a persistent region, so it has no gutter.
 - Colors are semantic, from the pi theme: the kind word by meaning (created = success, modified = warning, deleted = error), the path in text, counts in `toolDiffAdded`/`toolDiffRemoved` with zero counts dim, `(binary)` muted, the header bold with colored totals. Color does the scannability job glyphs would, keeping the resolved no-glyphs decision. The List uses the same scheme. The no-UI fallback (console.log) stays plain. Opaque enough for light and dark mode.
 
 ## Repo state

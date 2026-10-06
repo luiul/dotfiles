@@ -62,6 +62,11 @@
  *   pointer to the Changes the Round hides. Hidden when the Session set is
  *   empty; an empty Round with a non-empty Session set shows a one-line hint
  *   instead.
+ * - Framing: every Panel line is prefixed with a dim left gutter (`│ `),
+ *   quote-block style. The continuous bar separates the Panel from the
+ *   transcript above it without adding emphasis (no background) or spending
+ *   any of the 10 widget lines. Panel only: the List is requested
+ *   transcript output and stays unframed.
  * - Colors are semantic, from the pi theme: the kind word by meaning
  *   (created = success, modified = warning, deleted = error), the path in
  *   text, counts in toolDiffAdded/toolDiffRemoved with zero counts dimmed,
@@ -250,6 +255,17 @@ const KIND_COLORS: Record<Kind, string> = { created: "success", modified: "warni
  */
 const REPO_STATE_COLORS: Record<RepoState, string> = { untracked: "muted", staged: "accent", unstaged: "muted", conflicted: "error", committed: "dim" };
 
+/**
+ * Panel framing: a dim left gutter (`│ `) on every line, quote-block style.
+ * The continuous bar separates the Panel from the transcript above it
+ * without adding emphasis (no background) or spending widget lines. Panel
+ * only: the List is requested transcript output and stays unframed.
+ */
+function withGutter(lines: string[], theme?: any): string[] {
+	const gutter = theme ? theme.fg("dim", "│ ") : "│ ";
+	return lines.map((line) => gutter + line);
+}
+
 /** Shared row renderer, used by the Panel and by `/filechanges`. Plain words, no glyphs; color carries the meaning. */
 function formatChangeLine(t: Change, theme?: any): string {
 	const label = t.kind.padEnd(9); // "modified" is the longest kind at 8 chars
@@ -299,13 +315,14 @@ function formatHeader(mode: Mode, items: Change[], theme?: any): string {
  * Panel content for one scope: header, up to PANEL_MAX_ROWS rows, and at most
  * one trailing line (10 lines total, pi's widget limit). The trailing line is
  * the overflow when there is one, else a pointer to the Changes the Round
- * hides. Empty Round with a non-empty Session set: a one-line hint.
+ * hides. Empty Round with a non-empty Session set: a one-line hint. Every
+ * line is framed with the gutter.
  */
 function buildPanelLines(items: Change[], sessionSize: number, mode: Mode, theme?: any): string[] | undefined {
 	if (items.length === 0) {
 		if (sessionSize === 0 || mode === "all") return undefined;
 		const hint = `No changes last round (${sessionSize} this session): /filechanges-mode`;
-		return [theme ? theme.fg("muted", hint) : hint];
+		return withGutter([theme ? theme.fg("muted", hint) : hint], theme);
 	}
 	const lines: string[] = [formatHeader(mode, items, theme)];
 
@@ -318,7 +335,7 @@ function buildPanelLines(items: Change[], sessionSize: number, mode: Mode, theme
 		const more = `…and ${sessionSize - items.length} more this session (see /filechanges-mode)`;
 		lines.push(theme ? theme.fg("dim", more) : more);
 	}
-	return lines;
+	return withGutter(lines, theme);
 }
 
 /** Minimal glob support: `*` = any chars except `/`, `**` = any chars including `/`. */

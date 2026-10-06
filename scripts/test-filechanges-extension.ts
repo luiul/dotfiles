@@ -3,7 +3,7 @@
 // ExtensionAPI, real temp files, and a real temp git repo, asserting Session
 // set accumulation, Revert, bash-driven detection, Clear semantics,
 // reload-restore, Round/All mode toggling, semantic color coding,
-// header totals, and Repo state annotation (unstaged/staged/committed/untracked,
+// header totals, Panel gutter framing, and Repo state annotation (unstaged/staged/committed/untracked,
 // refresh-point timing, non-repo files, restore recompute).
 import { execFile } from "node:child_process"
 import { mkdtemp, rm, writeFile, unlink } from "node:fs/promises"
@@ -110,17 +110,17 @@ const ctx = new MockCtx(dir)
 await ext(pi as any)
 
 await editFile(pi, ctx, "1", "a.txt", "hello\n")
-check("s1: panel shows 1 created row", ctx.panel()?.join("\n") === `Changes last round (1): +1/-0\ncreated  a.txt (+1/-0)`)
+check("s1: panel shows 1 created row", ctx.panel()?.join("\n") === `│ Changes last round (1): +1/-0\n│ created  a.txt (+1/-0)`)
 check("s1: no footer status is set", Object.keys(ctx.statuses).length === 0)
 await fire(pi, "agent_settled", {}, ctx)
 check("s1: settle persists the set", pi.latestSessionSetEntry()?.items?.length === 1)
 
 // Second "prompt": the set must NOT reset.
 await editFile(pi, ctx, "2", "b.txt", "one\ntwo\n")
-check("s1: set accumulates across prompts", ctx.panel()?.[0] === "Changes last round (2): +3/-0")
+check("s1: set accumulates across prompts", ctx.panel()?.[0] === "│ Changes last round (2): +3/-0")
 check(
   "s1: rows sorted most-recently-touched first",
-  ctx.panel()?.[1]?.startsWith("created  b.txt (+2/-0)") === true && ctx.panel()?.[2]?.startsWith("created  a.txt (+1/-0)") === true,
+  ctx.panel()?.[1]?.startsWith("│ created  b.txt (+2/-0)") === true && ctx.panel()?.[2]?.startsWith("│ created  a.txt (+1/-0)") === true,
 )
 await fire(pi, "agent_settled", {}, ctx)
 check("s1: settle persists both", pi.latestSessionSetEntry()?.items?.length === 2)
@@ -131,10 +131,10 @@ await writeFile(join(dir, "c.txt"), "orig\n", "utf-8")
 await editFile(pi, ctx, "3", "c.txt", "changed\n")
 check("s2: modified row appears", ctx.panel()?.join("\n").includes("modified c.txt (+1/-1)") === true)
 await editFile(pi, ctx, "4", "c.txt", "orig\n") // back to its Original
-check("s2: reverted file drops off the set", ctx.panel()?.[0] === "Changes last round (2): +3/-0" && !ctx.panel()?.join("\n").includes("c.txt"))
+check("s2: reverted file drops off the set", ctx.panel()?.[0] === "│ Changes last round (2): +3/-0" && !ctx.panel()?.join("\n").includes("c.txt"))
 // Created file reverts by being deleted.
 await editFile(pi, ctx, "5", "a.txt", null)
-check("s2: deleting a created file reverts it", ctx.panel()?.[0] === "Changes last round (1): +2/-0" && !ctx.panel()?.join("\n").includes("a.txt"))
+check("s2: deleting a created file reverts it", ctx.panel()?.[0] === "│ Changes last round (1): +2/-0" && !ctx.panel()?.join("\n").includes("a.txt"))
 
 // --- Scenario 3: bash-driven change detection (git repo) ---
 await bash(pi, ctx, "6", "echo x > bash-new.txt && echo more >> committed.txt", async () => {
@@ -144,7 +144,7 @@ await bash(pi, ctx, "6", "echo x > bash-new.txt && echo more >> committed.txt", 
 const s3panel = ctx.panel()?.join("\n") ?? ""
 check("s3: bash-created file tracked", s3panel.includes("created  bash-new.txt (+2/-0)"))
 check("s3: bash-modified file tracked (vs HEAD)", s3panel.includes("modified committed.txt (+1/-0)"))
-check("s3: header counts all rows", s3panel.startsWith("Changes last round (3):"))
+check("s3: header counts all rows", s3panel.startsWith("│ Changes last round (3):"))
 // Ignored paths touched by bash must not appear.
 await bash(pi, ctx, "7", "echo '{}' > package-lock.json", async () => {
   await writeFile(join(dir, "package-lock.json"), "{}", "utf-8")
@@ -155,8 +155,8 @@ check("s3: ignored lockfile not tracked", !(ctx.panel()?.join("\n") ?? "").inclu
 for (let i = 0; i < 7; i++) await editFile(pi, ctx, `8.${i}`, `f${i}.txt`, `row ${i}\n`)
 const s4panel = ctx.panel() ?? []
 check("s4: panel capped at 10 lines", s4panel.length === 10)
-check("s4: header shows full count and totals", s4panel[0] === "Changes last round (10): +12/-0")
-check("s4: overflow line points to /filechanges", s4panel[9] === "…and 2 more (see /filechanges)")
+check("s4: header shows full count and totals", s4panel[0] === "│ Changes last round (10): +12/-0")
+check("s4: overflow line points to /filechanges", s4panel[9] === "│ …and 2 more (see /filechanges)")
 // /filechanges prints everything in the current view (round here covers all 10).
 ctx.notifications = []
 await pi.commands["filechanges"].handler("", ctx)
@@ -169,7 +169,7 @@ check("s5: clear hides the panel", ctx.panel() === undefined)
 check("s5: clear persists the empty set", pi.latestSessionSetEntry()?.items?.length === 0)
 // b.txt had 2 lines at Clear time and is now tracked again from that state.
 await editFile(pi, ctx, "9", "b.txt", "one\ntwo\nthree\n")
-check("s5: counts measured from post-Clear state", ctx.panel()?.join("\n") === `Changes last round (1): +1/-0\nmodified b.txt (+1/-0)`)
+check("s5: counts measured from post-Clear state", ctx.panel()?.join("\n") === `│ Changes last round (1): +1/-0\n│ modified b.txt (+1/-0)`)
 
 // --- Scenario 6: reload restores the set and re-captures Originals from HEAD ---
 await fire(pi, "agent_settled", {}, ctx)
@@ -179,7 +179,7 @@ const ctx2 = new MockCtx(dir)
 ctx2.branchEntries = [{ type: "custom", customType: "filechanges:session-set", data: persisted }]
 await ext(pi2 as any)
 await fire(pi2, "session_start", {}, ctx2)
-check("s6: panel restored after reload", ctx2.panel()?.[0] === "Changes last round (1): +1/-0")
+check("s6: panel restored after reload", ctx2.panel()?.[0] === "│ Changes last round (1): +1/-0")
 check("s6: restored counts stay as recorded", ctx2.panel()?.join("\n").includes("modified b.txt (+1/-0)") === true)
 // committed.txt (HEAD: "base\n", working tree: "base\nmore\n") was persisted as
 // modified (+1/-0) in scenario 3; after reload its Original is re-captured from
@@ -194,7 +194,7 @@ await ext(pi3 as any)
 await fire(pi3, "session_start", {}, ctx3)
 const sumA = withCommitted.items.reduce((n: number, i: any) => n + i.added, 0)
 const sumR = withCommitted.items.reduce((n: number, i: any) => n + i.removed, 0)
-check("s6: multi-row restore", (ctx3.panel()?.[0] ?? "") === `Changes last round (${withCommitted.items.length}): +${sumA}/-${sumR}`)
+check("s6: multi-row restore", (ctx3.panel()?.[0] ?? "") === `│ Changes last round (${withCommitted.items.length}): +${sumA}/-${sumR}`)
 await editFile(pi3, ctx3, "10", "committed.txt", "base\nmore\neven-more\n")
 // HEAD re-capture: counts vs HEAD ("base\n"), so +2/-0, not +1/-0.
 check("s6: post-restore edit counts vs HEAD", ctx3.panel()?.join("\n").includes("modified committed.txt (+2/-0)") === true)
@@ -226,7 +226,7 @@ await ext(pi5 as any)
 await fire(pi5, "session_start", {}, ctx5)
 // Legacy entry without round/mode fields: the Round falls back to every
 // restored path, so the default view keeps showing the row.
-check("s7: outside-repo restore keeps frozen counts", ctx5.panel()?.join("\n") === `Changes last round (1): +5/-2\nmodified x.txt (+5/-2)`)
+check("s7: outside-repo restore keeps frozen counts", ctx5.panel()?.join("\n") === `│ Changes last round (1): +5/-2\n│ modified x.txt (+5/-2)`)
 
 // --- Scenario 8: bash changes OUTSIDE the cwd repo are tracked via path sniffing ---
 const dirOther = await mkdtemp(join(tmpdir(), "fc-other-"))
@@ -272,7 +272,7 @@ check(
 
 // 8d: a command that only reads an outside file tracks nothing new.
 await bash(pi6, ctx6, "s8.4", `cat ${join(dirOther, "outside.txt")}`, async () => {})
-check("s8: read-only command tracks nothing", ctx6.panel()?.[0] === "Changes last round (3): +3/-0")
+check("s8: read-only command tracks nothing", ctx6.panel()?.[0] === "│ Changes last round (3): +3/-0")
 
 // 8e: deleting an outside created file reverts it off the set.
 await bash(pi6, ctx6, "s8.5", `rm ${join(dirNoRepo, "plain.txt")}`, async () => {
@@ -280,7 +280,7 @@ await bash(pi6, ctx6, "s8.5", `rm ${join(dirNoRepo, "plain.txt")}`, async () => 
 })
 check(
   "s8: deleting an outside created file reverts it",
-  ctx6.panel()?.[0] === "Changes last round (2): +2/-0" && !ctx6.panel()?.join("\n").includes("plain.txt"),
+  ctx6.panel()?.[0] === "│ Changes last round (2): +2/-0" && !ctx6.panel()?.join("\n").includes("plain.txt"),
 )
 
 // 8f: an in-repo file named in the command is tracked once, not duplicated by the git diff.
@@ -290,7 +290,7 @@ await bash(pi6, ctx6, "s8.6", "echo z > sniff-inrepo.txt", async () => {
 const s8rows = (ctx6.panel() ?? []).filter((l) => l.includes("sniff-inrepo.txt"))
 check(
   "s8: in-repo sniffed file appears exactly once",
-  s8rows.length === 1 && s8rows[0].startsWith("created  sniff-inrepo.txt (+1/-0)"),
+  s8rows.length === 1 && s8rows[0].startsWith("│ created  sniff-inrepo.txt (+1/-0)"),
 )
 
 // --- Scenario 9: external edits after a reconcile are not attributed (parallel-session leak) ---
@@ -344,14 +344,14 @@ await editFile(pi8, ctx8, "r1", "one.txt", "1\n")
 await editFile(pi8, ctx8, "r2", "two.txt", "2\n")
 check(
   "s10: round view shows the round's rows",
-  ctx8.panel()?.join("\n") === `Changes last round (2): +2/-0\ncreated  two.txt (+1/-0)\ncreated  one.txt (+1/-0)`,
+  ctx8.panel()?.join("\n") === `│ Changes last round (2): +2/-0\n│ created  two.txt (+1/-0)\n│ created  one.txt (+1/-0)`,
 )
 
 // A new prompt resets the Round; the Session set is untouched.
 await fire(pi8, "agent_start", {}, ctx8)
 check(
   "s10: new prompt empties the round, panel hints at the session",
-  ctx8.panel()?.join("\n") === "No changes last round (2 this session): /filechanges-mode",
+  ctx8.panel()?.join("\n") === "│ No changes last round (2 this session): /filechanges-mode",
 )
 
 // Round 2: one file. Panel shows it plus a pointer to the hidden ones.
@@ -359,7 +359,7 @@ await editFile(pi8, ctx8, "r3", "three.txt", "3\n")
 check(
   "s10: round row plus more-this-session line",
   ctx8.panel()?.join("\n") ===
-    `Changes last round (1): +1/-0\ncreated  three.txt (+1/-0)\n…and 2 more this session (see /filechanges-mode)`,
+    `│ Changes last round (1): +1/-0\n│ created  three.txt (+1/-0)\n│ …and 2 more this session (see /filechanges-mode)`,
 )
 
 // /filechanges follows the mode; an arg picks a view once without changing it.
@@ -372,13 +372,13 @@ check(
 ctx8.notifications = []
 await pi8.commands["filechanges"].handler("all", ctx8)
 check("s10: /filechanges all lists the session", ctx8.notifications[0]?.startsWith("Session changes (3):") === true)
-check("s10: the arg does not change the mode", ctx8.panel()?.[0] === "Changes last round (1): +1/-0")
+check("s10: the arg does not change the mode", ctx8.panel()?.[0] === "│ Changes last round (1): +1/-0")
 
 // Toggle via command.
 await pi8.commands["filechanges-mode"].handler("", ctx8)
-check("s10: /filechanges-mode switches to all", ctx8.panel()?.[0] === "Session changes (3): +3/-0")
+check("s10: /filechanges-mode switches to all", ctx8.panel()?.[0] === "│ Session changes (3): +3/-0")
 await pi8.commands["filechanges-mode"].handler("", ctx8)
-check("s10: /filechanges-mode switches back to round", ctx8.panel()?.[0] === "Changes last round (1): +1/-0")
+check("s10: /filechanges-mode switches back to round", ctx8.panel()?.[0] === "│ Changes last round (1): +1/-0")
 
 // Mode and Round persist across reload.
 await fire(pi8, "agent_settled", {}, ctx8)
@@ -395,12 +395,12 @@ await fire(pi9, "session_start", {}, ctx9)
 check(
   "s10: reload restores the round view",
   ctx9.panel()?.join("\n") ===
-    `Changes last round (1): +1/-0\ncreated  three.txt (+1/-0)\n…and 2 more this session (see /filechanges-mode)`,
+    `│ Changes last round (1): +1/-0\n│ created  three.txt (+1/-0)\n│ …and 2 more this session (see /filechanges-mode)`,
 )
 await fire(pi9, "agent_start", {}, ctx9)
 check(
   "s10: restored round resets on the next prompt",
-  ctx9.panel()?.join("\n") === "No changes last round (3 this session): /filechanges-mode",
+  ctx9.panel()?.join("\n") === "│ No changes last round (3 this session): /filechanges-mode",
 )
 
 // Clear empties the Round too.
@@ -423,7 +423,7 @@ const colorPanel = (ctxC.panel() ?? []).join("\n")
 check(
   "s11: header is bold and carries colored totals",
   (ctxC.panel() ?? [])[0] ===
-    `<b>Changes last round (3):</b> <toolDiffAdded>+2</toolDiffAdded><dim>/</dim><toolDiffRemoved>-2</toolDiffRemoved>`,
+    `<dim>│ </dim><b>Changes last round (3):</b> <toolDiffAdded>+2</toolDiffAdded><dim>/</dim><toolDiffRemoved>-2</toolDiffRemoved>`,
 )
 check(
   "s11: rows are colored by kind, path in text, counts in diff colors",
@@ -460,12 +460,12 @@ await ext(piS as any)
 await editFile(piS, ctxS, "st1", "tracked.txt", "base\nedit\n")
 check(
   "s12: row carries no state before a refresh point",
-  ctxS.panel()?.join("\n") === `Changes last round (1): +1/-0\nmodified tracked.txt (+1/-0)`,
+  ctxS.panel()?.join("\n") === `│ Changes last round (1): +1/-0\n│ modified tracked.txt (+1/-0)`,
 )
 await fire(piS, "agent_settled", {}, ctxS)
 check(
   "s12: settle annotates a dirty tracked file as unstaged",
-  ctxS.panel()?.join("\n") === `Changes last round (1): +1/-0\nmodified tracked.txt (+1/-0) unstaged`,
+  ctxS.panel()?.join("\n") === `│ Changes last round (1): +1/-0\n│ modified tracked.txt (+1/-0) unstaged`,
 )
 
 // 12b: `git add` changes only the index (porcelain path set unchanged); the bash result still flips the word.
@@ -503,7 +503,7 @@ await fire(piS, "tool_result", { toolName: "write", toolCallId: "st5", isError: 
 await fire(piS, "agent_settled", {}, ctxS)
 check(
   "s12: non-repo file carries no state word",
-  (ctxS.panel() ?? []).find((l) => l.includes("plain.txt")) === `created  ${join(dirS2, "plain.txt")} (+1/-0)`,
+  (ctxS.panel() ?? []).find((l) => l.includes("plain.txt")) === `│ created  ${join(dirS2, "plain.txt")} (+1/-0)`,
 )
 
 // 12g: states are not persisted; restore recomputes them from git and colors them by meaning.

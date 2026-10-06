@@ -4,7 +4,8 @@
  * Fires a macOS notification via the `claude-notifier` binary when pi settles
  * and hands control back to you, after a manual context compaction, or when a
  * single agent run has been working for too long without returning control
- * (default 600s, configurable via PI_LONG_RUN_SECONDS or /notify-timeout). The
+ * (default 900s = 15 minutes, configurable via PI_LONG_RUN_SECONDS or
+ * /notify-timeout). The
  * notification is suppressed when you are already looking at pi's terminal tab,
  * replicating the focus-detection logic from the Claude `notify.sh` hook.
  *
@@ -131,7 +132,7 @@ async function repoName(cwd: string): Promise<string> {
 // Seconds an agent run may work before we alert. <= 0 disables the watcher.
 function parseThreshold(): number {
 	const raw = Number(process.env.PI_LONG_RUN_SECONDS);
-	return Number.isFinite(raw) && raw > 0 ? raw : 600;
+	return Number.isFinite(raw) && raw > 0 ? raw : 900;
 }
 
 // `agent_settled` was added in pi 0.80.4. Detect the running pi's version by
@@ -199,8 +200,8 @@ export default function (pi: ExtensionAPI) {
 		if (!enabled || longRunThreshold <= 0) return;
 		const startedAt = Date.now();
 		longRunTimer = setInterval(() => {
-			const elapsed = Math.round((Date.now() - startedAt) / 1000);
-			void maybeNotify(ctx, `Still working after ${elapsed}s without a result`, true);
+			const minutes = Math.max(1, Math.round((Date.now() - startedAt) / 60_000));
+			void maybeNotify(ctx, `Still working after ${minutes} minute${minutes === 1 ? "" : "s"} without a result`, true);
 		}, longRunThreshold * 1000);
 	});
 

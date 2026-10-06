@@ -26,6 +26,11 @@
 //      Fires a handful of times per month; pi's own 50KB cap stays the
 //      outer bound. Deliberately not a full compaction pipeline: read/grep
 //      results and sub-40k outputs stay exact.
+//   5. Initial probe deferred to session_start. pig's extension host drops
+//      pi.exec during extension load ("extension connection closed or
+//      replaced"), so a load-time probe misreports a healthy rtk as missing
+//      and warns at every pig startup. By session_start exec works on both
+//      pi and pig; runtimes without the event fall back to a load-time probe.
 
 import type {
   BashToolCallEvent,
@@ -181,29 +186,48 @@ function registerRtkStatusNotice(pi: ExtensionAPI) {
 export default async function (pi: ExtensionAPI) {
   const status = registerRtkStatusNotice(pi)
 
-  // Load-time probe. A missing rtk no longer disables the extension: it starts
-  // in the unavailable state and self-heals via the handler's 30s re-probe.
-  // A too-old rtk still disables it (no `rtk rewrite` subcommand to call).
+  let disabled = false // too-old rtk: no `rtk rewrite` subcommand to call
   let unavailable = false
   let lastProbeAt = 0
   let deniedWarned = false
 
-  const initialProbe = await probeVersion(pi)
-  if (initialProbe.kind === "too-old") {
-    console.warn(`[rtk] rtk ${initialProbe.version} is too old (need >= 0.23.0) — extension disabled`)
-    status.report(`rtk ${initialProbe.version} is too old (need >= 0.23.0)`)
-    return
+  // Initial probe. Deferred to session_start: pig's extension host drops
+  // pi.exec during load (header note 5). A missing rtk does not disable the
+  // extension: it starts in the unavailable state and self-heals via the
+  // handler's 30s re-probe. A too-old rtk disables it.
+  const runInitialProbe = async () => {
+    const probe = await probeVersion(pi)
+    if (probe.kind === "too-old") {
+      disabled = true
+      console.warn(`[rtk] rtk ${probe.version} is too old (need >= 0.23.0) — extension disabled`)
+      status.report(`rtk ${probe.version} is too old (need >= 0.23.0)`)
+      return
+    }
+    if (probe.kind === "missing") {
+      unavailable = true
+      lastProbeAt = Date.now()
+      console.warn("[rtk] rtk binary not found in PATH — rewrites paused, re-probing every 30s")
+      status.report("rtk binary not found in PATH")
+    }
   }
-  if (initialProbe.kind === "missing") {
-    unavailable = true
-    lastProbeAt = Date.now()
-    console.warn("[rtk] rtk binary not found in PATH — rewrites paused, re-probing every 30s")
-    status.report("rtk binary not found in PATH")
+
+  let sessionStartRegistered = true
+  try {
+    pi.on("session_start", async () => {
+      await runInitialProbe()
+    })
+  } catch {
+    sessionStartRegistered = false
+  }
+  if (!sessionStartRegistered) {
+    // Runtimes without a session_start event: probe at load (old behavior).
+    await runInitialProbe()
   }
 
   pi.on("tool_call", async (event, ctx) => {
     try {
       if (!isBashToolCallEvent(event)) return
+      if (disabled) return
 
       const cmd = event.input.command
       if (typeof cmd !== "string" || cmd.trim() === "") return

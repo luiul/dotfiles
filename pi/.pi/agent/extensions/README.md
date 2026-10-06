@@ -29,6 +29,7 @@ Local additions on top of the shipped file (also listed in the file header; re-a
 2. Availability caching: a missing rtk pauses probing for 30s instead of paying a dead exec per bash call, and the extension self-heals when rtk returns (no pi restart). A too-old rtk (< 0.23.0) still disables it.
 3. Exit code 2 (rtk denied) surfaces a one-time console warning.
 4. Tail-risk cap on bash output: results over 40k chars keep head 24k + tail 12k with an explicit marker. Added after measuring 14 days of sessions: rtk outputs averaged 150 tokens, but one `rtk grep` returned 46k tokens in a single call. It fires a handful of times per month; pi's own 50KB cap stays the outer bound, and read/grep results stay exact.
+5. Initial probe deferred to `session_start`: pig's extension host drops `pi.exec` during extension load (`extension connection closed or replaced`), so a load-time probe misreports a healthy rtk as missing and warns at every pig startup. By `session_start` exec works on both pi and pig; runtimes without the event fall back to a load-time probe. A too-old rtk now disables via a flag checked in the `tool_call` handler instead of an early return, since handlers must register at load before the probe has run.
 
 Why not pi-rtk-optimizer as a whole: it reroutes rtk's stats DB to a temp dir (breaks `rtk gain`), lags pi version support, and its output compaction mostly no-ops on rtk-rewritten commands. Re-evaluation triggers and the adoption checklist live in [issue #22](https://github.com/luiul/dotfiles/issues/22).
 

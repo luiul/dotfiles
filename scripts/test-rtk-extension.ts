@@ -21,6 +21,9 @@ class MockPi {
     for (const fn of this.handlers["tool_call"] ?? []) await fn(event, { signal: undefined })
     return event.input.command
   }
+  async fireSessionStart() {
+    for (const fn of this.handlers["session_start"] ?? []) await fn({}, {})
+  }
   rewriteExecCount() {
     return this.execCalls.filter((c) => c[1] === "rewrite").length
   }
@@ -150,7 +153,7 @@ function silenceWarns() {
   w.restore()
 }
 
-// --- Scenario 7: missing at load -> starts paused, self-heals ---
+// --- Scenario 7: missing at session_start -> starts paused, self-heals ---
 {
   const w = silenceWarns()
   const pi = new MockPi()
@@ -163,7 +166,9 @@ function silenceWarns() {
   }
   Date.now = () => fakeNow
   await ext(pi as any)
-  check("s7: handler registered even when missing at load", (pi.handlers["tool_call"] ?? []).length === 1)
+  check("s7: handler registered even when probe not yet run", (pi.handlers["tool_call"] ?? []).length === 1)
+  await pi.fireSessionStart()
+  check("s7: missing warned at session_start", w.warnings.some((x) => x.includes("not found")))
   const execsAtStart = pi.execCalls.length
   await pi.fireToolCall("git status")
   check("s7: no rewrite exec while cached-missing", pi.execCalls.length === execsAtStart)
@@ -180,8 +185,23 @@ function silenceWarns() {
   const pi = new MockPi()
   pi.execImpl = () => ({ code: 0, stdout: "rtk 0.22.1", stderr: "", killed: false })
   await ext(pi as any)
-  check("s8: too-old rtk registers no tool_call handler", (pi.handlers["tool_call"] ?? []).length === 0)
+  await pi.fireSessionStart()
   check("s8: too-old warned", w.warnings.some((x) => x.includes("too old")))
+  const execsAfterProbe = pi.execCalls.length
+  check("s8: disabled passes through with no rewrite exec", (await pi.fireToolCall("git status")) === "git status" && pi.execCalls.length === execsAfterProbe)
+  w.restore()
+}
+
+// --- Scenario 10: no exec during load (pig extension-host compat) ---
+{
+  const w = silenceWarns()
+  const pi = new MockPi()
+  pi.execImpl = () => OK_VERSION
+  await ext(pi as any)
+  check("s10: zero exec calls during load", pi.execCalls.length === 0)
+  await pi.fireSessionStart()
+  check("s10: one --version probe at session_start", pi.execCalls.length === 1 && pi.execCalls[0][1] === "--version")
+  check("s10: no missing-warning for healthy rtk", !w.warnings.some((x) => x.includes("not found")))
   w.restore()
 }
 

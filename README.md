@@ -116,6 +116,12 @@ Fix applied: `reviewTransport: "subprocess"` (skip the always-doomed Direct atte
 
 **Next step (not yet done, needs a manual interactive command):** run `/login amazon-bedrock` inside pi to store a persisted Bedrock API key (bearer token) in `auth.json`, if the `bedrock-user` SSO role permits minting one. That would let the Direct transport succeed in-process on its own, removing the Subprocess/SSO-refresh dependency for memory review entirely rather than just mitigating it.
 
+## Pi Subagents
+
+`pi/.pi/agent/agents/Explore.md` overrides the built-in Explore helper from [pi-subagents](https://github.com/tintinweb/pi-subagents). It uses `ai-model-router/gpt-6-luna` with low thinking for fast read-only file and symbol searches. The exact provider avoids the built-in helper's fallback to a Bedrock model ID that needs an inference profile. General-purpose and Plan still inherit the main session's model.
+
+The helper excludes `canopy-status`, since SDK subagents share their parent's process ID and must not publish its dashboard status. The [Canopy extension](https://github.com/luiul/canopy/blob/main/extensions/canopy-status.ts) also accepts only interactive sessions. Apply the helper with `stow --no-folding pi`.
+
 ## Agent Commands
 
 Custom slash commands live in `pi/.pi/agent/prompts/` (pi prompt templates, symlinked to `~/.pi/agent/prompts/`, picked up on the next pi session) and `claude/.claude/commands/` (Claude Code parity).

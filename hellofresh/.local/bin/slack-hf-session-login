@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# One-time (or rare re-login) helper for pi's dedicated Slack session.
+#
+# Opens a separate Brave Beta window using the dedicated profile at
+# ~/.pi/agent/data/slack-session, pointed at the HelloFresh Slack sign-in
+# page. Sign in via SSO, confirm your channels load, then CLOSE that window
+# (cmd+Q while it is focused).
+#
+# Why the close matters: pi's Slack tooling (slack-hf-session and everything
+# built on it) refuses to run while the profile is open. A live browser plus
+# the MCP server would be two concurrent consumers of one session cookie,
+# which is exactly the "session forking" signal that gets sessions revoked.
+#
+# After the window is closed, `slack-hf-session --check` validates the new
+# session. This profile exists only to hold the Slack session for pi; never
+# use it for regular browsing.
+set -euo pipefail
+
+PROFILE_DIR="${SLACK_HF_PROFILE_DIR:-$HOME/.pi/agent/data/slack-session}"
+mkdir -p "$PROFILE_DIR"
+
+cat <<EOF
+A separate Brave Beta window will open at the HelloFresh Slack sign-in page.
+
+  1. Sign in via SSO and wait until your channels load.
+  2. KEEP the window open until the login watcher confirms the session
+     (run 'slack-hf-read await-login' in a terminal, or let your agent run it).
+  3. Then LEAVE THE WINDOW OPEN (minimize it). It is the permanent session
+     holder for slack-hf-read: the app inside keeps the session fresh and
+     pi's reads attach to it. Closing it means a new login next time.
+
+EOF
+# The debugging port lets slack-hf-read await-login attach and VERIFY the
+# session landed (d cookie + client boot + in-browser auth.test) while the
+# window is still open, instead of finding out after the fact. Localhost only.
+open -na "Brave Browser Beta" --args --user-data-dir="$PROFILE_DIR" --remote-debugging-port=9223 "https://hellofresh.slack.com/"

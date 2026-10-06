@@ -1,61 +1,159 @@
 #!/usr/bin/env bash
-# Extract a fresh HelloFresh Slack web session (xoxc token + xoxd cookie) from
-# the local Slack desktop app via slacktokens, or validate one against Slack.
+# Extract the HelloFresh Slack web session (xoxc token + xoxd cookie) from the
+# DEDICATED browser profile at ~/.pi/agent/data/slack-session, or validate one
+# against Slack.
 #
 #   slack-hf-session            print one JSON line: {"xoxc":"...","xoxd":"..."}
 #                               (xoxd URL-decoded, ready for SLACK_MCP_XOXD_TOKEN)
 #   slack-hf-session --check    also validate the session with Slack's auth.test;
 #                               exit 1 when Slack rejects it (nothing on stdout)
+#   slack-hf-session --debug    like --check, but prints masked diagnostics
+#                               (value lengths, raw vs decoded equality), never
+#                               full secrets; safe to paste into a chat
 #
-# This is the single source of truth for session extraction, shared by
-# slack-mcp-server-hf (launch-time extraction for the MCP server) and pi's
-# slack-auth-recovery extension (decides whether an automatic connector
-# relaunch can succeed after Slack invalidated the previous session).
+# Role since 2026-11-05: OFFLINE DEBUGGING ONLY. pi's Slack reads moved to
+# slack-hf-read (drives Slack's own web client in this same profile, zero
+# replay) after slack-mcp-server was retired, so nothing in pi's path calls
+# this script anymore. Keep it for inspecting the profile's session state
+# (e.g. is a token/cookie present on disk at all). Note that --check replays
+# the cookie via curl, which is exactly the kind of request this tenant is
+# sensitive to; prefer `slack-hf-read doctor` (validates through the real
+# client) over --check.
 #
-# Extraction retries a few times because the desktop app's local storage can
-# be briefly locked or mid-write. Note the asymmetry: SLACK_MCP_XOXD_TOKEN
-# wants the cookie URL-decoded, while a raw `Cookie: d=...` header (curl
-# --check below) wants it URL-encoded exactly as stored.
+# Why a dedicated profile and not the Slack desktop app (changed 2026-11-05):
+# the old version borrowed the desktop app's own live cookie via slacktokens.
+# Slack Enterprise Grid's session-forking detection (last-access timestamp in
+# the cookie vs the database, see slack.engineering/catching-compromised-cookies)
+# reads that as a stolen cookie and revoked the whole session, signing the
+# desktop app out too. The dedicated profile holds a SEPARATE session whose
+# only consumer is the MCP server: no second client, no fork signal, and if it
+# ever dies the blast radius is the profile, never the desktop app.
+#
+# Rules that keep the dedicated session healthy:
+#   - Never browse Slack in that profile. This script refuses to run while a
+#     Brave process has the profile open (a live browser would be a second
+#     active consumer of the same cookie: the exact fork signal to avoid).
+#   - Sign in / re-login only via slack-hf-session-login, then close the window.
+#
+# Extraction is fully offline: xoxc comes from the profile's localStorage
+# leveldb, the "d" cookie from its Cookies SQLite DB, decrypted with the
+# "Brave Safe Storage" Keychain key (standard Chromium v10: PBKDF2-HMAC-SHA1,
+# saltysalt, 1003 iters, AES-128-CBC, IV of 16 space bytes, optional
+# SHA256(host_key) prefix on the plaintext).
+#
+# Cookie encoding (learned the hard way, 2026-11-05): Slack accepts the `d`
+# cookie ONLY exactly as stored (percent-encoded). A URL-decoded form is
+# rejected with invalid_auth, via curl AND via slack-mcp-server (which passes
+# SLACK_MCP_XOXD_TOKEN verbatim into the Cookie header). So this script
+# outputs the raw stored value for both consumers; never unquote it. (The old
+# desktop-app version of this script decoded for the server; that rule was
+# wrong, or specific to how slacktokens surfaced the desktop cookie.)
 #
 # Exit 0 on success; exit 1 otherwise, with the reason on stderr.
 set -euo pipefail
 
-WORKSPACE_HOST="hellofresh.slack.com"
-ATTEMPTS=3
+PROFILE_DIR="${SLACK_HF_PROFILE_DIR:-$HOME/.pi/agent/data/slack-session}"
+TEAM_ID="T02AGMUUR" # hellofresh.slack.com
 USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
-command -v slacktokens >/dev/null || { echo "slacktokens not installed. brew install hishamkaram/slacktokens/slacktokens" >&2; exit 1; }
+command -v uv >/dev/null || { echo "uv not installed (expected on PATH)" >&2; exit 1; }
 
-XOXC=""
-XOXD_RAW=""
-
-extract() {
-  local tokens cookie
-  tokens=$(slacktokens -tokens) || return 1
-  cookie=$(slacktokens -cookie) || return 1
-  XOXC=$(printf '%s' "$tokens" | python3 -c "
-import json, sys
-d = json.load(sys.stdin)
-key = 'https://${WORKSPACE_HOST}/'
-if key not in d:
-    sys.exit('workspace ' + key + ' not found among: ' + ', '.join(d.keys()))
-print(d[key]['token'])
-") || return 1
-  XOXD_RAW=$(printf '%s' "$cookie" | python3 -c "
-import json, sys
-print(json.load(sys.stdin)['value'])
-") || return 1
-  [[ -n "$XOXC" && -n "$XOXD_RAW" ]]
-}
-
-for _ in $(seq 1 "$ATTEMPTS"); do
-  if extract; then break; fi
-  sleep 1
-done
-if [[ -z "$XOXC" || -z "$XOXD_RAW" ]]; then
-  echo "failed to extract a Slack session from the desktop app (${ATTEMPTS} attempts) -- is Slack.app installed and signed in?" >&2
+if pgrep -f -- "--user-data-dir=${PROFILE_DIR}" >/dev/null 2>&1; then
+  echo "the dedicated Slack profile is open in Brave Beta right now; close that window first. Concurrent use of one session from two clients is exactly what trips Slack's session-forking detection." >&2
   exit 1
 fi
+[[ -d "$PROFILE_DIR/Default" ]] || {
+  echo "dedicated Slack profile not found at $PROFILE_DIR -- run slack-hf-session-login once to create it and sign in" >&2
+  exit 1
+}
+
+export PROFILE_DIR TEAM_ID
+SESSION=$(uv run --quiet --no-project --with pycryptodome python3 - <<'PYEOF'
+import glob, hashlib, json, os, re, sqlite3, subprocess, sys
+from Crypto.Cipher import AES
+
+profile = os.environ["PROFILE_DIR"]
+team = os.environ["TEAM_ID"]
+
+# --- xoxc from the profile's localStorage leveldb (Slack stores it inside the
+# localConfig_v2 JSON, per team). Recent writes live in the uncompressed .log
+# file, so plain string scanning works; .ldb files may be Snappy-compressed
+# and simply not match, which is fine.
+haystacks = []
+for f in sorted(glob.glob(os.path.join(profile, "Default", "Local Storage", "leveldb", "*"))):
+    if f.endswith((".log", ".ldb", ".sst")):
+        try:
+            raw = open(f, "rb").read().decode("latin-1")
+        except OSError:
+            continue
+        haystacks.append(raw)
+        haystacks.append(raw.replace("\x00", ""))  # UTF-16LE-stored variant
+
+token = None
+team_re = re.compile(r'"' + team + r'"\s*:\s*\{(?:[^{}]|\{[^{}]*\})*?"token"\s*:\s*"(xoxc-[^"]+)"')
+candidates = set()
+for hay in haystacks:
+    if token is None:
+        m = team_re.search(hay)
+        if m:
+            token = m.group(1)
+    candidates.update(re.findall(r"xoxc-[A-Za-z0-9-]{10,}", hay))
+if token is None and len(candidates) == 1:
+    token = candidates.pop()
+if token is None:
+    if candidates:
+        sys.exit("found %d xoxc candidates in the profile's local storage but none tied to team %s; not guessing" % (len(candidates), team))
+    sys.exit("no xoxc token in the profile's local storage -- is it signed into hellofresh.slack.com? (slack-hf-session-login)")
+
+# --- "d" cookie (xoxd) from the profile's Cookies SQLite DB
+db = os.path.join(profile, "Default", "Cookies")
+con = sqlite3.connect("file:%s?mode=ro" % db, uri=True)
+rows = con.execute(
+    "select host_key, value, encrypted_value from cookies where name='d' and host_key like '%slack.com'"
+).fetchall()
+con.close()
+if not rows:
+    sys.exit("no slack 'd' cookie in the profile -- sign in first (slack-hf-session-login)")
+rows.sort(key=lambda r: (r[0] != ".slack.com", -len(r[2] or b"")))
+host, value, enc = rows[0]
+
+cookie = None
+if value and value.startswith("xoxd-"):
+    cookie = value
+elif enc and enc[:3] in (b"v10", b"v11"):
+    for svc in ("Brave Safe Storage", "Brave Browser Beta Safe Storage", "Brave Beta Safe Storage"):
+        r = subprocess.run(["security", "find-generic-password", "-s", svc, "-w"], capture_output=True)
+        if r.returncode != 0:
+            continue
+        key = hashlib.pbkdf2_hmac("sha1", r.stdout.rstrip(b"\n"), b"saltysalt", 1003, dklen=16)
+        pt = AES.new(key, AES.MODE_CBC, iv=b" " * 16).decrypt(enc[3:])
+        pad = pt[-1]
+        if not 1 <= pad <= 16:
+            continue
+        pt = pt[:-pad]
+        if pt[:32] == hashlib.sha256(host.encode()).digest():
+            pt = pt[32:]
+        try:
+            s = pt.decode()
+        except UnicodeDecodeError:
+            continue
+        if s.startswith("xoxd-"):
+            cookie = s
+            break
+    if cookie is None:
+        sys.exit("could not decrypt the profile's slack cookie (no working 'Brave Safe Storage' Keychain item)")
+elif enc:
+    sys.exit("unsupported cookie encryption version: %r" % enc[:3])
+else:
+    sys.exit("the profile's slack 'd' cookie is empty; sign in again (slack-hf-session-login)")
+
+print(json.dumps({"xoxc": token, "xoxd_raw": cookie}))
+PYEOF
+)
+
+XOXC=$(printf '%s' "$SESSION" | python3 -c 'import json, sys; print(json.load(sys.stdin)["xoxc"])')
+XOXD_RAW=$(printf '%s' "$SESSION" | python3 -c 'import json, sys; print(json.load(sys.stdin)["xoxd_raw"])')
+unset SESSION
 
 if [[ "${1:-}" == "--check" ]]; then
   RESP=$(curl -sS --max-time 10 -X POST "https://slack.com/api/auth.test" \
@@ -69,9 +167,24 @@ if not d.get('ok'):
 " || exit 1
 fi
 
-# xoxd goes out URL-decoded (what SLACK_MCP_XOXD_TOKEN expects); the raw form
-# was only needed for the Cookie header above.
-XOXC="$XOXC" XOXD_RAW="$XOXD_RAW" python3 -c "
+# xoxd goes out exactly as stored (see the encoding note above).
+if [[ "${1:-}" == "--debug" ]]; then
+  XOXC="$XOXC" XOXD_RAW="$XOXD_RAW" python3 -c "
 import json, os, urllib.parse
-print(json.dumps({'xoxc': os.environ['XOXC'], 'xoxd': urllib.parse.unquote(os.environ['XOXD_RAW'])}))
+raw = os.environ['XOXD_RAW']
+dec = urllib.parse.unquote(raw)
+mask = lambda v: v[:8] + '...'
+print(json.dumps({
+    'xoxc': mask(os.environ['XOXC']), 'xoxc_len': len(os.environ['XOXC']),
+    'xoxd_raw': mask(raw), 'xoxd_raw_len': len(raw),
+    'xoxd_decoded': mask(dec), 'xoxd_decoded_len': len(dec),
+    'raw_equals_decoded': raw == dec,
+}))
+"
+  exit 0
+fi
+
+XOXC="$XOXC" XOXD_RAW="$XOXD_RAW" python3 -c "
+import json, os
+print(json.dumps({'xoxc': os.environ['XOXC'], 'xoxd': os.environ['XOXD_RAW']}))
 "

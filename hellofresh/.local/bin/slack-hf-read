@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# slack-hf-read: read-only Slack access for pi via Slack's own web client in
+# the dedicated Brave Beta profile (see src/main.ts in the project dir).
+# Attaches to the permanently open login window when available, else launches
+# the profile headless. Serializes concurrent runs with a lock.
+set -euo pipefail
+
+PROJECT_DIR="${SLACK_HF_READ_DIR:-$HOME/dotfiles/hellofresh/slack-hf-read}"
+PROFILE_DIR="${SLACK_HF_PROFILE_DIR:-$HOME/.pi/agent/data/slack-session}"
+
+# await-login watches the OPEN login window; no lock, no launch.
+if [[ "${1:-}" == "await-login" ]]; then
+  exec node "$PROJECT_DIR/src/main.ts" "$@"
+fi
+
+LOCKDIR="$PROFILE_DIR/.slack-hf-read.lock"
+acquired=0
+for _ in $(seq 1 60); do
+  if mkdir "$LOCKDIR" 2>/dev/null; then acquired=1; break; fi
+  sleep 1
+done
+[[ "$acquired" == 1 ]] || { echo "slack-hf-read: another run is holding the profile lock" >&2; exit 1; }
+trap 'rmdir "$LOCKDIR" 2>/dev/null || true' EXIT
+
+node "$PROJECT_DIR/src/main.ts" "$@"

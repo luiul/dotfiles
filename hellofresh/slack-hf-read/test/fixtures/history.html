@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Local fixture</title><link rel="icon" href="data:,"></head>
+<body>
+<button data-qa="team_menu">Fixture workspace</button>
+<nav data-qa="channel_sidebar"><a href="/client/T02AGMUUR/C11111111">#fixture-one</a></nav>
+<main>
+  <article data-ts="1790812799.000001" data-qa="message_container">
+    <span data-qa="message_sender_name">Fixture Alpha</span>
+    <div data-qa="message-text">Fixture before range</div>
+    <a href="https://hellofresh.slack.com/archives/C11111111/p1790812799000001?token=fixture-link-secret#fixture">Timestamp</a>
+  </article>
+  <div data-item-key="message-1790812800.000002">
+    <article class="c-message_kit__message">
+      <span class="c-message_kit__sender">Fixture Beta</span>
+      <div class="c-message_kit__text">Fixture lower bound</div>
+      <a href="https://app.slack.com/archives/C11111111/p1790812800000002">Timestamp</a>
+    </article>
+  </div>
+  <article data-ts="1790812800.000002" data-qa="message_container">
+    <div data-qa="message_text">Fixture duplicate rendering</div>
+  </article>
+  <article data-qa="message_container">
+    <span class="c-message__sender">Fixture Gamma</span>
+    <div data-qa="message_text">Fixture within range</div>
+    <a href="https://hellofresh.slack.com/archives/C11111111/p1790942400000003?fixture=1">Timestamp</a>
+  </article>
+  <article data-message-id="1790985600.000004" data-qa="message_container">
+    <span data-qa="message_sender_name">Fixture password=fixture-author-secret</span>
+    <div data-qa="message-text">Fixture xoxb-fixture-token Bearer fixture-bearer cookie=fixture-cookie; authorization:fixture-auth; secret=fixture-secret; d-s=fixture-session; d=fixture-cookie-two</div>
+    <a href="https://example.invalid/archives/C11111111/p1790985600000004">Untrusted timestamp</a>
+  </article>
+  <article data-ts="1791072000.000005" data-qa="message_container">
+    <div data-qa="message-text">Fixture after range</div>
+    <a href="https://app.slack.com.example.invalid/archives/C11111111/p1791072000000005">Lookalike timestamp</a>
+  </article>
+  <article data-ts="1791072001.000006" class="c-message_kit__message">
+    <div class="c-message_kit__text"></div>
+    <a href="https://app.slack.com/archives/C11111111/p1791072001000006" hidden>Hidden timestamp</a>
+  </article>
+  <article data-ts="1791072002.000007" data-qa="message_container" hidden>Hidden malformed row</article>
+  <article data-ts="1791072003.000008" data-qa="message_container" style="visibility:hidden">Invisible malformed row</article>
+</main>
+<div data-qa="message_input" contenteditable="true" role="textbox" aria-label="Fixture composer"></div>
+</body>
+</html>

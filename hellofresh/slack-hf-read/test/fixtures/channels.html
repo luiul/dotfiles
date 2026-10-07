@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Local fixture</title><link rel="icon" href="data:,"></head>
+<body>
+<button data-qa="team_menu">Fixture workspace</button>
+<nav data-qa="channel_sidebar">
+  <a href="/client/T02AGMUUR/C11111111">#fixture-one</a>
+  <a href="/client/T02AGMUUR/G22222222">#fixture-two</a>
+  <a href="/client/T02AGMUUR/C11111111">#fixture-one</a>
+  <a href="/client/T02AGMUUR/C33333333">#fixture token=fixture-channel-secret</a>
+  <a href="/client/TOTHER/C44444444">Wrong workspace</a>
+  <a href="https://example.invalid/client/T02AGMUUR/C55555555">External</a>
+  <a href="https://app.slack.com.example.invalid/client/T02AGMUUR/C66666666">Lookalike host</a>
+  <a href="http://app.slack.com/client/T02AGMUUR/C77777777">Insecure</a>
+  <a href="https://fixture:fixture@app.slack.com/client/T02AGMUUR/C88888888">Credentials</a>
+  <a href="https://app.slack.com:9443/client/T02AGMUUR/C99999999">Other port</a>
+  <a href="/client/T02AGMUUR/C44444444?token=fixture-query-secret">Query</a>
+  <a href="/client/T02AGMUUR/C55555555#fixture">Fragment</a>
+  <a href="/client/T02AGMUUR/C123">Short identifier</a>
+  <a href="/client/T02AGMUUR/C66666666/thread/C66666666-1790812800.000002">Thread</a>
+  <a href="/client/T02AGMUUR/C77777777" hidden>Not rendered</a>
+  <a href="/client/T02AGMUUR/C99999999" style="visibility:hidden">Not visible</a>
+  <a href="/client/T02AGMUUR/C88888888"></a>
+</nav>
+</body>
+</html>

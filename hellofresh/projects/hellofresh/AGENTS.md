@@ -164,7 +164,7 @@ CLI-first. Reach every system through its CLI, or a documented `curl` REST recip
 | Databricks | `databricks` CLI | OAuth |
 | AWS (S3, etc.) | `aws` CLI | SSO (`hfsso` session, browser) |
 | Google Docs | `md2gdoc` | service account |
-| Slack | `slack` MCP server (pi, read-only, only path) + `curl` Web API (directory reads) | browser session tokens (xoxc+xoxd), re-extracted automatically per launch; `SLACK_TOKEN` (env) for directory reads |
+| Slack | `slack-hf-read` (Pi, read-only, only path); separate manual directory tools below | managed headed Brave Beta UI; no credential capture or replay in Pi |
 | HelloDev KB | MCP (pi & Claude, via `pi-mcp-adapter`) | none required |
 
 Do not use the Atlassian MCP for Jira or Confluence; the CLI and REST recipes below replace it.
@@ -522,34 +522,33 @@ JSON
 
 - After creation, write the returned page ID back into the local file's frontmatter so future edits route correctly.
 
-## Slack (`slack-hf-read`): READ ONLY, via Slack's own web client
+## Slack (`slack-hf-read`): READ ONLY, through the managed headed UI
 
-**Standing instruction: pi only reads Slack, never posts, and never requires manual steps beyond the rare SSO re-login.** No browser DevTools, no manual token capture, no slackcli.
+**Pi reads only.** Never post, react, upload, change membership, or enter message drafts. Normal navigation may change read state. Pi's only Slack path is `slack-hf-read`, under `~/dotfiles/hellofresh/slack-hf-read/`. It reads rendered UI elements through the dedicated Brave Beta profile. It does not capture tokens, extract cookies, call hand-built APIs, or replay credentials. Do not use `slackcli`, `slack-relogin`, `slack-hf-session`, `slackdump`, or Slack MCP as a Pi fallback. Shared manual tools and Claude's separate integration remain unchanged.
 
-**The only path: the `slack-hf-read` CLI** (stowed onto `PATH`, source in `~/dotfiles/hellofresh/slack-hf-read/`, runs under node with playwright-core). It drives Slack's own web client inside a **dedicated Brave Beta profile** (`~/.pi/agent/data/slack-session`) and calls the Slack Web API by in-page `fetch()` with the page's own token and cookies. There is no credential replay of any kind: to Slack, these requests are the web app itself (same browser, TLS, HTTP/2, `d`/`d-s` cookies). This replaced the korotovsky/slack-mcp-server MCP path on 2026-11-05 (history below).
+**Normal workflow is link-only.** The user supplies a Slack permalink. Use `slack-hf-read read '<url>' --limit 1`. Do not browse the sidebar, click through Slack controls, or search for a message when a link is supplied. The CLI derives a direct app URL and checks the exact linked timestamp. This path is not yet live-verified. A `ui_changed` result means no message was read, not permission to use a fallback.
 
-| Command | Slack API | Purpose |
-|---|---|---|
-| `slack-hf-read channels [--limit N] [--cursor C]` | conversations.list | List channels |
-| `slack-hf-read history <channel_id> [--limit N] [--cursor C] [--after YYYY-MM-DD] [--before YYYY-MM-DD]` | conversations.history | Read channel/DM history |
-| `slack-hf-read replies <channel_id> <thread_ts> [--limit N] [--cursor C]` | conversations.replies | Read a thread |
-| `slack-hf-read search <query> [--limit N]` | search.messages | Search messages |
-| `slack-hf-read doctor` | auth.test | Verify the session works |
-| `slack-hf-read await-login` | (login watcher) | Confirm a fresh sign-in |
+| Command | Purpose |
+|---|---|
+| `slack-hf-read read '<url>' --limit 1` | Exact linked message only, fails closed if not rendered |
+| `slack-hf-read status` | Local diagnostics only, no Slack traffic |
+| `slack-hf-read pause` | Stop reads across Pi runs |
+| `slack-hf-read channels --limit N` | Rendered joined channels only |
+| `slack-hf-read history <channel_id> --limit N [--after YYYY-MM-DD] [--before YYYY-MM-DD]` | Rendered history only |
+| `slack-hf-read replies <channel_id> <thread_ts> --limit N` | Rendered thread messages only |
+| `slack-hf-read search '<query>' --limit N` | Rendered search results only |
+| `slack-hf-read doctor` | Point-in-time UI verification, not recovery |
+| `slack-hf-read await-login` | Passive explicit login verification, clears pause on success |
 
-Every command prints the raw Slack API JSON to stdout. Always pass channel/user **IDs**, not #name/@handle lookups. A Slack URL like `https://hellofresh.slack.com/archives/C0BFPQSFYLR` carries the channel ID as its last path segment; a thread URL carries the ts as `p<digits>` (insert a decimal point before the last 6 digits).
+Limits range from 1 through 100. Use channel IDs from Slack URLs. Convert a permalink's `p<digits>` timestamp by inserting a decimal before its last six digits. Results use `schema_version:1`, `source:"headed_ui"`, `data`, and `coverage`. Treat `coverage.complete:false` as partial. There are no cursor guarantees or automatic retries. Dates filter rendered history only, and `--before` is exclusive.
 
-**The session holder window.** `slack-hf-session-login` opens a separate Brave Beta window with the dedicated profile (plus a localhost debug port). The user signs in via SSO once, `slack-hf-read await-login` verifies the session from inside that browser, and the window then STAYS OPEN, minimized, permanently: the app inside keeps the session fresh (heartbeats, token rotation) and `slack-hf-read` attaches to it over CDP for each read (fresh tab, closed afterwards; the app tab is untouched). If the window is not open (after a reboot), `slack-hf-read` falls back to launching the profile headless; if that ever bounces to sign-in, rerun `slack-hf-session-login`. Never browse around in that profile, and never sign it out.
+**Recovery:** Confirm desktop Slack is signed in first. Run `slack-hf-session-login` to start the managed headed profile. The user completes SSO manually. Run `slack-hf-read await-login` to observe the workspace without repeated auth tests. Leave the window open for reads, minimized if desired. Closing it stops reads until it is reopened. The helper never launches a hidden headless browser. An old unmanaged holder must be closed by the user before the updated helper starts it. Do not close daily Brave or unrelated tabs.
 
-**Why not slack-mcp-server (retired 2026-11-05).** The old path replayed xoxc/xoxd session credentials from a Go client. First it borrowed the desktop app's own cookie, which got the account signed out by session-forking anomaly detection (slack.engineering/catching-compromised-cookies; worst incident 2026-10-05). Then a dedicated profile session, which contained the blast radius but not the rejections: HelloFresh's tenant rejects the server's request pattern outright (matching upstream issues #62 and #86; the maintainer calls such tenants "doomed high" sensitivity). Controlled experiments on 2026-11-05 showed the same credential pair passing curl auth.test while the server boot was rejected, and fresh sessions being killed within minutes. Also learned that day: Slack accepts the `d` cookie only exactly as stored (percent-encoded), and since Slack's 2026 client changes the xoxc token is often not persisted on disk, but it is always visible in the app's own live API traffic (which is how `slack-hf-read` captures it). If HelloFresh Security ever approves a custom Slack app (KB000103), an xoxp token with slack-mcp-server would be the sanctioned fallback.
+Auth loss or sign-in redirection persists a shared pause. Do not retry reads or loop login attempts. Only explicit successful login verification clears the pause. The shared owned lock covers both reads and recovery. Do not remove a lock manually while its owner may be alive. `status` reports local lock and pause information without testing Slack credentials.
 
-**`slackcli` is intentionally not part of pi's Slack setup.** It and `slack-relogin` still exist in `~/dotfiles/hellofresh/.local/bin/` for ad-hoc manual use or Claude Code's separate fallback path, but pi does not use either; both replay the desktop app's cookie, the exact pattern that got the account signed out.
+A dedicated profile does not protect desktop sessions from [Slack Anomaly Event Response](https://slack.engineering/building-slacks-anomaly-event-response/). [Enterprise session policy](https://slack.com/help/articles/115005223763-Manage-session-duration) can also force sign-in. Keeping a window open cannot override policy. Do not claim a fixed cooldown cures revocation. Report the cause as unknown without stronger evidence. If reads still correlate with desktop sign-outs, pause automation rather than adding evasion or credential replay. Do not add background keepalives or synthetic health polling.
 
-This is a **different** integration from Claude's: Claude reaches Slack through a hosted OAuth MCP (`slack@claude-plugins-official` -> `https://mcp.slack.com/mcp`, enabled in `~/.claude/settings.json`'s `enabledPlugins`), which requires the workspace admin to have approved the MCP integration via OAuth (gated the same way KB000103 gates a custom Slack App).
-
-**Evaluated `rusq/slackdump` (2026-07-22), rejected.** It does not work against HelloFresh's Enterprise Grid tenant: token validation passes, then the next command fails with `005 (Initialization Error): invalid_auth`, reproduced twice. Don't re-attempt without a newer release that specifically claims an Enterprise Grid auth fix.
-
-**Directory reads (fallback): `curl` Web API** with `SLACK_TOKEN` from `.env`. This HelloFresh **user token** authenticates (`auth.test` ok) but carries only **directory-read** scopes (`channels:read`, `groups:read`, `users:read`, `team:read`). It works for:
+**Separate manual directory tooling, not a Pi fallback:** The existing `curl` recipes use `SLACK_TOKEN` from `.env` with directory-read scopes. Leave these tools and Claude's integration unchanged. Manual examples:
 
 ```bash
 curl -s -H "Authorization: Bearer $SLACK_TOKEN" -G --data-urlencode 'types=public_channel' --data-urlencode 'limit=20' \
@@ -559,7 +558,7 @@ curl -s -H "Authorization: Bearer $SLACK_TOKEN" -G --data-urlencode 'limit=20' \
 curl -s -H "Authorization: Bearer $SLACK_TOKEN" https://slack.com/api/auth.test | jq .  # identity
 ```
 
-That token **cannot** read message history or search: `conversations.history` and `search.messages` return `missing_scope`. Use the `slack` MCP tools (above) for history/search.
+That token cannot read message history or search. Pi uses only the managed headed UI reader above for all Slack reads.
 
 ## HelloDev Knowledge Base
 

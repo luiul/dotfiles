@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Local fixture</title><link rel="icon" href="data:,"></head>
+<body>
+<button data-qa="team_menu">Fixture workspace</button>
+<form><input aria-label="Fixture search" value="untouched"><button type="submit">Search</button></form>
+<article data-qa="message_container" data-ts="1790812799.000001"><div data-qa="message-text">Fixture outside search</div></article>
+<section data-qa="search_results">
+  <article data-qa="search_result" data-ts="1790985600.000004"><span data-qa="message_sender_name">Fixture Delta</span><div class="c-search_message__body">Fixture first search result</div><a href="https://app.slack.com/archives/C11111111/p1790985600000004?fixture=1#fixture">Timestamp</a></article>
+  <article class="c-search_message" data-ts="1790812800.000002"><span class="c-message__sender">Fixture Beta</span><div class="c-search_message__body">Fixture second search result</div></article>
+  <article data-qa="search_result" data-ts="1790812800.000002"><div class="c-search_message__body">Fixture duplicate search result</div></article>
+  <article data-qa="search_result"><div class="c-search_message__body">Fixture result without timestamp</div><a href="https://example.invalid/fixture">External</a></article>
+  <article data-qa="search_result" hidden>Hidden malformed result</article>
+</section>
+</body>
+</html>

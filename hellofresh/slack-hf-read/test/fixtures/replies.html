@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Local fixture</title><link rel="icon" href="data:,"></head>
+<body>
+<button data-qa="team_menu">Fixture workspace</button>
+<main>
+  <article data-qa="message_container" data-ts="1790812799.000001"><div data-qa="message-text">Fixture outside thread</div></article>
+  <section data-qa="thread_view">
+    <article data-qa="message_container" data-ts="1790812800.000002"><span data-qa="message_sender_name">Fixture Parent</span><div data-qa="message-text">Fixture thread parent</div></article>
+    <article class="c-message_kit__message" data-ts="1790942400.000003"><span class="c-message_kit__sender">Fixture Reply</span><div class="c-message_kit__text">Fixture first reply</div></article>
+    <article data-qa="message_container" data-ts="1790942400.000003"><div data-qa="message-text">Fixture duplicate reply</div></article>
+  </section>
+  <section class="p-thread_view">
+    <article class="c-message_kit__message" data-ts="1790985600.000004"><div class="c-message_kit__text">Fixture second reply</div></article>
+  </section>
+</main>
+<div data-qa="message_input" contenteditable="true" role="textbox" aria-label="Fixture composer"></div>
+</body>
+</html>

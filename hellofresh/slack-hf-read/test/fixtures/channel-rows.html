@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Local sidebar fixture</title><link rel="icon" href="data:,"></head>
+<body>
+<button data-qa="team_menu">Fixture workspace</button>
+<div data-qa="channel-sidebar" class="p-channel_sidebar">
+  <div data-qa="slack_kit_list" role="tree">
+    <div role="treeitem" data-item-key="C11111111">
+      <div data-qa="channel-sidebar-channel" data-qa-channel-sidebar-channel-id="C11111111" data-qa-channel-sidebar-channel-type="channel" class="p-channel_sidebar__channel">
+        <span data-qa="channel_sidebar_name_fixture-one" class="p-channel_sidebar__name">fixture-one</span>
+        <span class="p-channel_sidebar__channel_suffix">3 unread</span>
+      </div>
+    </div>
+    <div role="treeitem" data-item-key="G22222222">
+      <div data-qa="channel-sidebar-channel" data-qa-channel-sidebar-channel-id="G22222222" data-qa-channel-sidebar-channel-type="group" class="p-channel_sidebar__channel">
+        <span class="p-channel_sidebar__name">fixture-two</span>
+      </div>
+    </div>
+    <div role="treeitem" data-item-key="C11111111">
+      <div data-qa="channel-sidebar-channel" data-qa-channel-sidebar-channel-id="C11111111" data-qa-channel-sidebar-channel-type="channel">
+        <span class="p-channel_sidebar__name">fixture-one</span>
+      </div>
+    </div>
+    <div role="treeitem" data-item-key="C33333333">
+      <div data-qa="channel-sidebar-channel" data-qa-channel-sidebar-channel-id="C33333333" data-qa-channel-sidebar-channel-type="channel">
+        <span class="p-channel_sidebar__name">fixture token=fixture-row-secret</span>
+      </div>
+    </div>
+    <div data-qa="channel-sidebar-channel" data-qa-channel-sidebar-channel-id="D44444444" data-qa-channel-sidebar-channel-type="im"><span class="p-channel_sidebar__name">Fixture person</span></div>
+    <div data-qa="channel-sidebar-channel" data-qa-channel-sidebar-channel-id="G55555555" data-qa-channel-sidebar-channel-type="mpim"><span class="p-channel_sidebar__name">Fixture group DM</span></div>
+    <div data-qa="channel-sidebar-channel" data-qa-channel-sidebar-channel-id="C66666666" data-qa-channel-sidebar-channel-type="other"><span class="p-channel_sidebar__name">Unknown type</span></div>
+    <div data-qa="channel-sidebar-channel" data-qa-channel-sidebar-channel-id="C77777777" data-qa-channel-sidebar-channel-type="channel" hidden><span class="p-channel_sidebar__name">Not rendered</span></div>
+    <div data-qa="channel-sidebar-channel" data-qa-channel-sidebar-channel-id="C88888888" data-qa-channel-sidebar-channel-type="channel" style="visibility:hidden"><span class="p-channel_sidebar__name">Not visible</span></div>
+  </div>
+</div>
+<div data-qa="channel-sidebar-channel" data-qa-channel-sidebar-channel-id="C99999999" data-qa-channel-sidebar-channel-type="channel"><span class="p-channel_sidebar__name">Outside sidebar</span></div>
+</body>
+</html>

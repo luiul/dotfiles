@@ -1,23 +1,13 @@
 /**
- * Auto-switch AWS_REGION to match whichever Bedrock model is active.
+ * Select the working AWS region recorded by Orchard for the active model.
  *
- * pi has no per-model region config: its amazon-bedrock provider always
- * invokes in whatever AWS_REGION is exported (or the sso-bedrock profile's
- * configured region, eu-west-1, if unset) -- see the pi-model-sync tool
- * (https://github.com/luiul/orchard) for the full story. It also writes
- * bedrock-models.json, a probe-verified { modelId: region } map covering
- * every region this account has usable Bedrock models in (not just the
- * default). enabledModels in settings.json is the full cross-region set from
- * that map, so /model and Ctrl+P show every model you can actually use --
- * this extension is what makes picking one of the non-default-region entries
- * (us./jp./au.-prefixed Claude, or region-pinned ON_DEMAND models like
- * moonshotai.kimi-*) actually work instead of 400ing.
+ * https://github.com/luiul/orchard defines the discovery and probe workflow.
+ * The region map is independent of Pi's curated enabledModels scope. This
+ * extension makes cross-region selections work; it does not prove access or
+ * filter Pi's model picker. An unknown ID falls back to the map's default.
  *
- * It works because Bedrock's region is resolved fresh on every request (see
- * @earendil-works/pi-ai's bedrock-converse-stream.js, which reads
- * process.env.AWS_REGION per call, not once at client construction), so
- * mutating process.env.AWS_REGION here before the next message is sent is
- * enough -- no client restart needed.
+ * Bedrock resolves AWS_REGION for each request, so the region must change
+ * before the next call, including the initial model of a resumed session.
  */
 
 import { readFileSync } from "node:fs";
@@ -35,9 +25,8 @@ interface BedrockModelsMap {
 
 let cached: BedrockModelsMap | undefined;
 function loadMap(): BedrockModelsMap | undefined {
-	// Re-read every time: the map is small, this file is only touched on
-	// model_select/session_start (not hot-path), and it lets `sync-enabled-
-	// models.sh` + `/reload` refresh it without restarting pi.
+	// Re-read on each selection or session start so a new Orchard region map
+	// takes effect without restarting Pi.
 	try {
 		cached = JSON.parse(readFileSync(MAP_PATH, "utf8"));
 	} catch {

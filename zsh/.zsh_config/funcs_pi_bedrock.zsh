@@ -1,18 +1,10 @@
-# pi + AWS Bedrock model/region switching
+# Pi and AWS Bedrock model/region switching.
 #
-# pi has no per-model region config (see the pi-model-sync tool,
-# https://github.com/luiul/orchard, for the full story): it always
-# invokes Bedrock in whatever AWS_REGION is exported, or the sso-bedrock
-# profile's configured region (eu-west-1) if unset. `enabledModels`/Ctrl+P only ever offers the subset usable in that one
-# default region. Everything else (us./jp./au.-prefixed models, and any
-# ON_DEMAND model only deployed to a non-default region) is invocable, but
-# only after switching AWS_REGION first -- these functions do that lookup so
-# you never have to hand-manage AWS_REGION or remember which region a model
-# needs.
-#
-# Data source: pi/.pi/agent/bedrock-models.json, a { modelId: region } map of
-# every probe-verified-usable model across all regions scanned by
-# pi-model-sync. Regenerate it with `pi-model-sync sync`.
+# The verified map records a working region for each model. Pi's model scope
+# is a separate user choice; these helpers do not change enabledModels.
+# They use the same map as the Pi region extension, including JP/AU/APAC.
+# Orchard discovers and probes models: https://github.com/luiul/orchard.
+# The legacy pi-model-sync command remains installed during the transition.
 
 typeset -g PI_BEDROCK_MODELS_JSON="${PI_BEDROCK_MODELS_JSON:-$HOME/dotfiles/pi/.pi/agent/bedrock-models.json}"
 

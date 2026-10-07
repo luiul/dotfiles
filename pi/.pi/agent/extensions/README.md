@@ -79,7 +79,9 @@ Verification: `bun scripts/test-aws-sso-refresh-extension.ts` (mock harness + fa
 
 ## Slack auth recovery (HelloFresh): retired
 
-The Slack MCP server and automatic auth-recovery extension are removed. Pi uses the managed headed UI in `hellofresh/slack-hf-read/`, as defined in [issue 41](https://github.com/luiul/dotfiles/issues/41). It does not capture or replay credentials. Auth loss pauses reads across Pi runs until explicit UI login verification succeeds. There is no headless fallback, synthetic polling, or fixed cooldown presented as a cure.
+The retired credential-replay Slack MCP server and automatic auth-recovery extension are removed. Prefer an approved, authenticated [official Slack MCP](https://docs.slack.dev/ai/slack-mcp-server) when available to Pi. The managed headed UI in `hellofresh/slack-hf-read/` is the browser fallback, as defined in [issue 41](https://github.com/luiul/dotfiles/issues/41). Do not copy Claude credentials or restore the retired server. Do not switch clients to work around auth loss, access denial, or rate limits.
+
+The browser reader does not capture or replay credentials. Its auth loss pauses reads across Pi runs until explicit UI login verification succeeds. There is no headless fallback, synthetic polling, or fixed cooldown presented as a cure.
 
 A dedicated browser profile does not protect desktop sessions from [Slack Anomaly Event Response](https://slack.engineering/building-slacks-anomaly-event-response/). Report cause as unknown without stronger evidence. If reads correlate with desktop sign-outs, pause Pi Slack access rather than adding evasion. Successful UI checks verify one point in time, not long-term safety.
 

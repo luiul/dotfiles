@@ -1,8 +1,14 @@
 # slack-hf-read
 
-Pi reads HelloFresh Slack through a managed headed Brave Beta window. The reader uses Slack URLs and rendered UI elements. It does not capture tokens, read cookies, call the Web API, or replay credentials. PiG, Claude, and shared manual tools remain unchanged.
+Browser fallback for Pi's HelloFresh Slack reads. Prefer an approved, authenticated [official Slack MCP](https://docs.slack.dev/ai/slack-mcp-server) at `https://mcp.slack.com/mcp` when it is available to the current client. The CLI is not an MCP router and does not install or authenticate that integration. Do not assume a Claude plugin is available to Pi, and do not copy another client's credentials.
+
+Use this fallback when no authorized MCP read integration is available or it lacks the requested read operation. Do not fall back on auth loss, permission denial, rate limiting, or suspected revocation. Stop and report those errors rather than switching clients to work around them. Never restore the retired credential-replay Slack server.
+
+This reader uses a managed headed Brave Beta window, Slack URLs, and rendered UI elements. It does not capture tokens, read cookies, call the Web API, or replay credentials. PiG, Claude, and shared manual tools remain unchanged.
 
 A dedicated profile is not proof of desktop safety. Slack can terminate all active user sessions through [Anomaly Event Response](https://slack.engineering/building-slacks-anomaly-event-response/). [Enterprise session policies](https://slack.com/help/articles/115005223763-Manage-session-duration) can also force sign-in. Local errors do not identify the cause. If reads correlate with desktop sign-outs, stop automation with `slack-hf-read pause`.
+
+No Slack MCP is configured in Pi. The official endpoint was removed because Slack rejects dynamic client registration and needs an approved OAuth client. Do not re-add it without explicit approval and a supported auth setup. The browser reader remains available.
 
 ## Usage
 
@@ -19,7 +25,7 @@ slack-hf-read replies C0BFPQSFYLR 1791288000.000001 --limit 10
 slack-hf-read search 'in:general deployment' --limit 10
 ```
 
-Pi's normal workflow is link-only. The user supplies a Slack permalink. Use `read '<url>'` rather than browsing channels, clicking thread controls, or searching for the message. The reader validates the workspace host, channel ID, message timestamp, and optional thread timestamp before browser activity. It builds a direct app URL from those IDs. A successful result includes `data.message` and the same message in `data.messages`, with `coverage.reason:"linked_message_only"`. It never substitutes another message if the exact timestamp is not rendered.
+Pi's normal workflow is link-only. The user supplies a Slack permalink. Prefer the authorized official MCP's exact-message or thread read tool. For the browser fallback, use `read '<url>'` rather than browsing channels, clicking thread controls, or searching for the message. The reader validates the workspace host, channel ID, message timestamp, and optional thread timestamp before browser activity. It builds a direct app URL from those IDs. A successful result includes `data.message` and the same message in `data.messages`, with `coverage.reason:"linked_message_only"`. It never substitutes another message if the exact timestamp is not rendered.
 
 Direct permalink reading has offline coverage but has not passed the live thread-link check. The tested link returned `ui_changed`. Do not treat offline fixtures as proof of live support. Stop on this error rather than adding UI browsing or API fallback.
 

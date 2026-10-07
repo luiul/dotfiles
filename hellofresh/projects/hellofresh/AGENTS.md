@@ -153,7 +153,7 @@ This repo uses the schemachange tool to manage Snowflake objects.
 
 ## Connecting to HelloFresh Systems
 
-CLI-first. Reach every system through its CLI, or a documented `curl` REST recipe where no CLI exists. Use MCP only for capabilities that are MCP-native with no CLI/REST path (the HelloDev knowledge base), and only when I explicitly ask (see **HelloDev Knowledge Base** below). Never consult the HelloDev KB MCP eagerly or on your own initiative. All tokens live in `~/dotfiles/.env` and are exported into the shell by `.zshrc` (`set -a; source ~/dotfiles/.env`), so any command run here already sees them, including from pi.
+CLI-first. Reach every system through its CLI, or a documented `curl` REST recipe where no CLI exists. Exceptions: prefer an approved official Slack MCP for read-only access, as described below. Use the HelloDev knowledge base MCP only when I explicitly ask (see **HelloDev Knowledge Base** below). Never consult the HelloDev KB MCP eagerly or on your own initiative. All tokens live in `~/dotfiles/.env` and are exported into the shell by `.zshrc` (`set -a; source ~/dotfiles/.env`), so any command run here already sees them, including from pi.
 
 | System | Tool | Auth |
 | --- | --- | --- |
@@ -164,7 +164,7 @@ CLI-first. Reach every system through its CLI, or a documented `curl` REST recip
 | Databricks | `databricks` CLI | OAuth |
 | AWS (S3, etc.) | `aws` CLI | SSO (`hfsso` session, browser) |
 | Google Docs | `md2gdoc` | service account |
-| Slack | `slack-hf-read` (Pi, read-only, only path); separate manual directory tools below | managed headed Brave Beta UI; no credential capture or replay in Pi |
+| Slack | approved official Slack MCP first; `slack-hf-read` browser fallback | separate OAuth for the current client; no credential capture or replay |
 | HelloDev KB | MCP (pi & Claude, via `pi-mcp-adapter`) | none required |
 
 Do not use the Atlassian MCP for Jira or Confluence; the CLI and REST recipes below replace it.
@@ -522,11 +522,17 @@ JSON
 
 - After creation, write the returned page ID back into the local file's frontmatter so future edits route correctly.
 
-## Slack (`slack-hf-read`): READ ONLY, through the managed headed UI
+## Slack: READ ONLY, official MCP first, browser fallback
 
-**Pi reads only.** Never post, react, upload, change membership, or enter message drafts. Normal navigation may change read state. Pi's only Slack path is `slack-hf-read`, under `~/dotfiles/hellofresh/slack-hf-read/`. It reads rendered UI elements through the dedicated Brave Beta profile. It does not capture tokens, extract cookies, call hand-built APIs, or replay credentials. Do not use `slackcli`, `slack-relogin`, `slack-hf-session`, `slackdump`, or Slack MCP as a Pi fallback. Shared manual tools and Claude's separate integration remain unchanged.
+**Pi reads only.** Never post, react, upload, change membership, or enter message drafts. Prefer an approved, authenticated [official Slack MCP](https://docs.slack.dev/ai/slack-mcp-server) at `https://mcp.slack.com/mcp`, available to the current Pi session. Use only verified read tools. Do not assume Claude's Slack plugin is accessible or authenticated in Pi. Each client needs its own authorized OAuth connection. Do not copy credentials or borrow another client's identity.
 
-**Normal workflow is link-only.** The user supplies a Slack permalink. Use `slack-hf-read read '<url>' --limit 1`. Do not browse the sidebar, click through Slack controls, or search for a message when a link is supplied. The CLI derives a direct app URL and checks the exact linked timestamp. This path is not yet live-verified. A `ui_changed` result means no message was read, not permission to use a fallback.
+No Slack MCP is configured in Pi. The official endpoint was removed because it requires an approved OAuth client and rejects dynamic registration. Do not add it again without explicit user approval and a supported auth setup.
+
+If no authorized MCP read path is available, use `slack-hf-read`, under `~/dotfiles/hellofresh/slack-hf-read/`, as the browser fallback. It reads rendered UI through the dedicated Brave Beta profile without token capture, cookie extraction, or hand-built APIs. Normal navigation may change read state. Do not restore the retired credential-replay `slack-mcp-server`, or use `slackcli`, `slack-relogin`, `slack-hf-session`, or `slackdump`. Shared manual tools and Claude's configuration remain unchanged.
+
+Fallback is for an unavailable integration or unsupported read operation, not a way around access controls. On MCP auth loss, access denial, rate limiting, or suspected account-wide revocation, stop and report the error. Do not switch clients or retry credentials to work around it. Keep the browser's persistent auth pause and explicit recovery rules.
+
+**Normal workflow is link-only.** The user supplies a Slack permalink. Use it with the MCP's exact-message or thread read tool, checking the linked timestamp. If the authorized MCP is unavailable, use `slack-hf-read read '<url>' --limit 1`. Do not browse the sidebar or search when a link is supplied. The CLI's automatic permalink opening has not passed live verification. Extraction of the exact already-rendered message has passed. A `ui_changed` result means no message was read, not permission to use credential replay.
 
 | Command | Purpose |
 |---|---|
@@ -558,11 +564,11 @@ curl -s -H "Authorization: Bearer $SLACK_TOKEN" -G --data-urlencode 'limit=20' \
 curl -s -H "Authorization: Bearer $SLACK_TOKEN" https://slack.com/api/auth.test | jq .  # identity
 ```
 
-That token cannot read message history or search. Pi uses only the managed headed UI reader above for all Slack reads.
+That token cannot read message history or search. Pi uses the approved official MCP first, with the managed browser fallback described above.
 
 ## HelloDev Knowledge Base
 
-The internal KB is exposed only as an HTTP MCP endpoint (`hellofresh-kb`, `.../mcp/v2`) with no REST or CLI equivalent. This is the one sanctioned MCP under the CLI-first rule.
+The internal KB is exposed only as an HTTP MCP endpoint (`hellofresh-kb`, `.../mcp/v2`) with no REST or CLI equivalent. Unlike the approved Slack MCP read path, KB use always needs an explicit request.
 
 **Do not consult the HelloDev KB / `kb_*` MCP tools eagerly.** Only query it when I explicitly ask (e.g. "check HelloDev", "ask the KB", "search the knowledge base"). For everything else, prefer the repo checkout, the CLIs/REST recipes above, and what is already in context. Do not reach for these tools on your own initiative just because a question is HelloFresh-related.
 

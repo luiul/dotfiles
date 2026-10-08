@@ -507,6 +507,18 @@
           "input": ["text", "image"]
         },
         {
+          "id": "moonshotai/Kimi-K3",
+          "contextWindow": 1048576,
+          "maxTokens": 262144,
+          "input": ["text", "image"]
+        },
+        {
+          "id": "zai-org/GLM-5.3",
+          "contextWindow": 1048576,
+          "maxTokens": 262144,
+          "input": ["text", "image"]
+        },
+        {
           "id": "zai-org/GLM-5.3-Flash",
           "contextWindow": 1048576,
           "maxTokens": 131072,
@@ -516,7 +528,7 @@
     }
   },
   "grove": {
-    "generatedAt": "2026-10-08T14:17:06Z",
+    "generatedAt": "2026-10-08T18:36:15Z",
     "bedrock": {
       "defaultRegion": "eu-west-1",
       "regions": {
@@ -529,6 +541,7 @@
         "apac.amazon.nova-micro-v1:0": "ap-northeast-1",
         "apac.amazon.nova-pro-v1:0": "ap-northeast-1",
         "au.anthropic.claude-haiku-4-5-20251001-v1:0": "ap-southeast-2",
+        "au.anthropic.claude-haiku-5-5": "ap-southeast-2",
         "au.anthropic.claude-opus-4-6-v1": "ap-southeast-2",
         "au.anthropic.claude-opus-4-7": "ap-southeast-2",
         "au.anthropic.claude-opus-4-8": "ap-southeast-2",
@@ -571,12 +584,20 @@
         "global.anthropic.claude-sonnet-4-6": "eu-west-1",
         "global.anthropic.claude-sonnet-5": "eu-west-1",
         "global.anthropic.claude-sonnet-5-5": "eu-west-1",
+        "global.moonshotai.kimi-k3": "eu-west-1",
+        "global.openai.gpt-5.6-luna": "eu-west-1",
+        "global.openai.gpt-6-luna": "eu-west-1",
+        "global.openai.gpt-6-sol": "eu-west-1",
+        "global.openai.gpt-6.1-sol": "eu-west-1",
+        "global.xai.grok-4.6": "eu-west-1",
+        "global.xai.grok-4.7": "eu-west-1",
         "global.zai.glm-5.3": "eu-west-1",
         "google.gemma-3-12b-it": "eu-west-1",
         "google.gemma-3-27b-it": "eu-west-1",
         "google.gemma-3-4b-it": "eu-west-1",
         "jp.amazon.nova-2-lite-v1:0": "ap-northeast-1",
         "jp.anthropic.claude-haiku-4-5-20251001-v1:0": "ap-northeast-1",
+        "jp.anthropic.claude-haiku-5-5": "ap-northeast-1",
         "jp.anthropic.claude-opus-4-7": "ap-northeast-1",
         "jp.anthropic.claude-opus-4-8": "ap-northeast-1",
         "jp.anthropic.claude-opus-5-5": "ap-northeast-1",
@@ -607,6 +628,8 @@
         "nvidia.nemotron-super-3-120b": "eu-west-1",
         "openai.gpt-oss-120b-1:0": "eu-west-1",
         "openai.gpt-oss-20b-1:0": "eu-west-1",
+        "openai.gpt-oss-safeguard-120b": "eu-west-1",
+        "openai.gpt-oss-safeguard-20b": "eu-west-1",
         "qwen.qwen3-235b-a22b-2507-v1:0": "ap-northeast-1",
         "qwen.qwen3-32b-v1:0": "eu-west-1",
         "qwen.qwen3-coder-30b-a3b-v1:0": "eu-west-1",
@@ -619,6 +642,7 @@
         "us.amazon.nova-micro-v1:0": "us-east-1",
         "us.amazon.nova-pro-v1:0": "us-east-1",
         "us.anthropic.claude-haiku-4-5-20251001-v1:0": "us-east-1",
+        "us.anthropic.claude-haiku-5-5": "us-east-1",
         "us.anthropic.claude-opus-4-1-20250805-v1:0": "us-east-1",
         "us.anthropic.claude-opus-4-5-20251101-v1:0": "us-east-1",
         "us.anthropic.claude-opus-4-6-v1": "us-east-1",
@@ -636,8 +660,16 @@
         "us.meta.llama3-1-8b-instruct-v1:0": "us-east-1",
         "us.meta.llama3-3-70b-instruct-v1:0": "us-east-1",
         "us.mistral.pixtral-large-2502-v1:0": "us-east-1",
+        "us.moonshotai.kimi-k3": "us-east-1",
+        "us.openai.gpt-5.6-luna": "us-east-1",
+        "us.openai.gpt-6-luna": "us-east-1",
+        "us.openai.gpt-6-sol": "us-east-1",
+        "us.openai.gpt-6.1-sol": "us-east-1",
+        "us.xai.grok-4.6": "us-east-1",
+        "us.xai.grok-4.7": "us-east-1",
         "us.zai.glm-5.3": "us-east-1",
         "writer.palmyra-vision-7b": "us-east-1",
+        "zai.glm-4.7": "ap-southeast-2",
         "zai.glm-4.7-flash": "eu-west-1",
         "zai.glm-5": "ap-northeast-1"
       }

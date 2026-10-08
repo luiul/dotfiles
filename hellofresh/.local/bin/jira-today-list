@@ -118,8 +118,12 @@ ranked_rows() {
 					e=$(fmt_date "$end")
 					[[ -n $s && -n $e ]] && printf '%s|%s to %s\n' "$sid" "$s" "$e"
 				done)
-			printf '%s\n' "$rows" | awk -F'|' -v OFS='|' -v "map=$map" '
-				BEGIN { n = split(map, lines, "\n"); for (i = 1; i <= n; i++) { split(lines[i], p, "|"); dates[p[1]] = p[2] } }
+			# The map reaches awk through the environment, not -v: macOS BSD awk
+			# rejects -v values that contain a literal newline ("newline in
+			# string ... at source line 1"), so a board spanning 2+ sprints used
+			# to kill the whole list. ENVIRON has no such restriction.
+			printf '%s\n' "$rows" | MAP=$map awk -F'|' -v OFS='|' '
+				BEGIN { n = split(ENVIRON["MAP"], lines, "\n"); for (i = 1; i <= n; i++) { split(lines[i], p, "|"); dates[p[1]] = p[2] } }
 				{ if ($4 in dates) $3 = $3 " (" dates[$4] ")"; print $1, $2, $3, $7, $8, $9, $10, $11 }
 			'
 			return

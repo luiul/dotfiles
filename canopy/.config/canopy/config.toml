@@ -3,4 +3,10 @@
 # built-in default of just "pi"). Matching: exact executable basename in
 # ps output, a controlling tty, and no denylisted second token.
 # Schema and matching rules: https://github.com/luiul/canopy#configuration
-agents = ["pi", "pig", "claude"]
+#
+# pi only: state comes from pi's own program-status reports via the
+# canopy-status extension (pig reads "unknown": its extension host runs
+# under a separate pid canopy never matches), and anything without a
+# report reads "unknown" too, so tracking other kinds adds noise, not
+# signal.
+agents = ["pi"]

@@ -397,7 +397,8 @@
     // === UI & Misc ===
     "workbench.productIconTheme": "fluent-icons",
     "makefile.configureOnOpen": false,
-    "git.blame.editorDecoration.enabled": true,
+    // Native inline blame off: GitLens provides it (both on = duplicate annotations).
+    "git.blame.editorDecoration.enabled": false,
     "diffEditor.ignoreTrimWhitespace": true,
     "dbt.enableNewLineagePanel": true,
     //
@@ -420,7 +421,8 @@
     "chat.mcp.autostart": "never",
     "aws.cloudformation.telemetry.enabled": false,
     "aws.telemetry": false,
-    "git.blame.statusBarItem.enabled": true,
+    // Native status bar blame off: GitLens provides it too.
+    "git.blame.statusBarItem.enabled": false,
     "chat.viewSessions.orientation": "stacked",
     "terminal.external.osxExec": "Ghostty.app",
     // Point dbt at the standard profiles location for any workspace that doesn't override it.

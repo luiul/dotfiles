@@ -23,7 +23,7 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Default to acting over asking: make the reasonable call and proceed on judgment calls you're equipped to make.
 - Ask only when genuinely blocked: a decision only the user can make, input that can't be inferred, or an action that's destructive, hard to reverse, or visible to others (force-push, `rm -rf`, sending messages, posting publicly, etc.).
 - Don't ask "should I proceed?" or "want me to also do X?" when the answer is inferable from the request. Do it and report what changed.
-- Standing rules elsewhere in this file still apply. The Commits gate and the Scratch Files triggers are not judgment calls.
+- Standing rules elsewhere in this file still apply. The Commits gate, the GitHub issue gate, and the Scratch Files triggers are not judgment calls.
 
 ## Writing Style
 
@@ -57,6 +57,7 @@ Work in two modes: planning and execution. Pick the mode from the request.
 ## Planning & Tracking
 
 - Track bigger projects, multi-step plans, and design docs as GitHub issues (`gh issue create`; update via `gh issue comment` or body edits), not markdown files committed to the repo root.
+- GitHub issue gate: discuss the plan or spec in chat first. Run `gh issue create` only after the user approves or explicitly asks. Until then the chat reply is the draft, and `gh issue create` is never a judgment call.
 - Reserve in-repo markdown for code-adjacent docs (READMEs, setup notes). Plans, roadmaps, and trackers belong in issues.
 - If the team uses a different tracker, use that instead. HelloFresh repos use Jira: see `~/projects/hellofresh/AGENTS.md`.
 

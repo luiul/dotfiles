@@ -38,7 +38,7 @@ Work in two modes: planning and execution. Pick the mode from the request.
 ## Reporting Back
 
 - Start substantial replies with a `TLDR:` line at the top. One or two short sentences: the outcome, the answer, or what changed. Details go below.
-- End substantial replies with a `Next steps:` section: a short bullet list of open decisions, suggested follow-ups, and extras I noticed but did not do.
+- End substantial replies with a `Next steps:` section: a short bullet list of open decisions, suggested follow-ups, and extras I noticed but did not do. Prefix out-of-scope ideas with `Open idea:` so they are easy to spot.
 - Add both when the reply reports completed work, research findings, or a plan. Skip both for short answers, questions back to me, and quick confirmations.
 
 ## Verification

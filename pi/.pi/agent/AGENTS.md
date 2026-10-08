@@ -23,6 +23,7 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Default to acting over asking: make the reasonable call and proceed on judgment calls you're equipped to make.
 - Ask only when genuinely blocked: a decision only the user can make, input that can't be inferred, or an action that's destructive, hard to reverse, or visible to others (force-push, `rm -rf`, sending messages, posting publicly, etc.).
 - Don't ask "should I proceed?" or "want me to also do X?" when the answer is inferable from the request. Do it and report what changed.
+- Stay in scope. Judgment calls that serve the request are yours to make. Changes beyond the request belong in `Next steps`, not in the diff.
 - Standing rules elsewhere in this file still apply. The Commits gate, the GitHub issue gate, and the Scratch Files triggers are not judgment calls.
 
 ## Writing Style
@@ -37,13 +38,20 @@ Work in two modes: planning and execution. Pick the mode from the request.
 ## Reporting Back
 
 - Start substantial replies with a `TLDR:` line at the top. One or two short sentences: the outcome, the answer, or what changed. Details go below.
-- Add it when the reply reports completed work, research findings, or a plan. Skip it for short answers, questions back to me, and quick confirmations.
+- End substantial replies with a `Next steps:` section: a short bullet list of open decisions, suggested follow-ups, and extras I noticed but did not do.
+- Add both when the reply reports completed work, research findings, or a plan. Skip both for short answers, questions back to me, and quick confirmations.
 
 ## Verification
 
-- Verify work before reporting it done: run the code, query, or test and check the output.
+- Do not guess. Before you state a fact about a change you made, or answer a question about a system, file, or state, check it with the relevant tool. Examples: `aws`, `snow` (Snowflake CLI), `databricks`, `tmux`, `gh`, `jira`. If a claim is checkable with a command, run the command first.
+- Test after every change: run the code, query, or command and check the output before reporting done.
+- Check for regressions: rerun the existing test suite and check the config and files the change touches. A green new test is not enough.
+- For changes that affect live behavior (extensions, shell config, notifications, model settings), verify in the real running setup: a new shell, a tmux session, a real run. Unit tests and print mode are not enough.
+- If the repo has a test setup, write or update tests that pin the changed behavior. If you skip tests, say why.
+- For performance claims, measure before and after. Report the numbers.
+- Before replacing a working setup, record the known good baseline (commit, file copy, settings) so you can revert.
 - For data changes: run the query, check row counts, and spot-check values against a known baseline.
-- If you cannot verify, say so in the reply and state what you checked instead.
+- Never present an assumption as a fact. If you cannot verify, say so in the reply and state what you checked instead.
 
 ## Python
 
@@ -64,6 +72,7 @@ Work in two modes: planning and execution. Pick the mode from the request.
 ## Commits
 
 - Do not stage or commit on your own. Leave changes as unstaged modifications in the working tree; the user reviews them with VS Code's "Open Changes" diff view, which works best on uncommitted changes. Run `git add` and `git commit` only after the user approves.
+- Commit only the files for the approved change. Review the full working tree first and leave unrelated or parallel edits out.
 - After approval, push per repo convention: dotfiles and other personal projects push straight to the repo's default branch, no pull request needed. The default branch can be named `main`, `master`, `live`, or anything else; find it with `git remote show origin` ("HEAD branch"). HelloFresh repos use feature branches and pull requests.
 - Standing instructions that explicitly say to commit (e.g. the Pi Skills section) override the review gate for their scope.
 - Use conventional commits: `type: short description` (e.g. `fix: venv info display`, `feat: add terminal keybindings`). Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `style`, `perf`, `ci`, `test`.

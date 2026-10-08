@@ -1,6 +1,6 @@
 # HelloFresh Project Instructions
 
-These instructions apply to every repo under the subfolders of `~/projects/hellofresh` (`01-generation/`, `02-ingestion/`, `03-transformation/`, `04-serving/`, `05-orchestration/`, `06-governance-infra/`, `misc/`). When a repo has its own context file, the repo-specific guidance wins on conflicts.
+These instructions apply to every repo under `~/projects/hellofresh` (a flat list of repo checkouts). When a repo has its own context file, the repo-specific guidance wins on conflicts.
 
 ## Planning & Tracking
 
@@ -110,11 +110,11 @@ The year-end review harvests these blocks programmatically (the tooling is harve
 - Wrap every taxonomy value in backticks.
 - Never add `**Estimated Annual Impact:**` or `**Estimate Basis:**` lines on Jira; harvest strips them on the next `harvest project` run.
 
-## Commits
+## Verification
 
-- Complete all file changes before staging or committing; let the user review first.
-- Use conventional commits: `type: short description` (e.g. `fix: venv info display`, `feat: add terminal keybindings`). Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `style`, `perf`, `ci`, `test`.
-- No `Co-Authored-By` lines.
+- Follow the global Verification rules. The CLIs for checking claims here are in the system table below: `snow`, `databricks`, `aws`, `jira`, `gh`.
+- Green PR checks do not prove a deploy. After a merge, check the deploy workflow run before reporting done (PR #378 passed its checks, then the staging deploy failed in the dbt-docs job, 2026-10-01).
+- Before blaming your change for a deploy failure, compare prior runs: the same dbt-docs job failed on earlier merges.
 
 ## Schemachange (us-ops-analytics-schemachange)
 
@@ -143,14 +143,6 @@ This repo uses the schemachange tool to manage Snowflake objects.
 - Slack: `#tribe-us-ops-analytics`
 - Docs: https://hellodev.hellofresh.io/docs/default/repository/us-ops-analytics-schemachange/
 
-## Python
-
-- Always use `uv` for Python operations: `uv run` not `python`, `uv pip` not `pip`, `uv venv` not `python -m venv`, etc.
-
-## GitHub
-
-- Always use `gh` CLI for GitHub interactions (PRs, issues, checks, releases, etc.)
-
 ## Connecting to HelloFresh Systems
 
 CLI-first. Reach every system through its CLI, or a documented `curl` REST recipe where no CLI exists. Exceptions: prefer an approved official Slack MCP for read-only access, as described below. Use the HelloDev knowledge base MCP only when I explicitly ask (see **HelloDev Knowledge Base** below). Never consult the HelloDev KB MCP eagerly or on your own initiative. All tokens live in `~/dotfiles/.env` and are exported into the shell by `.zshrc` (`set -a; source ~/dotfiles/.env`), so any command run here already sees them, including from pi.
@@ -167,243 +159,13 @@ CLI-first. Reach every system through its CLI, or a documented `curl` REST recip
 | Slack | approved official Slack MCP first; `slack-hf-read` browser fallback | separate OAuth for the current client; no credential capture or replay |
 | HelloDev KB | MCP (pi & Claude, via `pi-mcp-adapter`) | none required |
 
-Do not use the Atlassian MCP for Jira or Confluence; the CLI and REST recipes below replace it.
+Do not use the Atlassian MCP for Jira or Confluence; the `jira` CLI recipes below and the REST recipes in `docs/confluence-rest.md` replace it.
 
-## Snowflake CLI (`snow`)
+Detailed recipes live next to this file:
 
-Installed via Homebrew (`snow --version` → Snowflake CLI v3.16.0). Config at `~/.snowflake/config.toml`.
-
-- Default connection: `default`, `SCM_ANALYTICS_SA_NONSENSITIVE` on `scm_analytics_load_medium`, DB `SCM_ANALYTICS`, `externalbrowser` auth.
-- Other configured connections: `staging` (same account, `SCM_ANALYTICS_STAGING`), plus any per-project connections visible via `snow connection list`.
-- First command in a session may open the browser for SAML login; the session token is cached after.
-
-### Running queries
-
-```bash
-# Ad-hoc query against the default connection
-snow sql -q "SELECT CURRENT_ROLE(), CURRENT_WAREHOUSE()"
-
-# Use a specific connection (e.g. staging / clone DB)
-snow sql -c staging -q "SELECT CURRENT_DATABASE()"
-
-# Override role/warehouse/db inline (useful for ACCOUNT_USAGE queries)
-snow sql --role ACCOUNTADMIN --warehouse <wh> --database SNOWFLAKE \
-  -q "SELECT COUNT(*) FROM ACCOUNT_USAGE.ACCESS_HISTORY WHERE QUERY_START_TIME > DATEADD(day, -1, CURRENT_TIMESTAMP())"
-
-# Read from a file: better for anything multi-statement or heredoc-unfriendly
-snow sql -f analysis/my_query.sql
-
-# Machine-readable output for scripts / summarization
-snow sql -q "..." --format=json
-snow sql -q "..." --format=csv
-```
-
-### Tips
-
-- For `ACCOUNT_USAGE` / `INFORMATION_SCHEMA` queries, be explicit about role and warehouse; the default `SCM_ANALYTICS_SA_NONSENSITIVE` role won't see cross-database access history.
-- Prefer `--format=json` when piping into `jq` or the Read tool; the default table format wraps and truncates wide columns.
-- `snow sql -q` has a short timeout; for heavy analytical queries use `-f` so the CLI streams rather than buffering.
-
-## Databricks CLI (`databricks`)
-
-Installed via Homebrew (`databricks --version` → v0.297.2). Profiles visible via `databricks auth profiles`.
-
-- Default profile: `hf-query-engine` → `https://hf-query-engine.cloud.databricks.com`.
-- Auth is OAuth; runs `databricks auth login` once, then token caches in `~/.databrickscfg`.
-
-### Running SQL and inspecting objects
-
-```bash
-# Find a SQL warehouse to target
-databricks warehouses list --output json | jq '.[] | {id, name, state}'
-
-# Run a query against a warehouse
-databricks api post /api/2.0/sql/statements --json '{
-  "warehouse_id": "<warehouse_id>",
-  "statement": "SELECT current_catalog(), current_schema()",
-  "wait_timeout": "30s"
-}'
-
-# Unity Catalog introspection
-databricks catalogs list --output json | jq '.[].name'
-databricks schemas list <catalog> --output json | jq '.[].name'
-databricks tables list <catalog> <schema> --output json | jq '.[] | {name, table_type}'
-databricks tables get <catalog>.<schema>.<table> --output json
-
-# Jobs and runs
-databricks jobs list --output json | jq '.[] | {job_id, settings: .settings.name}'
-databricks jobs get-run <run_id> --output json
-```
-
-### Tips
-
-- `system.access.table_lineage` is usually blocked (`INSUFFICIENT_PERMISSIONS`, no `USE SCHEMA` on `system.access`). Fall back to `information_schema.tables` / `information_schema.columns` per catalog for inventory work.
-- Accessible `system.*` schemas are typically: `ai`, `data_classification`, `data_quality_monitoring`, `information_schema`. Downstream-pipeline lineage has to be reconstructed from repo-level search, not queried.
-- For write-back / federated catalogs (`glue`, `public_glue`), the catalog is read-only from Databricks' side; don't try DML.
-- Use `--output json` + `jq` for anything you plan to summarize; the default table output pads and wraps.
-
-## AWS CLI (`aws`)
-
-Installed (`aws --version` → aws-cli v2). Auth is HelloFresh SSO via the shared `hfsso` session (`https://hfsso.awsapps.com/start`, region `eu-west-1`). Config at `~/.aws/config`, a symlink to `~/dotfiles/aws/.aws/config` (the real, version-controlled file). No long-lived keys, no `~/.aws/credentials`; the SSO token caches under `~/.aws/sso/cache` after login.
-
-### Logging in
-
-```bash
-awslogin        # lazy: checks the cached session, only opens the browser when expired
-```
-
-`awslogin` (zsh function in `~/dotfiles/zsh/.zsh_config/funcs_aws.zsh`) wraps the manual flow below: it runs `aws sts get-caller-identity` first and skips the browser login when the session is still valid. One browser login authorizes every profile that shares the `hfsso` session, so the optional profile argument (`awslogin sso-bi`) rarely matters.
-
-Manual equivalent:
-
-```bash
-aws sso login --profile sso-bi
-aws sts get-caller-identity --profile sso-bi   # verify
-```
-
-The session token expires after a few hours; re-run `awslogin` (or `aws sso login`) when calls start returning `Error loading SSO Token`.
-
-### Profiles (accounts and roles)
-
-All profiles use the `[sso-session hfsso]` block, so a single login covers them all.
-
-| Profile | Account | Role | Use |
-| --- | --- | --- | --- |
-| `sso-bedrock` | `951719175506` bedrock1 | `bedrock-user` | Amazon Bedrock |
-| `sso-bi` | `985437859871` main-bi | `developer` | **default for data work**; the SCM analytics + datalake S3 buckets |
-| `sso-bi-developer` | `985437859871` main-bi | `BIDeveloper` | same S3 access as `sso-bi` |
-| `sso-bi-poweruser` | `985437859871` main-bi | `PowerUserAccess` | broader main-bi access |
-| `sso-it` | `489198589229` main-it | `main-it-developer` | main-it account |
-
-Discover what's available with the cached token:
-
-```bash
-TOKEN=$(python3 -c "import json,glob; print([json.load(open(f)).get('accessToken') for f in glob.glob('$HOME/.aws/sso/cache/*.json') if 'accessToken' in json.load(open(f))][-1])")
-aws sso list-accounts --access-token "$TOKEN" --region eu-west-1
-aws sso list-account-roles --access-token "$TOKEN" --account-id <acct> --region eu-west-1
-```
-
-### S3 access map (SCM analytics)
-
-Use `--profile sso-bi` (or set `AWS_PROFILE=sso-bi`). Envs in bucket names are `staging` and `live` (there is no `prod`/`production`).
-
-| Bucket | Access via `sso-bi` | Notes |
-| --- | --- | --- |
-| `hf-group-intl-scm-analytics-<env>-nonsensitive` | yes | ISA curated outputs (`scm-analytics-engineers/`, etc.) |
-| `hf-group-intl-scm-analytics-<env>-sensitive` | **no** | explicit deny in the bucket policy for all human SSO roles (PII); only the pipeline compute role gets in |
-| `hf-datalake-<env>` | yes | shared HelloFresh datalake; Kafka topic events under `events/...` |
-| `hf-isa-datalake-<env>-raw` | yes | ISA raw layer (e.g. `csat/interactions/...`) |
-
-```bash
-export AWS_PROFILE=sso-bi
-aws s3 ls s3://hf-datalake-live/events/compensation_created/2026/06/25/12/
-aws s3 cp s3://<bucket>/<key> - | head -c 400          # peek at object contents
-```
-
-### Tips
-
-- The `sensitive` bucket cannot be inspected from any CLI profile (bucket-policy deny). To confirm raw formats there, read the pipeline `.conf` (`input.format`) or ask the pipeline owner; don't expect S3 list/get to work.
-- A `NoSuchBucket` error means the env/name is wrong; an `AccessDenied` with "explicit deny in a resource-based policy" means the bucket exists but the role is blocked by policy (different from "no identity-based policy allows", which is a missing grant).
-- Set `AWS_PROFILE` once per session instead of repeating `--profile`; it's already exported to `sso-bedrock` by default in the shell, so override it explicitly for data work.
-
-## Tardis Airflow: Pulling Task Logs from S3
-
-Tardis DAGs (`tardis-community` repo) run dbt/Spark tasks on EMR on EKS. There is no Tardis Airflow REST API / service account (an open ask, tracked in DATAPLAT-3048), and the Airflow UI (`https://tardis-airflow.dwh-k8s.hellofresh.io` live, `...dwh-staging-k8s...` staging) redirects to Azure AD sign-in and cannot be curled/scripted. **But the Airflow task log content is mirrored to S3 and fully readable via `aws s3 ls`/`cp` alone, no interactive login needed** (confirmed 2026-08-11). Only reach for the manual UI Log-tab step if you don't have (and can't guess) the DAG id.
-
-### Fastest path: pull the Airflow task log straight from S3, no UI login
-
-The Airflow task log (the exact content of the UI's Log tab, including the `Found virtual cluster name=...` / `Start Job Run success...` lines) lives at a predictable path and is fully discoverable by listing:
-
-```bash
-export AWS_PROFILE=sso-bi
-ENV=live   # or staging
-
-# 1. Discover the dag_id: list the whole prefix and grep for the pipeline's base name
-#    (every DAG that has ever run has a dag_id=... folder here, including old/superseded
-#    unversioned DAGs that were never actually paused; see the diagnose-tardis-first-run-
-#    checkpoint-mismatch skill in tardis-community for why that matters).
-aws s3 ls "s3://hf-tardis-logs-$ENV/tardis-airflow-$ENV/" | grep -i "<pipeline-base-name>"
-
-# 2. Discover run_id under that dag_id (sorted, tail = most recent; a run_id list that stops
-#    abruptly weeks ago tells you that DAG stopped running around then, without asking anyone).
-aws s3 ls "s3://hf-tardis-logs-$ENV/tardis-airflow-$ENV/dag_id=<dag_id>/" | sort
-
-# 3. Discover task_id/attempt under that run_id, then pull the log directly (quote the path;
-#    run_id contains ':' and '+').
-aws s3 ls "s3://hf-tardis-logs-$ENV/tardis-airflow-$ENV/dag_id=<dag_id>/run_id=<run_id>/" --recursive
-aws s3 cp "s3://hf-tardis-logs-$ENV/tardis-airflow-$ENV/dag_id=<dag_id>/run_id=<run_id>/task_id=<task_id>/attempt=<n>.log" - 2>&1
-```
-
-The task log gives you the `job_id`/`virtual_cluster_id` (for the Spark driver log path below) plus things the driver log lacks: the real `execution_date`, `AIRFLOW_CTX_TRY_NUMBER`, and `Starting attempt N of M`. That lets you tell a genuinely fresh dataset-triggered DagRun apart from one quietly retrying for days with parameters baked in at creation (a real gotcha: `is_first_run`/`prev_timestamp`-style task params are computed once per DagRun, not re-derived per retry).
-
-### Fallback (UI session already open): read the IDs from the Airflow task log, then pull from S3
-
-1. Open the failing task's **Log** tab in the Airflow UI (the DAG grid link with `tab=logs`).
-2. Near the top of the log, find lines like:
-   - `Found virtual cluster name = <vc_name> id = <vc_id>`
-   - `Start Job Run success - Job Id <job_id> and virtual cluster id <vc_id>`
-3. Pull the raw Spark driver/executor logs straight from S3 (same `sso-bi` profile as the S3 access map above):
-
-```bash
-export AWS_PROFILE=sso-bi
-ENV=live   # or staging
-BUCKET=hf-tardis-logs-$ENV
-VC_NAME=<vc_name>   # format: hf-tardis-<tribe>-<squad>-<env>, abbreviated if the name is too long
-VC_ID=<vc_id>
-JOB_ID=<job_id>
-
-# Driver stdout/stderr: start here, this is where the dbt/Spark error shows up
-aws s3 cp "s3://$BUCKET/$VC_NAME/logs/$VC_ID/jobs/$JOB_ID/containers/spark-$JOB_ID/spark-$JOB_ID-driver/stdout.gz" - | gunzip | less
-aws s3 cp "s3://$BUCKET/$VC_NAME/logs/$VC_ID/jobs/$JOB_ID/containers/spark-$JOB_ID/spark-$JOB_ID-driver/stderr.gz" - | gunzip | less
-
-# Executor logs are sibling folders under the same containers/spark-$JOB_ID/ prefix
-aws s3 ls "s3://$BUCKET/$VC_NAME/logs/$VC_ID/jobs/$JOB_ID/containers/spark-$JOB_ID/"
-```
-
-Virtual cluster names confirmed for `intl-scm-analytics` (`aws s3 ls s3://hf-tardis-logs-live/ | grep scm`):
-- `hf-tardis-intl-scm-analytics-scm-analytics-engineers-<env>` (scm-analytics-engineers squad)
-- `hf-tardis-intl-scm-analytics-scm-biz-int-<env>`
-- `hf-tardis-intl-scm-analytics-scm-ops-research-<env>`
-- `hf-tardis-scm-tech-prc-assortment-personalization-<env>`
-
-Buckets: `hf-tardis-logs-live`, `hf-tardis-logs-staging`, `hf-tardis-logs-dev`, all in the `main-bi` account (`985437859871`), reachable with the same `sso-bi` profile.
-
-Task naming convention for dbt-based Tardis DAGs: `dbt_run.<model_name>.<run|test>` (Cosmos-style grouping, one Spark/EMR job per dbt task; a model's `run` and `test` steps are two separate jobs, each with its own `job_id`).
-
-### Last resort: time-window brute force (only when the dag_id can't be guessed or discovered)
-
-Without the job_id and without a discoverable dag_id under `tardis-airflow-<env>/`, binary-search the job folders under `.../jobs/` by `LastModified` (job ids sort roughly chronologically) and grep candidate driver stdout/stderr for the model/table name:
-
-```bash
-export AWS_PROFILE=sso-bi
-BUCKET=hf-tardis-logs-live
-VC_NAME=hf-tardis-intl-scm-analytics-scm-analytics-engineers-live
-VC_ID=$(aws s3 ls "s3://$BUCKET/$VC_NAME/logs/" | awk '{print $2}' | tr -d /)  # one per squad cluster currently
-
-# One `aws s3 ls` call lists every job folder (non-recursive PRE listing, paginates itself; ~150k
-# entries as of Aug 2026 but still returns in ~20-30s; do NOT add --recursive, that walks every
-# container file and can take many minutes)
-aws s3 ls "s3://$BUCKET/$VC_NAME/logs/$VC_ID/jobs/" > /tmp/jobs_list.txt
-
-# Binary-search by LastModified of the first object in each job folder
-# (aws s3api list-objects-v2 --prefix .../jobs/<job_id>/ --max-items 1 --query 'Contents[0].LastModified')
-# to find the index range matching your target time window, then grep each candidate driver
-# stdout.gz/stderr.gz for the model/table name (e.g. "purchase_order_v2").
-```
-
-This is slow (one `list-objects-v2` probe per binary-search step; macOS bash has no `timeout`, so run long listings in the background with `&`/`sleep`/`wc -l` polling, or use `context_mode_ctx_execute`) and only narrows to "jobs that ran in this squad's cluster during the window"; it cannot pinpoint one task when several pipelines ran concurrently, and finds **nothing** if the task failed *before* job submission (an Airflow-level error, e.g. Vault/connection/pool issues, means no Spark job was ever created). Always prefer discovering the dag_id first (the fastest path above covers the large majority of cases with no manual UI step).
-
-If no matching job turns up in the window, or the Airflow task log never reached the `Start Job Run` line, the root cause is in the Airflow task's own log (the worker container), which is still on S3 (fastest path above); read it directly instead of chasing Spark driver logs.
-
-### Other troubleshooting resources
-
-- **Grafana Loki** (same driver logs, queryable once you have the `job_id`, no S3 path needed): `{cluster="platform-dwh-spark-<env>-eks", app=~".*<job_id>.*", container="spark-kubernetes-driver"} |= ""` at `prdhellofresh.grafana.net` (live) / `stghellofresh.grafana.net` (staging).
-- **General Tardis Airflow infra troubleshooting** (pod health, DAG import errors, `kubectl` commands, Airflow CLI via `vault-env`): the `tardis-airflow` runbook on HelloDev, mirrored in `hellofresh/runbooks` at `troubleshooting/data-platform/data-fusion/airflow/tardis-airflow.md`.
-- Escalation: Data Streaming and Operations (Data Platform on-call); the Fusion/Tardis team owns the Airflow infra but doesn't always have permissions for every downstream issue.
-
-### Known gotcha: `is_first_run=False` / "Target table ... not found" on a pipeline's genuine first run
-
-A rewritten/renamed pipeline (old `_ap`-suffixed table, or a prior unversioned DAG) can fail its real first run with `is_first_run=False` even though the exact new destination table has never been written (confirmed clean in S3/Glue/Snowflake). The false negative comes from a **stale sibling Glue table** (old name, same `Service`/`pipeline_name` tags) that the old DAG left behind without dropping. Renaming the DAG's own version suffix (`_v3` -> `_v4`) does **not** fix this (confirmed empirically). The actual fix: find and drop the stale sibling table/S3 data (`aws glue get-tables ... contains(Name, ...)` to find it, `aws glue delete-table` + S3 `rm`/lifecycle; or check `gh workflow list` for an existing "Data Cleanup" GitHub Action in the repo first). Full diagnostic procedure: the `diagnose-tardis-first-run-checkpoint-mismatch` skill in tardis-community.
+- Snowflake, Databricks, and AWS CLI recipes (connections, SSO login, profiles, S3 access map, query examples): `docs/cli-recipes.md`
+- Tardis Airflow task logs straight from S3, no Airflow UI login: `docs/tardis-airflow-logs.md`
+- Confluence REST recipes (storage format, mirror repos, page writes): `docs/confluence-rest.md`
 
 ## Jira (`jira` CLI)
 
@@ -425,7 +187,7 @@ jira issue link GLOA-1 GLOA-2 Blocks
 Conventions:
 
 - Put the description (and long comments) in a markdown file and pass it with `-T file.md`. jira-cli converts Markdown to Jira markup, so the old MCP `\n`-escaping quirk no longer applies.
-- Every ticket description must end with the **Business Impact** block defined in the canonical spec above (same heading, same fields, same allowed values), including the `**Scope:**`, `**Estimate Basis:**`, and `**Work Type:**` taxonomy fields. On Jira the body is the only durable record (the automation strips custom labels), so the block must be complete. Add it on updates if missing.
+- Every ticket description must end with the **Business Impact** block defined in the canonical spec above (same heading, same fields, same allowed values), carrying the four projected fields `**Category:**`, `**Notes:**`, `**Scope:**`, and `**Work Type:**`. Never the dollar figure or the estimate basis on Jira. On Jira the body is the only durable record (the automation strips custom labels), so the block must be complete. Add it on updates if missing.
 - Do **not** add review-taxonomy labels (`impact:`, `scope:`, `estimate:`, `work_type:`) on Jira tickets; the automation removes them. Those labels stay on GitHub PRs only.
 - Wrap every file path, SQL identifier, column name, and code token in backticks (bare underscores render as emphasis otherwise). Do not use Markdown link syntax `[text](path)` for local file references; list the path in a code span.
 - JQL ordering: jira-cli rejects inline `ORDER BY`; use `--order-by <field> [--reverse]`.
@@ -437,90 +199,6 @@ Conventions:
     -H 'Content-Type: application/json' \
     --data '{"fields":{"fixVersions":[{"id":"59925"}]}}'
   ```
-
-## Confluence (`curl` REST)
-
-Reach Confluence through the REST API with `curl`. The Atlassian account token in `JIRA_API_TOKEN` authenticates Confluence too (Atlassian Cloud tokens are account-wide), so no separate secret is needed. Do not use the Atlassian MCP.
-
-```bash
-AUTH="luis.aceituno@hellofresh.com:$JIRA_API_TOKEN"
-BASE="https://hellofresh.atlassian.net/wiki"
-
-# Read a page with body (storage format) and current version
-curl -s -u "$AUTH" "$BASE/rest/api/content/<page_id>?expand=body.storage,version" | jq .
-
-# CQL search
-curl -s -u "$AUTH" -G "$BASE/rest/api/content/search" \
-  --data-urlencode 'cql=space = SCMAX AND title ~ "purchase order"' --data-urlencode 'limit=10' \
-  | jq '.results[].title'
-
-# Child pages of a parent
-curl -s -u "$AUTH" "$BASE/rest/api/content/<parent_id>/child/page?limit=50" | jq '.results[] | {id, title}'
-```
-
-Reads via curl are straightforward. Writes are harder: the REST API takes Confluence **storage format** (XHTML), not Markdown (the MCP used to convert for us). For Markdown push, build the `confl` tool (tracked in the integration issue); until then write only simple pages hand-authored in storage format.
-
-### Repos that mirror Confluence
-
-Some docs repos (e.g. `99-meta/po-v2-consolidation/confluence/`) are a 1:1 mirror of Confluence pages. Each markdown file starts with YAML frontmatter binding it to the page:
-
-```yaml
----
-confluence_page_id: 6417678348
-confluence_title: "2. Current Architecture"
-confluence_parent_id: 6408667170   # omit for the landing page
-confluence_space: SCMAX
----
-```
-
-Treat the page ID in frontmatter as authoritative. Don't look it up by title.
-
-### Pushing edits (REST)
-
-1. Read `confluence_page_id` and `confluence_title` from frontmatter; treat the page ID as authoritative.
-2. GET the page (`?expand=version`) to capture the current `version.number`.
-3. Strip the frontmatter block and the first H1 from the body (the title is set separately; leaving the H1 duplicates it).
-4. Convert the body to storage format (XHTML), then `PUT $BASE/rest/api/content/<page_id>` with `Content-Type: application/json` and a payload that bumps `version.number` by 1:
-   ```json
-   {"id":"<page_id>","type":"page","title":"<confluence_title>",
-    "version":{"number":<current+1>},
-    "body":{"storage":{"value":"<xhtml>","representation":"storage"}}}
-   ```
-5. GET again and confirm the body rendered; some constructs (nested tables, raw HTML, certain emoji) don't survive conversion. Markdown-to-storage conversion is why a dedicated `confl` tool is the long-term answer for mirror-repo pushes.
-
-### Rendering notes (verify after upload)
-
-These apply when converting Markdown to storage format (via `confl` or by hand):
-
-- Tables with very wide columns survive but render tightly; prefer concise cell content.
-- Fenced code blocks work; specify the language (```` ```sql ````, ```` ```bash ````).
-- Anchor-style links (`[foo](#section-heading)`) work inside the same page but only if the heading slug matches what Confluence generates. When in doubt, check after upload.
-- Links to other mirrored pages: use the local relative path (`[page 4](04-pipeline-ops-intelligence.md)`) when iterating in the repo; Confluence resolves them to page links on upload **only if** the target page is in the same space and the ID is recognized, otherwise they end up as literal text. Prefer absolute Confluence URLs for cross-space or external links.
-- Unicode dashes and arrows render fine; smart quotes usually do too.
-
-### Useful endpoints
-
-```text
-GET  /rest/api/content/<id>?expand=body.storage,version       # read a page + body
-GET  /rest/api/content/search?cql=<CQL>                       # CQL search
-GET  /rest/api/content/<id>/child/page                        # child pages
-GET  /rest/api/content/<id>/child/comment?expand=body.storage # comments
-GET  /rest/api/content/<id>/history                           # version history
-PUT  /rest/api/content/<id>                                   # update (see Pushing edits)
-POST /rest/api/content                                        # create (see below)
-```
-
-### Creating new pages (REST)
-
-```bash
-curl -s -u "$AUTH" -X POST "$BASE/rest/api/content" -H 'Content-Type: application/json' --data @- <<'JSON'
-{"type":"page","title":"<title>","space":{"key":"SCMAX"},
- "ancestors":[{"id":"<parent_id>"}],
- "body":{"storage":{"value":"<xhtml>","representation":"storage"}}}
-JSON
-```
-
-- After creation, write the returned page ID back into the local file's frontmatter so future edits route correctly.
 
 ## Slack: READ ONLY, official MCP first, browser fallback
 

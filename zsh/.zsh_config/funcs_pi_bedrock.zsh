@@ -1,19 +1,22 @@
 # Pi and AWS Bedrock model/region switching.
 #
-# The verified map records a working region for each model. Pi's model scope
-# is a separate user choice; these helpers do not change enabledModels.
-# They use the same map as the Pi region extension, including JP/AU/APAC.
-# Orchard discovers and probes models: https://github.com/luiul/orchard.
-# The legacy pi-model-sync command remains installed during the transition.
+# grove (https://github.com/luiul/grove) discovers and probes models, stores
+# the results, and projects them into models.json under the "grove" key. These
+# helpers read that projection only; the grove store is the source of truth.
+# The region map is independent of Pi's curated enabledModels scope.
 
-typeset -g PI_BEDROCK_MODELS_JSON="${PI_BEDROCK_MODELS_JSON:-$HOME/dotfiles/pi/.pi/agent/bedrock-models.json}"
+typeset -g PI_MODELS_JSON="${PI_MODELS_JSON:-$HOME/dotfiles/pi/.pi/agent/models.json}"
 
 _pi_bedrock_map_check() {
-	if [[ ! -f "$PI_BEDROCK_MODELS_JSON" ]]; then
-		print -P "%F{red}✗%f $PI_BEDROCK_MODELS_JSON not found. Run: pi-model-sync sync"
+	if [[ ! -f "$PI_MODELS_JSON" ]]; then
+		print -P "%F{red}✗%f $PI_MODELS_JSON not found"
 		return 1
 	fi
 	command -v jq &>/dev/null || { print -P "%F{red}✗%f jq not found"; return 1 }
+	if ! jq -e '.grove.bedrock' "$PI_MODELS_JSON" &>/dev/null; then
+		print -P "%F{red}✗%f no grove key in $PI_MODELS_JSON. Run: grove sync"
+		return 1
+	fi
 	return 0
 }
 
@@ -25,11 +28,11 @@ pi-models() {
 
 	local pattern="${1:-}"
 	local default_region
-	default_region=$(jq -r '.defaultRegion' "$PI_BEDROCK_MODELS_JSON")
+	default_region=$(jq -r '.grove.bedrock.defaultRegion' "$PI_MODELS_JSON")
 	local current_region="${AWS_REGION:-$default_region}"
 
 	local rows
-	rows=$(jq -r '.models | to_entries[] | "\(.value)\t\(.key)"' "$PI_BEDROCK_MODELS_JSON" | sort)
+	rows=$(jq -r '.grove.bedrock.regions | to_entries[] | "\(.value)\t\(.key)"' "$PI_MODELS_JSON" | sort)
 	if [[ -n "$pattern" ]]; then
 		rows=$(echo "$rows" | grep -i -- "$pattern")
 	fi
@@ -59,12 +62,12 @@ pi-region() {
 	_pi_bedrock_map_check || return 1
 
 	local default_region
-	default_region=$(jq -r '.defaultRegion' "$PI_BEDROCK_MODELS_JSON")
+	default_region=$(jq -r '.grove.bedrock.defaultRegion' "$PI_MODELS_JSON")
 
 	if [[ -z "${1:-}" ]]; then
 		local current="${AWS_REGION:-$default_region}"
 		local n
-		n=$(jq --arg r "$current" -r '.models | to_entries | map(select(.value == $r)) | length' "$PI_BEDROCK_MODELS_JSON")
+		n=$(jq --arg r "$current" -r '[.grove.bedrock.regions | to_entries[] | select(.value == $r)] | length' "$PI_MODELS_JSON")
 		if [[ -n "${AWS_REGION:-}" ]]; then
 			print -P "%F{cyan}$AWS_REGION%f (override active, default is $default_region) -- $n model(s) usable here. See: pi-models"
 		else
@@ -80,7 +83,7 @@ pi-region() {
 	fi
 
 	local known_regions
-	known_regions=$(jq -r '.models | to_entries[] | .value' "$PI_BEDROCK_MODELS_JSON" | sort -u)
+	known_regions=$(jq -r '.grove.bedrock.regions | to_entries[] | .value' "$PI_MODELS_JSON" | sort -u)
 	if ! echo "$known_regions" | grep -qxF "$1"; then
 		print -P "%F{red}✗%f '$1' has no probe-verified usable models. Known regions: $(echo "$known_regions" | tr '\n' ' ')"
 		return 1
@@ -88,13 +91,13 @@ pi-region() {
 
 	export AWS_REGION="$1"
 	local n
-	n=$(jq --arg r "$1" -r '.models | to_entries | map(select(.value == $r)) | length' "$PI_BEDROCK_MODELS_JSON")
+	n=$(jq --arg r "$1" -r '[.grove.bedrock.regions | to_entries[] | select(.value == $r)] | length' "$PI_MODELS_JSON")
 	print -P "%F{green}✓%f AWS_REGION=$1 for this shell -- $n model(s) usable here. See: pi-models"
 }
 
-# Resolve a model id/pattern, switch AWS_REGION to wherever it actually lives,
-# and launch pi with it. Any extra args are passed straight through to pi
-# (e.g. `-p "hi"` for a one-off, or nothing for an interactive session).
+# Resolve a model id/pattern and launch pi with it. The region extension picks
+# the working region from the same grove key at session start. Any extra args
+# are passed straight through to pi (e.g. `-p "hi"` for a one-off).
 # Usage: pi-use <model-id-or-pattern> [pi-args...]
 pi-use() {
 	emulate -L zsh
@@ -109,12 +112,12 @@ pi-use() {
 
 	local resolved region
 	# Exact id match first.
-	region=$(jq -r --arg id "$pattern" '.models[$id] // empty' "$PI_BEDROCK_MODELS_JSON")
+	region=$(jq -r --arg id "$pattern" '.grove.bedrock.regions[$id] // empty' "$PI_MODELS_JSON")
 	if [[ -n "$region" ]]; then
 		resolved="$pattern"
 	else
 		local matches
-		matches=$(jq -r '.models | keys[]' "$PI_BEDROCK_MODELS_JSON" | grep -i -- "$pattern")
+		matches=$(jq -r '.grove.bedrock.regions | keys[]' "$PI_MODELS_JSON" | grep -i -- "$pattern")
 		local n
 		n=$(echo "$matches" | sed '/^$/d' | wc -l | tr -d ' ')
 		if [[ "$n" -eq 0 ]]; then
@@ -127,7 +130,7 @@ pi-use() {
 			return 1
 		fi
 		resolved="$matches"
-		region=$(jq -r --arg id "$resolved" '.models[$id]' "$PI_BEDROCK_MODELS_JSON")
+		region=$(jq -r --arg id "$resolved" '.grove.bedrock.regions[$id]' "$PI_MODELS_JSON")
 	fi
 
 	print -P "%F{green}✓%f $resolved  %F{green}($region)%f"

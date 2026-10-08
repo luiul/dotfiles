@@ -1,10 +1,9 @@
 /**
- * Select the working AWS region recorded by Orchard for the active model.
+ * Select the working AWS region recorded by grove for the active model.
  *
- * https://github.com/luiul/orchard defines the discovery and probe workflow.
- * The region map is independent of Pi's curated enabledModels scope. This
- * extension makes cross-region selections work; it does not prove access or
- * filter Pi's model picker. An unknown ID falls back to the map's default.
+ * https://github.com/luiul/grove defines the discovery and probe workflow.
+ * The region map is the "grove" key inside models.json, a projection of
+ * grove's store. An unknown ID falls back to the map's default region.
  *
  * Bedrock resolves AWS_REGION for each request, so the region must change
  * before the next call, including the initial model of a resumed session.
@@ -15,30 +14,25 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-const MAP_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "bedrock-models.json");
+const MODELS_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "models.json");
 
-interface BedrockModelsMap {
-	generatedAt: string;
+interface RegionMap {
 	defaultRegion: string;
-	models: Record<string, string>;
+	regions: Record<string, string>;
 }
 
-let cached: BedrockModelsMap | undefined;
-function loadMap(): BedrockModelsMap | undefined {
-	// Re-read on each selection or session start so a new Orchard region map
-	// takes effect without restarting Pi.
+function loadMap(): RegionMap | undefined {
+	// Re-read on each selection or session start so a fresh grove sync takes
+	// effect without restarting Pi. A missing grove key (or unreadable file)
+	// leaves whatever AWS_REGION is already set alone rather than guessing.
 	try {
-		cached = JSON.parse(readFileSync(MAP_PATH, "utf8"));
+		const doc = JSON.parse(readFileSync(MODELS_PATH, "utf8"));
+		const map = doc?.grove?.bedrock;
+		if (typeof map?.defaultRegion !== "string" || typeof map?.regions !== "object") return undefined;
+		return map;
 	} catch {
-		// Missing/unreadable map: leave whatever AWS_REGION is already set
-		// (or unset) alone rather than guessing.
-		cached = undefined;
+		return undefined;
 	}
-	return cached;
-}
-
-function regionFor(map: BedrockModelsMap, modelId: string): string {
-	return map.models[modelId] ?? map.defaultRegion;
 }
 
 function syncRegion(provider: string, modelId: string, ctx: ExtensionContext): void {
@@ -51,7 +45,7 @@ function syncRegion(provider: string, modelId: string, ctx: ExtensionContext): v
 	const map = loadMap();
 	if (!map) return;
 
-	const target = regionFor(map, modelId);
+	const target = map.regions[modelId] ?? map.defaultRegion;
 	const previous = process.env.AWS_REGION;
 	if (previous === target) return;
 

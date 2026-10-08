@@ -36,7 +36,7 @@ let lastValidAt = 0;
 let inFlight: Promise<boolean> | undefined;
 
 // Cross-PROCESS guard: separate `pi`/`pi -p` invocations (e.g. many
-// concurrent probes from pi-model-sync, or several terminal tabs
+// concurrent probes from grove, or several terminal tabs
 // starting around the same time) don't share the in-process `inFlight`
 // dedup above, since each is a fresh Node process with its own module state.
 // Without this, several of them can independently decide the session is
@@ -77,7 +77,7 @@ function releaseLoginLock(): void {
 
 // True when the current SSO credentials can call AWS. Retries once on
 // failure: under concurrent process starts (e.g. many `pi -p` invocations at
-// once, as pi-model-sync does when probing), `aws sts
+// once, as grove does when probing), `aws sts
 // get-caller-identity` can transiently fail from SSO-cache-file/API
 // contention even though the session is genuinely valid, which previously
 // caused several processes to each independently decide "expired" and spawn

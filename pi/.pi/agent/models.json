@@ -444,201 +444,203 @@
       "models": [
         {
           "id": "claude-haiku-4-5",
-          "name": "Claude Haiku 4.5 (latest)",
-          "reasoning": true,
-          "input": ["text", "image"],
-          "cost": {
-            "input": 1.1,
-            "output": 5.5,
-            "cacheRead": 0.11,
-            "cacheWrite": 1.4
-          },
           "contextWindow": 200000,
-          "maxTokens": 64000
+          "maxTokens": 64000,
+          "input": ["text", "image"]
         },
         {
           "id": "claude-opus-5-5",
-          "name": "Claude Opus 5.5",
-          "reasoning": true,
-          "input": ["text", "image"],
-          "cost": {
-            "input": 4.4,
-            "output": 22,
-            "cacheRead": 0.22,
-            "cacheWrite": 5.5
-          },
           "contextWindow": 1000000,
-          "maxTokens": 128000
+          "maxTokens": 128000,
+          "input": ["text", "image"]
         },
         {
           "id": "claude-sonnet-5",
-          "name": "Claude Sonnet 5",
-          "reasoning": true,
-          "input": ["text", "image"],
-          "cost": {
-            "input": 2,
-            "output": 10,
-            "cacheRead": 0.2,
-            "cacheWrite": 2.5
-          },
           "contextWindow": 1000000,
-          "maxTokens": 128000
+          "maxTokens": 128000,
+          "input": ["text", "image"]
         },
         {
           "id": "claude-sonnet-5-5",
-          "name": "Claude Sonnet 5.5",
-          "reasoning": true,
-          "input": ["text", "image"],
-          "cost": {
-            "input": 2,
-            "output": 10,
-            "cacheRead": 0.2,
-            "cacheWrite": 2.5
-          },
           "contextWindow": 1000000,
-          "maxTokens": 128000
+          "maxTokens": 128000,
+          "input": ["text", "image"]
         },
         {
           "id": "deepseek-ai/DeepSeek-V4-Flash-0731",
-          "name": "DeepSeek V4 Flash 0731",
-          "reasoning": true,
-          "input": ["text"],
-          "cost": {
-            "input": 0.117,
-            "output": 0.234,
-            "cacheRead": 0.0252,
-            "cacheWrite": 0
-          },
           "contextWindow": 1048576,
-          "maxTokens": 262144
+          "maxTokens": 384000
         },
         {
           "id": "deepseek-ai/DeepSeek-V4-Pro-0813",
-          "name": "DeepSeek V4 Pro 0813",
-          "reasoning": true,
-          "input": ["text"],
-          "cost": {
-            "input": 1.19,
-            "output": 3.56,
-            "cacheRead": 0.119,
-            "cacheWrite": 0
-          },
           "contextWindow": 1048576,
           "maxTokens": 262144
         },
         {
           "id": "deepseek-ai/DeepSeek-V4.1-Flash",
-          "name": "DeepSeek V4.1 Flash",
-          "reasoning": true,
-          "input": ["text", "image"],
-          "cost": {
-            "input": 0.3,
-            "output": 1.2,
-            "cacheRead": 0.03,
-            "cacheWrite": 0
-          },
           "contextWindow": 1048576,
-          "maxTokens": 262144
+          "maxTokens": 262144,
+          "input": ["text", "image"]
         },
         {
           "id": "gpt-5.6-luna",
-          "name": "GPT-5.6 Luna",
-          "reasoning": true,
-          "input": ["text", "image"],
-          "cost": {
-            "input": 0.1,
-            "output": 0.2,
-            "cacheRead": 0.02,
-            "cacheWrite": 0.25
-          },
           "contextWindow": 1000000,
-          "maxTokens": 128000
+          "maxTokens": 128000,
+          "input": ["text", "image"]
         },
         {
           "id": "gpt-6-luna",
-          "name": "GPT-6 Luna",
-          "reasoning": true,
-          "input": ["text", "image"],
-          "cost": {
-            "input": 0.1,
-            "output": 0.5,
-            "cacheRead": 0.01,
-            "cacheWrite": 0.125
-          },
           "contextWindow": 1050000,
-          "maxTokens": 128000
+          "maxTokens": 128000,
+          "input": ["text", "image"]
         },
         {
           "id": "gpt-6-sol",
-          "name": "GPT-6 Sol",
-          "reasoning": true,
-          "input": ["text", "image"],
-          "cost": {
-            "input": 2,
-            "output": 10,
-            "cacheRead": 0.2,
-            "cacheWrite": 2.5
-          },
           "contextWindow": 1050000,
-          "maxTokens": 128000
+          "maxTokens": 128000,
+          "input": ["text", "image"]
         },
         {
           "id": "gpt-6.1-sol",
-          "name": "GPT-6.1 Sol",
-          "reasoning": true,
-          "input": ["text", "image"],
-          "cost": {
-            "input": 2,
-            "output": 10,
-            "cacheRead": 0.1,
-            "cacheWrite": 2.5
-          },
           "contextWindow": 1050000,
-          "maxTokens": 131072
-        },
-        {
-          "id": "moonshotai/Kimi-K3",
-          "name": "Kimi K3",
-          "reasoning": true,
-          "input": ["text", "image"],
-          "cost": {
-            "input": 2.7,
-            "output": 13.5,
-            "cacheRead": 0.27,
-            "cacheWrite": 0
-          },
-          "contextWindow": 1048576,
-          "maxTokens": 262144
-        },
-        {
-          "id": "zai-org/GLM-5.3",
-          "name": "GLM 5.3",
-          "reasoning": true,
-          "input": ["text", "image"],
-          "cost": {
-            "input": 1.26,
-            "output": 3.96,
-            "cacheRead": 0.126,
-            "cacheWrite": 0
-          },
-          "contextWindow": 1048576,
-          "maxTokens": 262144
+          "maxTokens": 131072,
+          "input": ["text", "image"]
         },
         {
           "id": "zai-org/GLM-5.3-Flash",
-          "name": "GLM 5.3 Flash",
-          "reasoning": true,
-          "input": ["text", "image"],
-          "cost": {
-            "input": 0.135,
-            "output": 0.45,
-            "cacheRead": 0.027,
-            "cacheWrite": 0
-          },
           "contextWindow": 1048576,
-          "maxTokens": 131072
+          "maxTokens": 131072,
+          "input": ["text", "image"]
         }
       ]
+    }
+  },
+  "grove": {
+    "generatedAt": "2026-10-08T14:17:06Z",
+    "bedrock": {
+      "defaultRegion": "eu-west-1",
+      "regions": {
+        "ai21.jamba-1-5-large-v1:0": "us-east-1",
+        "ai21.jamba-1-5-mini-v1:0": "us-east-1",
+        "amazon.nova-lite-v1:0": "ap-northeast-1",
+        "amazon.nova-micro-v1:0": "ap-southeast-2",
+        "amazon.nova-pro-v1:0": "ap-southeast-2",
+        "apac.amazon.nova-lite-v1:0": "ap-northeast-1",
+        "apac.amazon.nova-micro-v1:0": "ap-northeast-1",
+        "apac.amazon.nova-pro-v1:0": "ap-northeast-1",
+        "au.anthropic.claude-haiku-4-5-20251001-v1:0": "ap-southeast-2",
+        "au.anthropic.claude-opus-4-6-v1": "ap-southeast-2",
+        "au.anthropic.claude-opus-4-7": "ap-southeast-2",
+        "au.anthropic.claude-opus-4-8": "ap-southeast-2",
+        "au.anthropic.claude-opus-5": "ap-southeast-2",
+        "au.anthropic.claude-opus-5-5": "ap-southeast-2",
+        "au.anthropic.claude-sonnet-4-5-20250929-v1:0": "ap-southeast-2",
+        "au.anthropic.claude-sonnet-4-6": "ap-southeast-2",
+        "au.anthropic.claude-sonnet-5": "ap-southeast-2",
+        "deepseek.v3-v1:0": "ap-northeast-1",
+        "deepseek.v3.2": "ap-northeast-1",
+        "eu.amazon.nova-2-lite-v1:0": "eu-west-1",
+        "eu.amazon.nova-lite-v1:0": "eu-west-1",
+        "eu.amazon.nova-micro-v1:0": "eu-west-1",
+        "eu.amazon.nova-pro-v1:0": "eu-west-1",
+        "eu.anthropic.claude-haiku-4-5-20251001-v1:0": "eu-west-1",
+        "eu.anthropic.claude-opus-4-5-20251101-v1:0": "eu-west-1",
+        "eu.anthropic.claude-opus-4-6-v1": "eu-west-1",
+        "eu.anthropic.claude-opus-4-7": "eu-west-1",
+        "eu.anthropic.claude-opus-4-8": "eu-west-1",
+        "eu.anthropic.claude-opus-5": "eu-west-1",
+        "eu.anthropic.claude-opus-5-5": "eu-west-1",
+        "eu.anthropic.claude-sonnet-4-20250514-v1:0": "eu-west-1",
+        "eu.anthropic.claude-sonnet-4-5-20250929-v1:0": "eu-west-1",
+        "eu.anthropic.claude-sonnet-4-6": "eu-west-1",
+        "eu.anthropic.claude-sonnet-5": "eu-west-1",
+        "eu.anthropic.claude-sonnet-5-5": "eu-west-1",
+        "eu.mistral.pixtral-large-2502-v1:0": "eu-west-1",
+        "global.amazon.nova-2-lite-v1:0": "eu-west-1",
+        "global.anthropic.claude-fable-5": "ap-northeast-1",
+        "global.anthropic.claude-fable-5-1": "ap-northeast-1",
+        "global.anthropic.claude-haiku-4-5-20251001-v1:0": "eu-west-1",
+        "global.anthropic.claude-opus-4-5-20251101-v1:0": "eu-west-1",
+        "global.anthropic.claude-opus-4-6-v1": "eu-west-1",
+        "global.anthropic.claude-opus-4-7": "eu-west-1",
+        "global.anthropic.claude-opus-4-8": "eu-west-1",
+        "global.anthropic.claude-opus-5": "eu-west-1",
+        "global.anthropic.claude-opus-5-5": "eu-west-1",
+        "global.anthropic.claude-sonnet-4-20250514-v1:0": "eu-west-1",
+        "global.anthropic.claude-sonnet-4-5-20250929-v1:0": "eu-west-1",
+        "global.anthropic.claude-sonnet-4-6": "eu-west-1",
+        "global.anthropic.claude-sonnet-5": "eu-west-1",
+        "global.anthropic.claude-sonnet-5-5": "eu-west-1",
+        "global.zai.glm-5.3": "eu-west-1",
+        "google.gemma-3-12b-it": "eu-west-1",
+        "google.gemma-3-27b-it": "eu-west-1",
+        "google.gemma-3-4b-it": "eu-west-1",
+        "jp.amazon.nova-2-lite-v1:0": "ap-northeast-1",
+        "jp.anthropic.claude-haiku-4-5-20251001-v1:0": "ap-northeast-1",
+        "jp.anthropic.claude-opus-4-7": "ap-northeast-1",
+        "jp.anthropic.claude-opus-4-8": "ap-northeast-1",
+        "jp.anthropic.claude-opus-5-5": "ap-northeast-1",
+        "jp.anthropic.claude-sonnet-4-5-20250929-v1:0": "ap-northeast-1",
+        "jp.anthropic.claude-sonnet-4-6": "ap-northeast-1",
+        "meta.llama3-70b-instruct-v1:0": "us-east-1",
+        "meta.llama3-8b-instruct-v1:0": "us-east-1",
+        "minimax.minimax-m2": "eu-west-1",
+        "minimax.minimax-m2.1": "eu-west-1",
+        "minimax.minimax-m2.5": "eu-west-1",
+        "mistral.devstral-2-123b": "eu-west-1",
+        "mistral.magistral-small-2509": "eu-west-1",
+        "mistral.ministral-3-14b-instruct": "eu-west-1",
+        "mistral.ministral-3-3b-instruct": "eu-west-1",
+        "mistral.ministral-3-8b-instruct": "eu-west-1",
+        "mistral.mistral-7b-instruct-v0:2": "eu-west-1",
+        "mistral.mistral-large-2402-v1:0": "eu-west-1",
+        "mistral.mistral-large-3-675b-instruct": "ap-northeast-1",
+        "mistral.mistral-small-2402-v1:0": "us-east-1",
+        "mistral.mixtral-8x7b-instruct-v0:1": "eu-west-1",
+        "mistral.voxtral-mini-3b-2507": "eu-west-1",
+        "mistral.voxtral-small-24b-2507": "eu-west-1",
+        "moonshot.kimi-k2-thinking": "ap-northeast-1",
+        "moonshotai.kimi-k2.5": "ap-northeast-1",
+        "nvidia.nemotron-nano-12b-v2": "eu-west-1",
+        "nvidia.nemotron-nano-3-30b": "eu-west-1",
+        "nvidia.nemotron-nano-9b-v2": "eu-west-1",
+        "nvidia.nemotron-super-3-120b": "eu-west-1",
+        "openai.gpt-oss-120b-1:0": "eu-west-1",
+        "openai.gpt-oss-20b-1:0": "eu-west-1",
+        "qwen.qwen3-235b-a22b-2507-v1:0": "ap-northeast-1",
+        "qwen.qwen3-32b-v1:0": "eu-west-1",
+        "qwen.qwen3-coder-30b-a3b-v1:0": "eu-west-1",
+        "qwen.qwen3-coder-480b-a35b-v1:0": "ap-northeast-1",
+        "qwen.qwen3-coder-next": "ap-southeast-2",
+        "qwen.qwen3-next-80b-a3b": "eu-west-1",
+        "qwen.qwen3-vl-235b-a22b": "eu-west-1",
+        "us.amazon.nova-2-lite-v1:0": "us-east-1",
+        "us.amazon.nova-lite-v1:0": "us-east-1",
+        "us.amazon.nova-micro-v1:0": "us-east-1",
+        "us.amazon.nova-pro-v1:0": "us-east-1",
+        "us.anthropic.claude-haiku-4-5-20251001-v1:0": "us-east-1",
+        "us.anthropic.claude-opus-4-1-20250805-v1:0": "us-east-1",
+        "us.anthropic.claude-opus-4-5-20251101-v1:0": "us-east-1",
+        "us.anthropic.claude-opus-4-6-v1": "us-east-1",
+        "us.anthropic.claude-opus-4-7": "us-east-1",
+        "us.anthropic.claude-opus-4-8": "us-east-1",
+        "us.anthropic.claude-opus-5": "us-east-1",
+        "us.anthropic.claude-opus-5-5": "us-east-1",
+        "us.anthropic.claude-sonnet-4-20250514-v1:0": "us-east-1",
+        "us.anthropic.claude-sonnet-4-5-20250929-v1:0": "us-east-1",
+        "us.anthropic.claude-sonnet-4-6": "us-east-1",
+        "us.anthropic.claude-sonnet-5": "us-east-1",
+        "us.anthropic.claude-sonnet-5-5": "us-east-1",
+        "us.deepseek.r1-v1:0": "us-east-1",
+        "us.meta.llama3-1-70b-instruct-v1:0": "us-east-1",
+        "us.meta.llama3-1-8b-instruct-v1:0": "us-east-1",
+        "us.meta.llama3-3-70b-instruct-v1:0": "us-east-1",
+        "us.mistral.pixtral-large-2502-v1:0": "us-east-1",
+        "us.zai.glm-5.3": "us-east-1",
+        "writer.palmyra-vision-7b": "us-east-1",
+        "zai.glm-4.7-flash": "eu-west-1",
+        "zai.glm-5": "ap-northeast-1"
+      }
     }
   }
 }

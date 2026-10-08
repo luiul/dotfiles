@@ -11,7 +11,7 @@ The [grove README](https://github.com/luiul/grove#vocabulary) defines the terms:
 - `~/projects/personal/grove/store.json`: the incremental database, committed to the grove repo. A model once validated is never probed again.
 - `pi/.pi/agent/models.json`: the projection grove writes (its live file is stowed). Two parts are grove-owned: `providers["ai-model-router"].models` and the top-level `grove` key (the Bedrock region map). Everything else is curated by hand, for example the `amazon-bedrock` cost overrides.
 - `~/.pi/agent/settings.json` is Pi's live file. `pi/.pi/agent/settings.json` is the tracked snapshot, not a Stow symlink. grove never touches either. Save defaults or scope in Pi, then copy the live file to the snapshot.
-- `pi/.pi/agent/model-registry.json` stores explicit metadata overrides. It stays hand-maintained.
+- `~/projects/personal/grove/overlay.json` holds curated per-model fields (display names, corrections) merged into the projection. It replaces the old hand-maintained `model-registry.json`, which is deleted.
 
 The router uses `AI_MODEL_ROUTER_API_KEY` (environment or the gitignored `.env`). Bedrock uses the `sso-bedrock` AWS profile. Never commit resolved credentials. grove never runs `aws sso login` automatically.
 

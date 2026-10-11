@@ -1,0 +1,64 @@
+# Zsh startup speed (SentinelOne workaround)
+
+Why new terminal windows felt slow, what we changed on 2026-10-11, and how to fix or revert the setup if it breaks.
+
+## Symptom
+
+A new login shell (what Ghostty opens) took ~1.1s cold and ~0.85s typical to reach a prompt.
+
+## Root cause
+
+SentinelOne (corporate endpoint security, IT managed) taxes every process spawn by ~250ms cold / ~60ms warm, with zero CPU consumed. Measured: `zsh -fc true` = 0.25s, `/usr/libexec/path_helper -s` = 0.26s, `python3 -c pass` = 0.66s, while trivial binaries are instant. The startup chain spawned four taxed processes serially:
+
+1. zsh itself (unavoidable).
+2. `path_helper`, run by `/etc/zprofile` for login shells.
+3. `locale`, run by `/etc/zshrc` (stock Apple file) for interactive shells.
+4. A child zsh via zpty, spawned by `znap source` on every startup just to check the plugin repo exists.
+
+The dotfiles themselves were never the problem: all of `.zsh_config` costs ~10ms, the znap eval caches are zcompiled and cost ~20ms total.
+
+## What changed
+
+1. `zsh/.zshenv` (new file, stowed to `~/.zshenv`): `unsetopt GLOBAL_RCS` skips `/etc/zprofile` and `/etc/zshrc`, removing spawns 2 and 3 (~0.5s). A `path` array in the same file replicates path_helper's output from `/etc/paths` and `/etc/paths.d`, so PATH is byte-identical to before (verified by diff). Cargo is sourced before the array so `~/.cargo/bin` keeps its old position near the end of PATH.
+2. `zsh/.zshrc`: zsh-autocomplete is sourced directly (`~/repos/marlonrichert/zsh-autocomplete/zsh-autocomplete.plugin.zsh`) instead of `znap source`, removing spawn 4 (~0.26s). znap stays for the `znap eval` caches, which are cheap.
+3. `zsh/.zshrc`: the trailing `compinit` call was removed. zsh-autocomplete runs compinit itself (async). A `compinit -C` fallback runs only if the plugin is missing. Also added `setopt COMBINING_CHARS`, the one useful setting `/etc/zshrc` had.
+4. `zsh/.zsh_config/path.zsh`: comment only, points to `.zshenv` for the base paths.
+
+Result: warm startup 0.09 to 0.5s → ~0.06s. Cold start should drop from ~1.1s to ~0.35s (three taxed spawns removed); cold numbers could not be re-measured right after the change because SentinelOne caches exec verdicts and everything was warm.
+
+Verified live in real Ghostty windows by replicating Ghostty's exact launch env (`ZDOTDIR=<Ghostty resources>/shell-integration/zsh`, which sources `~/.zshenv` before globals would run): `options[globalrcs]` is `off`, PATH identical, completions, fzf, zoxide, syntax highlighting all load.
+
+## Async git prompt (2026-10-11 follow-up)
+
+`prompt.zsh` used to run `git status --porcelain=v2 --branch` synchronously on EVERY prompt render: one taxed spawn per prompt, ~270ms in git repos (0.005s CPU, pure spawn tax). Now the git segment is computed in a background subshell started from a precmd hook. The prompt renders instantly (~1.4ms) with the last known segment; a `zle -F` fd watcher applies the finished segment and redraws via `zle .reset-prompt`, so git info pops in ~0.3s after the prompt. Exit code survives in `_my_prompt_last_exit` because `$?` is not reliable during async redraws. Segment clears on chpwd; in-flight workers are replaced per render (closing the fd SIGPIPEs orphans). Revert instructions are in a comment at the top of `prompt.zsh`.
+
+Verified in tmux: git segment pops in without blocking, exit indicator `[1]` shows after failed commands, typed buffers survive the redraw, no fd leaks, no flicker with zsh-autocomplete.
+
+Result: new window in a git repo ≈ 0.35s to usable prompt (was ~1.35s); prompt re-render after each command ~1.4ms (was ~270ms).
+
+Note when testing speed: always use a brand-new window or tab. The Ghostty quick terminal reuses its original session, so it never re-runs startup.
+
+## If something breaks
+
+- Tools not found or wrong PATH: check `echo $options[globalrcs]` prints `off`, then compare `echo $PATH` against the array in `zsh/.zshenv`. If IT adds a file under `/etc/paths.d`, add its entries to that array.
+- Completions broken: check the plugin still exists at `~/repos/marlonrichert/zsh-autocomplete`. If it was deleted, either re-clone it or remove the source block in `.zshrc`. The `compinit -C` fallback then provides basic completions.
+- Shell errors on startup mentioning `.zshenv`: the stow symlink may be stale. Re-run `cd ~/dotfiles && stow -R zsh`.
+
+### Full revert
+
+1. In `zsh/.zshenv`: delete `unsetopt GLOBAL_RCS` and the `path=(...)` array. Keep the cargo line.
+2. In `zsh/.zshrc`: replace the direct-source block with `znap source marlonrichert/zsh-autocomplete`, and restore `autoload -Uz compinit` + `compinit` at the end.
+3. `cd ~/dotfiles && stow -R zsh`.
+
+A copy of the pre-change `.zshenv` is at `~/.zshenv.pre-stow-bak` (it only contained the cargo line).
+
+## Known trade-offs
+
+- `/etc/zshrc` also set history defaults (ours live in `.zsh_config/history.zsh`), terminfo key bindings (our config sets its own), and sourced `/etc/zshrc_Apple_Terminal` (only used by Terminal.app, which we do not use).
+- MANPATH from path_helper is not replicated; `man` finds Homebrew manpages via PATH anyway.
+- macOS or IT changes to `/etc/paths` and `/etc/paths.d` no longer apply automatically. Sync the `.zshenv` array manually.
+- To update zsh-autocomplete: `git -C ~/repos/marlonrichert/zsh-autocomplete pull`.
+
+## Re-benchmarking
+
+Run in bash (not zsh): `TIMEFORMAT='%R s'; for i in {1..5}; do time /bin/zsh -l -i -c exit; done`. Expect ~0.3 to 0.4s cold, ~0.06s warm. Caveats: `/usr/bin/time` with an env assignment prefix mis-measures in sandboxes (reports 0.00s), and SentinelOne caching makes identical runs vary 3x, so only compare before/after within one session. For per-line hotspots use an xtrace with timestamps: `zmodload zsh/datetime; setopt PROMPT_SUBST XTRACE; PS4='+$EPOCHREALTIME %N:%i '` from a temp `ZDOTDIR` wrapper that then sources `~/.zshrc`.

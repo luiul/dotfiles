@@ -127,6 +127,8 @@ cask "font-jetbrains-mono-nerd-font"
 cask "font-meslo-lg-nerd-font"
 # Set of tools to manage resources and applications hosted on Google Cloud
 cask "gcloud-cli"
+# Code editor focused on stability, without AI, subscriptions, or telemetry
+cask "gram"
 # Speech to text application
 cask "handy"
 # Free and open-source media player

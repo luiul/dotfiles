@@ -443,6 +443,241 @@
       "compat": { "supportsReasoningEffort": true },
       "models": [
         {
+          "id": "Fast",
+          "reasoning": true,
+          "input": ["text"],
+          "cost": {
+            "input": 0.117,
+            "output": 0.234,
+            "cacheRead": 0.0252,
+            "cacheWrite": 0
+          },
+          "contextWindow": 1048576,
+          "maxTokens": 262144
+        },
+        {
+          "id": "Heavy",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 4.4,
+            "output": 22,
+            "cacheRead": 0.22,
+            "cacheWrite": 5.5
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 128000
+        },
+        {
+          "id": "Smart",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 0.135,
+            "output": 0.45,
+            "cacheRead": 0.027,
+            "cacheWrite": 0
+          },
+          "contextWindow": 1048576,
+          "maxTokens": 131072
+        },
+        {
+          "id": "baseten/deepseek-ai/DeepSeek-V4-Flash-0731",
+          "name": "DeepSeek V4 Flash 0731",
+          "reasoning": true,
+          "input": ["text"],
+          "cost": {
+            "input": 0.117,
+            "output": 0.234,
+            "cacheRead": 0.0252,
+            "cacheWrite": 0
+          },
+          "contextWindow": 1048576,
+          "maxTokens": 262144
+        },
+        {
+          "id": "baseten/deepseek-ai/DeepSeek-V4-Pro-0813",
+          "name": "DeepSeek V4 Pro 0813",
+          "reasoning": true,
+          "input": ["text"],
+          "cost": {
+            "input": 1.19,
+            "output": 3.56,
+            "cacheRead": 0.119,
+            "cacheWrite": 0
+          },
+          "contextWindow": 1048576,
+          "maxTokens": 262144
+        },
+        {
+          "id": "baseten/deepseek-ai/DeepSeek-V4.1-Flash",
+          "name": "DeepSeek V4.1 Flash",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 0.3,
+            "output": 1.2,
+            "cacheRead": 0.03,
+            "cacheWrite": 0
+          },
+          "contextWindow": 1048576,
+          "maxTokens": 262144
+        },
+        {
+          "id": "baseten/moonshotai/Kimi-K3",
+          "name": "Kimi K3",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 2.7,
+            "output": 13.5,
+            "cacheRead": 0.27,
+            "cacheWrite": 0
+          },
+          "contextWindow": 1048576,
+          "maxTokens": 262144
+        },
+        {
+          "id": "baseten/zai-org/GLM-5.3",
+          "name": "GLM 5.3",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 1.26,
+            "output": 3.96,
+            "cacheRead": 0.126,
+            "cacheWrite": 0
+          },
+          "contextWindow": 1048576,
+          "maxTokens": 262144
+        },
+        {
+          "id": "baseten/zai-org/GLM-5.3-Flash",
+          "name": "GLM 5.3 Flash",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 0.135,
+            "output": 0.45,
+            "cacheRead": 0.027,
+            "cacheWrite": 0
+          },
+          "contextWindow": 1048576,
+          "maxTokens": 131072
+        },
+        {
+          "id": "bedrock/converse/global.openai.gpt-5.6-luna",
+          "name": "GPT-5.6 Luna",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 0.1,
+            "output": 0.2,
+            "cacheRead": 0.02,
+            "cacheWrite": 0.25
+          },
+          "contextWindow": 1050000,
+          "maxTokens": 128000
+        },
+        {
+          "id": "bedrock/converse/global.openai.gpt-6-luna",
+          "name": "GPT-6 Luna",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 0.1,
+            "output": 0.5,
+            "cacheRead": 0.01,
+            "cacheWrite": 0.125
+          },
+          "contextWindow": 1050000,
+          "maxTokens": 128000
+        },
+        {
+          "id": "bedrock/converse/global.openai.gpt-6-sol",
+          "name": "GPT-6 Sol",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 2,
+            "output": 10,
+            "cacheRead": 0.2,
+            "cacheWrite": 2.5
+          },
+          "contextWindow": 1050000,
+          "maxTokens": 128000
+        },
+        {
+          "id": "bedrock/converse/global.openai.gpt-6.1-sol",
+          "name": "GPT-6.1 Sol",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 2,
+            "output": 10,
+            "cacheRead": 0.1,
+            "cacheWrite": 2.5
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 131072
+        },
+        {
+          "id": "bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "name": "Claude Haiku 4.5 (latest)",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 1.1,
+            "output": 5.5,
+            "cacheRead": 0.11,
+            "cacheWrite": 1.4
+          },
+          "contextWindow": 200000,
+          "maxTokens": 64000
+        },
+        {
+          "id": "bedrock/eu.anthropic.claude-opus-5-5",
+          "name": "Claude Opus 5.5",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 4.4,
+            "output": 22,
+            "cacheRead": 0.22,
+            "cacheWrite": 5.5
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 128000
+        },
+        {
+          "id": "bedrock/global.anthropic.claude-sonnet-5",
+          "name": "Claude Sonnet 5",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 2,
+            "output": 10,
+            "cacheRead": 0.2,
+            "cacheWrite": 2.5
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 128000
+        },
+        {
+          "id": "bedrock/global.anthropic.claude-sonnet-5-5",
+          "name": "Claude Sonnet 5.5",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 2,
+            "output": 10,
+            "cacheRead": 0.2,
+            "cacheWrite": 2.5
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 128000
+        },
+        {
           "id": "claude-haiku-4-5",
           "name": "Claude Haiku 4.5 (latest)",
           "reasoning": true,
@@ -551,7 +786,7 @@
             "cacheRead": 0.02,
             "cacheWrite": 0.25
           },
-          "contextWindow": 1000000,
+          "contextWindow": 1050000,
           "maxTokens": 128000
         },
         {
@@ -593,7 +828,7 @@
             "cacheRead": 0.1,
             "cacheWrite": 2.5
           },
-          "contextWindow": 1050000,
+          "contextWindow": 1000000,
           "maxTokens": 131072
         },
         {
@@ -642,7 +877,7 @@
     }
   },
   "grove": {
-    "generatedAt": "2026-10-08T18:56:33Z",
+    "generatedAt": "2026-10-12T20:34:11Z",
     "bedrock": {
       "defaultRegion": "eu-west-1",
       "regions": {
@@ -664,6 +899,7 @@
         "au.anthropic.claude-sonnet-4-5-20250929-v1:0": "ap-southeast-2",
         "au.anthropic.claude-sonnet-4-6": "ap-southeast-2",
         "au.anthropic.claude-sonnet-5": "ap-southeast-2",
+        "au.anthropic.claude-sonnet-5-5": "ap-southeast-2",
         "deepseek.v3-v1:0": "ap-northeast-1",
         "deepseek.v3.2": "ap-northeast-1",
         "eu.amazon.nova-2-lite-v1:0": "eu-west-1",

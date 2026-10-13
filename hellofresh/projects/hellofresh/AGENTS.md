@@ -156,7 +156,7 @@ CLI-first. Reach every system through its CLI, or a documented `curl` REST recip
 | Databricks | `databricks` CLI | OAuth |
 | AWS (S3, etc.) | `aws` CLI | SSO (`hfsso` session, browser) |
 | Google Docs | `md2gdoc` | service account |
-| Slack | approved official Slack MCP first; `slack-hf-read` browser fallback | separate OAuth for the current client; no credential capture or replay |
+| Slack | approved official Slack MCP first; `slack-reader` browser fallback (shim: `slack-hf-read`) | separate OAuth for the current client; no credential capture or replay |
 | HelloDev KB | MCP (pi & Claude, via `pi-mcp-adapter`) | none required |
 
 Do not use the Atlassian MCP for Jira or Confluence; the `jira` CLI recipes below and the REST recipes in `docs/confluence-rest.md` replace it.
@@ -206,27 +206,28 @@ Conventions:
 
 No Slack MCP is configured in Pi. The official endpoint was removed because it requires an approved OAuth client and rejects dynamic registration. Do not add it again without explicit user approval and a supported auth setup.
 
-If no authorized MCP read path is available, use `slack-hf-read`, under `~/dotfiles/hellofresh/slack-hf-read/`, as the browser fallback. It reads rendered UI through the dedicated Brave Beta profile without token capture, cookie extraction, or hand-built APIs. Normal navigation may change read state. Do not restore the retired credential-replay `slack-mcp-server`, or use `slackcli`, `slack-relogin`, `slack-hf-session`, or `slackdump`. Shared manual tools and Claude's configuration remain unchanged.
+If no authorized MCP read path is available, use `slack-reader` (`~/projects/personal/slack-reader`, https://github.com/luiul/slack-reader) as the browser fallback. It reads rendered UI through the dedicated Brave Beta profile without token capture, cookie extraction, or hand-built APIs, and re-derives the browser from the live loopback CDP listener on every command instead of trusting recorded PIDs or tab IDs. The legacy names `slack-hf-read` and `slack-hf-session-login` remain as shims into it. Normal navigation may change read state. Do not restore the retired credential-replay `slack-mcp-server`, or use `slackcli`, `slack-relogin`, `slack-hf-session`, or `slackdump`. Shared manual tools and Claude's configuration remain unchanged.
 
 Fallback is for an unavailable integration or unsupported read operation, not a way around access controls. On MCP auth loss, access denial, rate limiting, or suspected account-wide revocation, stop and report the error. Do not switch clients or retry credentials to work around it. Keep the browser's persistent auth pause and explicit recovery rules.
 
-**Normal workflow is link-only.** The user supplies a Slack permalink. Use it with the MCP's exact-message or thread read tool, checking the linked timestamp. If the authorized MCP is unavailable, use `slack-hf-read read '<url>' --limit 1`. Do not browse the sidebar or search when a link is supplied. The CLI's automatic permalink opening has not passed live verification. Extraction of the exact already-rendered message has passed. A `ui_changed` result means no message was read, not permission to use credential replay.
+**Normal workflow is link-only.** The user supplies a Slack permalink. Use it with the MCP's exact-message or thread read tool, checking the linked timestamp. If the authorized MCP is unavailable, use `slack-reader read '<url>' --limit 1`. Do not browse the sidebar or search when a link is supplied. Exact reads of thread replies pass live verification; exact reads of in-channel parent messages can fail with `ui_changed` when the virtualized list does not render them (use `replies` for thread content). A `ui_changed` result means no message was read, not permission to use credential replay.
 
 | Command | Purpose |
 |---|---|
-| `slack-hf-read read '<url>' --limit 1` | Exact linked message only, fails closed if not rendered |
-| `slack-hf-read status` | Local diagnostics only, no Slack traffic |
-| `slack-hf-read pause` | Stop reads across Pi runs |
-| `slack-hf-read channels --limit N` | Rendered joined channels only |
-| `slack-hf-read history <channel_id> --limit N [--after YYYY-MM-DD] [--before YYYY-MM-DD]` | Rendered history only |
-| `slack-hf-read replies <channel_id> <thread_ts> --limit N` | Rendered thread messages only |
-| `slack-hf-read search '<query>' --limit N` | Rendered search results only |
-| `slack-hf-read doctor` | Point-in-time UI verification, not recovery |
-| `slack-hf-read await-login` | Passive explicit login verification, clears pause on success |
+| `slack-reader read '<url>' --limit 1` | Exact linked message only, fails closed if not rendered |
+| `slack-reader status` | Local diagnostics only, no Slack traffic |
+| `slack-reader pause` | Stop reads across Pi runs |
+| `slack-reader channels --limit N` | Rendered joined channels only |
+| `slack-reader history <channel_id> --limit N [--after YYYY-MM-DD] [--before YYYY-MM-DD]` | Rendered history only |
+| `slack-reader replies <channel_id> <thread_ts> --limit N` | Rendered thread messages only |
+| `slack-reader search '<query>' --limit N` | Rendered search results only; currently fails closed on the ia4 search UI (slack-reader issue 3) |
+| `slack-reader doctor` | Point-in-time UI verification, not recovery |
+| `slack-reader await-login` | Passive explicit login verification, clears pause on success |
+| `slack-reader reset` | Terminate the validated managed browser and clear stale singletons/hints |
 
 Limits range from 1 through 100. Use channel IDs from Slack URLs. Convert a permalink's `p<digits>` timestamp by inserting a decimal before its last six digits. Results use `schema_version:1`, `source:"headed_ui"`, `data`, and `coverage`. Treat `coverage.complete:false` as partial. There are no cursor guarantees or automatic retries. Dates filter rendered history only, and `--before` is exclusive.
 
-**Recovery:** Confirm desktop Slack is signed in first. Run `slack-hf-session-login` to start the managed headed profile. The user completes SSO manually. Run `slack-hf-read await-login` to observe the workspace without repeated auth tests. Leave the window open for reads, minimized if desired. Closing it stops reads until it is reopened. The helper never launches a hidden headless browser. An old unmanaged holder must be closed by the user before the updated helper starts it. Do not close daily Brave or unrelated tabs.
+**Recovery:** Confirm desktop Slack is signed in first. Run `slack-reader login` (or the `slack-hf-session-login` shim) to start or adopt the managed headed profile for manual SSO, then `slack-reader await-login` to verify the workspace; the window closes itself once verified. **Reads are self-contained:** `read`, `history`, `replies`, `channels`, `search`, and `doctor` open the managed window on demand and close it when the command finishes, success or failure, so no window lingers between uses (a cold read costs about 20 seconds; export `SLACK_READER_KEEP_OPEN=1` to keep the window across a batch of commands). The helper never launches a hidden headless browser. If anything is wedged, run `slack-reader reset` (terminates only a validated managed browser and cleans stale singletons), then `login` again. Do not close daily Brave or unrelated tabs.
 
 Auth loss or sign-in redirection persists a shared pause. Do not retry reads or loop login attempts. Only explicit successful login verification clears the pause. The shared owned lock covers both reads and recovery. Do not remove a lock manually while its owner may be alive. `status` reports local lock and pause information without testing Slack credentials.
 

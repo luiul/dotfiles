@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Pi Slack reader. Validation and the shared owned lock live in the Node CLI.
-# No browser launch or credential replay occurs in this wrapper.
+# Compatibility shim. The implementation moved to slack-reader
+# (~/projects/personal/slack-reader, https://github.com/luiul/slack-reader).
+# The command name stays so existing docs and muscle memory keep working.
 set -euo pipefail
-PROJECT_DIR="${SLACK_HF_READ_DIR:-$HOME/dotfiles/hellofresh/slack-hf-read}"
-exec node "$PROJECT_DIR/src/main.ts" "$@"
+exec "${SLACK_READER_DIR:-$HOME/projects/personal/slack-reader}/bin/slack-reader" "$@"

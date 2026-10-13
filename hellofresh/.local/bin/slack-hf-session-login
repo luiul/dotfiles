@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Open only the managed headed Brave Beta profile under the shared CLI lock.
-# The user completes SSO. The passive watcher verifies the rendered workspace.
-# Leave the window open for reads, but session expiry and revocation remain possible.
+# Compatibility shim. The implementation moved to slack-reader
+# (~/projects/personal/slack-reader, https://github.com/luiul/slack-reader).
+# Starts (or adopts) the managed headed Brave Beta profile; the user completes SSO.
 set -euo pipefail
 if [[ $# != 0 ]]; then
   printf '%s\n' 'Usage: slack-hf-session-login' >&2
   exit 2
 fi
-PROJECT_DIR="${SLACK_HF_READ_DIR:-$HOME/dotfiles/hellofresh/slack-hf-read}"
-exec node "$PROJECT_DIR/src/main.ts" login
+exec "${SLACK_READER_DIR:-$HOME/projects/personal/slack-reader}/bin/slack-reader" login

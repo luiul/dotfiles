@@ -28,15 +28,20 @@ Result: warm startup 0.09 to 0.5s → ~0.06s. Cold start should drop from ~1.1s 
 
 Verified live in real Ghostty windows by replicating Ghostty's exact launch env (`ZDOTDIR=<Ghostty resources>/shell-integration/zsh`, which sources `~/.zshenv` before globals would run): `options[globalrcs]` is `off`, PATH identical, completions, fzf, zoxide, syntax highlighting all load.
 
-## Async git prompt (2026-10-11 follow-up)
+## Async git prompt, then gitstatusd (2026-10-11 follow-ups)
 
-`prompt.zsh` used to run `git status --porcelain=v2 --branch` synchronously on EVERY prompt render: one taxed spawn per prompt, ~270ms in git repos (0.005s CPU, pure spawn tax). Now the git segment is computed in a background subshell started from a precmd hook. The prompt renders instantly (~1.4ms) with the last known segment; a `zle -F` fd watcher applies the finished segment and redraws via `zle .reset-prompt`, so git info pops in ~0.3s after the prompt. Exit code survives in `_my_prompt_last_exit` because `$?` is not reliable during async redraws. Segment clears on chpwd; in-flight workers are replaced per render (closing the fd SIGPIPEs orphans). Revert instructions are in a comment at the top of `prompt.zsh`.
+`prompt.zsh` used to run `git status --porcelain=v2 --branch` synchronously on EVERY prompt render: one taxed spawn per prompt, ~270ms in git repos (0.005s CPU, pure spawn tax). Two-stage fix:
 
-Verified in tmux: git segment pops in without blocking, exit indicator `[1]` shows after failed commands, typed buffers survive the redraw, no fd leaks, no flicker with zsh-autocomplete.
+1. Async subshell: a precmd hook forks a background subshell that runs plain `git status`; a `zle -F` fd watcher applies the segment via `zle .reset-prompt` (~1.4ms render, info pops in ~0.3s later, can be one render stale).
+2. gitstatusd (current): `~/repos/gitstatus` (romkatv/gitstatus, daemon binary in `~/.cache/gitstatus`) answers git segment queries in-process over zpty, no per-render exec. `gitstatus_start` costs one taxed exec (~0.4s cold), so it is deferred to idle time with `sched +2` / `sched +10`; until the daemon is up (or if it fails), the async subshell path covers the segment. The daemon query runs in precmd because my_prompt executes inside `$(...)` and cannot set variables. Segment output is byte-identical to the old path (verified for dirty tree, ahead, stash, detached HEAD with tag and sha, and MERGING).
 
-Result: new window in a git repo ≈ 0.35s to usable prompt (was ~1.35s); prompt re-render after each command ~1.4ms (was ~270ms).
+Exit code survives in `_my_prompt_last_exit` because `$?` is not reliable during async redraws. A `took Ns` duration segment (threshold 3s, `1m05s` over a minute) times commands via EPOCHREALTIME in preexec/precmd; note `int()` does not exist in macOS zsh arithmetic, use integer-typed vars to truncate.
 
-Note when testing speed: always use a brand-new window or tab. The Ghostty quick terminal reuses its original session, so it never re-runs startup.
+Verified in tmux: parity of both segment builders, fallback pop-in before daemon start, typed buffers survive redraws, no fd leaks, no flicker with zsh-autocomplete, duration and exit indicator correct.
+
+Result: new window in a git repo ≈ 0.3s to usable prompt (was ~1.35s); per-command cost ~3ms (precmd with daemon query + render, was ~270ms); zero git execs per render (was one per render).
+
+Note when testing speed: always use a brand-new window or tab. The Ghostty quick terminal reuses its original session, so it never re-runs startup. gitstatusd needs a tty (job control): in non-tty shells it fails to start and the async fallback covers the segment. Update gitstatus: `git -C ~/repos/gitstatus pull` (binary cache survives).
 
 ## If something breaks
 

@@ -147,6 +147,25 @@ The current replay evidence supports the new defaults. Across the captured obser
 3. **Review `/ste-lite candidates` periodically** and promote genuinely recurring offenders with `/ste-lite promote`. This is the only way the approved-word list grows. It will not happen on its own, by design.
 4. **Decide on `strict` mode** only after `nudge` has run cleanly for a while. It can block a `write` or `edit` on unambiguous not-approved-word findings, including anything promoted via step 3.
 
+## Router per-request image cap
+
+`router-image-cap.ts` keeps requests to the HelloFresh AI Model Router under Baseten's per-request image limit. Baseten rejects requests to the GLM model group with more than 8 images (`litellm.BadRequestError: BasetenException - Too many images: N (max 8)`), and pi resends the full transcript every turn, so image-heavy sessions permanently 400 once accumulated images cross the limit.
+
+Before each LLM call, the `context` handler counts image parts across the transcript. Over the cap, it keeps the most recent 8 images and replaces the oldest ones with a text placeholder naming the source path (resolved from the matching `toolCall` arguments, e.g. the `read` tool's path), so the model knows an image existed and can re-read it. The `context` event is request-local: pi restores the transcript afterward, so session logs keep every image and only the outgoing request is trimmed. Originals are never mutated; changed messages are shallow copies.
+
+- Scope: only models on the `ai-model-router` provider. Direct Bedrock and others keep full image history. No model, no trimming.
+- Cap: 8, override with `PI_IMAGE_CAP_MAX=<n>` (also used by the tests). `/image-cap` shows the active cap and whether the current model is scoped.
+- One TUI notice per changed drop count, not per request: within a run the same images are trimmed on every LLM call, so per-request notices would spam. Subagent and print sessions trim silently (`ctx.hasUI` guard).
+- Handlers are wrapped in try/catch: a trimming bug can never break the request chain; worst case the pre-existing 400 behavior returns.
+
+Verification from the repository root:
+
+```sh
+bun scripts/test-router-image-cap.ts
+```
+
+The mock harness covers cap math (keep the N most recent), placeholder text and source paths, provider scoping, transcript immutability, notify dedupe, string content, and the env override. Live check: `pi --no-extensions -e ~/.pi/agent/extensions/router-image-cap.ts --thinking off -p 'Reply with only the word COUNTED.' @img1.png ... @img11.png` in a dir with 11 tiny PNGs. Without the extension that request 400s with the exact Baseten error; with it, the model replies (verified 2026-10-15 against the live router).
+
 ## Bedrock GPT 5.6 reasoning
 
 `bedrock-openai-reasoning.ts` is a compatibility extension for OpenAI GPT 5.6 models invoked through Amazon Bedrock's Converse API.

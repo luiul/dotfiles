@@ -37,6 +37,8 @@ brew "fresh-editor"
 brew "fzf"
 # GitHub command-line tool
 brew "gh"
+# Interpreter for PostScript and PDF
+brew "ghostscript"
 # Distributed revision control system
 brew "git"
 # Syntax-highlighting pager for git and diff output

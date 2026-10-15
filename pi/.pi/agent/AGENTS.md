@@ -101,7 +101,7 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Worktree lifecycle is owned by [worktrunk](https://worktrunk.dev) (`wt`), configured in `~/dotfiles/worktrunk/.config/worktrunk/config.toml`.
 - To create or switch a worktree as an agent: `WORKTRUNK_AGENT=1 wt switch --create <branch> --no-cd --yes --format json`
 - The env var skips only the VS Code window. All setup hooks still run (venv symlink, copy-ignored, known-repos registry, AGENTS.md links), so the worktree stays a normal registered worktree visible in `cop list` and understory.
-- Never use `cop new` (human facing, opens VS Code) or raw `git worktree add` (skips hooks and registry).
+- `cop new` does not open a VS Code window by default (pass `--open`/`-o` to open one), so it is safe for agents too. Never use raw `git worktree add` (skips hooks and registry).
 
 ## HelloFresh Business Impact
 

@@ -6,11 +6,11 @@
 // header totals, Panel gutter framing, and Repo state annotation (unstaged/staged/committed/untracked,
 // refresh-point timing, non-repo files, restore recompute).
 import { execFile } from "node:child_process"
-import { mkdtemp, rm, writeFile, unlink } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile, unlink } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import { promisify } from "node:util"
-import ext from "../pi/.pi/agent/extensions/filechanges.ts"
+import ext, { __setTmpRootsForTest } from "../pi/.pi/agent/extensions/filechanges.ts"
 
 const execFileAsync = promisify(execFile)
 
@@ -83,8 +83,8 @@ async function fire(pi: MockPi, event: string, ev: any, ctx: MockCtx) {
 // Simulate one edit/write tool call cycle against a real file.
 async function editFile(pi: MockPi, ctx: MockCtx, id: string, path: string, content: string | null) {
   await fire(pi, "tool_call", { toolName: "write", input: { path }, toolCallId: id }, ctx)
-  if (content === null) await unlink(join(ctx.cwd, path)).catch(() => {})
-  else await writeFile(join(ctx.cwd, path), content, "utf-8")
+  if (content === null) await unlink(resolve(ctx.cwd, path)).catch(() => {})
+  else await writeFile(resolve(ctx.cwd, path), content, "utf-8")
   await fire(pi, "tool_result", { toolName: "write", toolCallId: id, isError: false }, ctx)
   await sleep(2) // keep updatedAt ordering deterministic
 }
@@ -99,6 +99,10 @@ async function bash(pi: MockPi, ctx: MockCtx, id: string, command: string, durin
 
 const dir = await mkdtemp(join(tmpdir(), "fc-test-"))
 await execFileAsync("git", ["init"], { cwd: dir })
+// The tmp filter would swallow every fixture below (they all live in the real
+// tmpdir), so the seam points it at a dedicated fixture root instead.
+const tmpExcluded = await mkdtemp(join(tmpdir(), "fc-tmpexcluded-"))
+__setTmpRootsForTest([tmpExcluded])
 // A file committed at HEAD, for bash and restore scenarios.
 await writeFile(join(dir, "committed.txt"), "base\n", "utf-8")
 await execFileAsync("git", ["add", "."], { cwd: dir })
@@ -531,6 +535,87 @@ check(
   ((ctxSC.panel() ?? []).find((l) => l.includes("tracked.txt")) ?? "").includes("<muted>unstaged</muted>"),
 )
 
+// --- Scenario 13: tmp files are filtered out at every entry point ---
+// The seam points at tmpExcluded (set at the top). A second root inside the
+// cwd repo exercises the git-diff entry point too: files under it are
+// visible to `git status` but must still be filtered.
+const dir13 = await mkdtemp(join(tmpdir(), "fc-tmpfilter-"))
+await execFileAsync("git", ["init"], { cwd: dir13 })
+await writeFile(join(dir13, "keep.txt"), "base\n", "utf-8")
+await execFileAsync("git", ["add", "."], { cwd: dir13 })
+await execFileAsync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "init"], { cwd: dir13 })
+const tmpRoot = join(dir13, "tmp-excluded")
+await mkdir(tmpRoot)
+__setTmpRootsForTest([tmpExcluded, tmpRoot])
+
+const pi13 = new MockPi()
+const ctx13 = new MockCtx(dir13)
+await ext(pi13 as any)
+
+// 13a: a write tool call to a file in the tmp root tracks nothing.
+const tmpWrite = join(tmpRoot, "w.txt")
+await fire(pi13, "tool_call", { toolName: "write", input: { path: tmpWrite }, toolCallId: "t13a" }, ctx13)
+await writeFile(tmpWrite, "x\n", "utf-8")
+await fire(pi13, "tool_result", { toolName: "write", toolCallId: "t13a", isError: false }, ctx13)
+check("s13: write to tmp path not tracked", ctx13.panel() === undefined)
+
+// 13b: a bash call that modifies a sniffed candidate in the tmp root tracks
+// nothing, neither via the sniff nor via the git diff (the tmp root is a
+// subdir of the cwd repo, so git status sees it too).
+const tmpBash = join(tmpRoot, "b.txt")
+await bash(pi13, ctx13, "t13b", `printf 'y\n' > ${tmpBash}`, async () => {
+  await writeFile(tmpBash, "y\n", "utf-8")
+})
+check("s13: bash-written tmp file not tracked (sniff and git diff)", ctx13.panel() === undefined)
+
+// 13c: editor temp names (*.tmp, *.swp, ...) inside the repo are ignored via the pattern list.
+await bash(pi13, ctx13, "t13c", "echo swap > notes.tmp", async () => {
+  await writeFile(join(dir13, "notes.tmp"), "swap\n", "utf-8")
+})
+check("s13: bash-written *.tmp file not tracked", !(ctx13.panel() ?? []).some((l) => l.includes("notes.tmp")))
+await editFile(pi13, ctx13, "t13c2", "other.swp", "s\n")
+check("s13: written *.swp file not tracked", !(ctx13.panel() ?? []).some((l) => l.includes("other.swp")))
+
+// 13d: normal files in the same repo are still tracked (no over-filtering).
+await editFile(pi13, ctx13, "t13d", "normal.txt", "n\n")
+check("s13: normal file still tracked", (ctx13.panel()?.join("\n") ?? "").includes("created  normal.txt (+1/-0)"))
+
+// 13e: restored persisted entries with a tmp absPath are dropped by sanitizeRestored.
+const pi13b = new MockPi()
+const ctx13b = new MockCtx(dir13)
+ctx13b.branchEntries = [
+  {
+    type: "custom",
+    customType: "filechanges:session-set",
+    data: {
+      items: [
+        { path: "normal.txt", absPath: join(dir13, "normal.txt"), kind: "created", added: 1, removed: 0, binary: false, updatedAt: 1 },
+        { path: "w.txt", absPath: tmpWrite, kind: "created", added: 1, removed: 0, binary: false, updatedAt: 2 },
+      ],
+    },
+  },
+]
+await ext(pi13b as any)
+await fire(pi13b, "session_start", {}, ctx13b)
+const s13ePanel = ctx13b.panel()?.join("\n") ?? ""
+check(
+  "s13: restore drops tmp entries, keeps normal ones",
+  s13ePanel.includes("normal.txt") && !s13ePanel.includes("w.txt"),
+)
+
+// 13f: a bash call modifying a file under the outer fixture root (outside
+// any repo, pure sniff path) also tracks nothing.
+const tmpOuter = join(tmpExcluded, "outer.txt")
+await bash(pi13, ctx13, "t13f", `printf 'z\n' > ${tmpOuter}`, async () => {
+  await writeFile(tmpOuter, "z\n", "utf-8")
+})
+check(
+  "s13: bash-written file under outer tmp root not tracked",
+  !(ctx13.panel()?.join("\n") ?? "").includes("outer.txt"),
+)
+
+__setTmpRootsForTest(null) // reset the seam
+
 await rm(dir, { recursive: true, force: true })
 await rm(dir10, { recursive: true, force: true })
 await rm(dirPlain, { recursive: true, force: true })
@@ -540,6 +625,8 @@ await rm(dir9, { recursive: true, force: true })
 await rm(dirC, { recursive: true, force: true })
 await rm(dirS, { recursive: true, force: true })
 await rm(dirS2, { recursive: true, force: true })
+await rm(dir13, { recursive: true, force: true })
+await rm(tmpExcluded, { recursive: true, force: true })
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

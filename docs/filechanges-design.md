@@ -149,7 +149,8 @@ Repo state is display-only and is not persisted in the session entry. Restore re
 - `/reload` or resumed session: the Session set, the Round, and the Mode are restored from the log. Entries written before the Round existed restore with the Round covering every restored Change, so the default Round view keeps showing their rows. In a git repo, Originals are re-captured from `git show HEAD:<path>` so later edits keep sensible counts. Outside a repo, restored counts stay frozen as recorded.
 - Repo state staleness: the word refreshes only at the refresh points (see Repo state). Staging or committing outside pi mid-round shows up at the next settle, prompt, bash call, or `/filechanges`.
 - Binary files: NUL byte sniff in the first 8000 bytes.
-- Ignored paths: `filechanges.ignore` in `.pi/settings.json` (project wins over global). Defaults cover lockfiles, `node_modules`, `dist`, `build`, `.env*`.
+- Ignored paths: `filechanges.ignore` in `.pi/settings.json` (project wins over global). Defaults cover lockfiles, `node_modules`, `dist`, `build`, `.env*`, and editor temp names (`*.tmp`, `*.temp`, `*~`, `*.swp`, `*.swo`, `.#*`).
+- Tmp files: paths under the OS temp dirs (`tmpdir()`, `/tmp`, `/private/tmp`, `/var/tmp`) are always excluded, hardcoded, at every tracking entry point and on restore. Throwaway scripts and captures there are never reviewable output. Filtered before any snapshotting, so they cost no content reads and never leave an Original. The check matches both the logical and the realpath form (macOS `/tmp` is a symlink to `/private/tmp`, and git reports repo paths realpath'd).
 - Bash outside the cwd repo: detected by path sniffing, best effort (see Scope).
 
 ## What gets removed from the current implementation

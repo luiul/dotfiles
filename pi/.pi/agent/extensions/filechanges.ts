@@ -46,9 +46,15 @@
  *   directories are not enumerated, and files over 10 MB are skipped.
  * - Counts come from `git diff --no-index --numstat` (no npm dependency).
  *   Binary files are detected via a NUL-byte sniff and shown as "(binary)".
- * - Noisy paths (lockfiles, node_modules, build output, .env*) are excluded
- *   by default; override via `filechanges.ignore` in `.pi/settings.json`
- *   (project) or `~/.pi/agent/settings.json` (global), project wins.
+ * - Noisy paths (lockfiles, node_modules, build output, .env*, editor
+ *   temp files like *.tmp, *.swp, *~, .#*) are excluded by default;
+ *   override via `filechanges.ignore` in `.pi/settings.json` (project) or
+ *   `~/.pi/agent/settings.json` (global), project wins.
+ * - Files under the OS temp dirs (tmpdir(), /tmp, /private/tmp, /var/tmp)
+ *   are always excluded, hardcoded, at every tracking entry point and on
+ *   restore: throwaway scripts and captures there are never reviewable
+ *   output. Filtered before any snapshotting, so they leave no Original
+ *   and cost no content reads.
  *
  * Rendering:
  * - Panel: a persistent widget above the editor, live on every change. It
@@ -110,7 +116,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { isBashToolResult, isEditToolResult, isToolCallEventType, isWriteToolResult } from "@earendil-works/pi-coding-agent";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -132,6 +138,12 @@ const DEFAULT_IGNORE = [
 	"*.lock",
 	".env",
 	".env.*",
+	"*.tmp",
+	"*.temp",
+	"*~",
+	"*.swp",
+	"*.swo",
+	".#*",
 	"**/node_modules/**",
 	"**/dist/**",
 	"**/build/**",
@@ -386,8 +398,72 @@ function readIgnoreConfig(cwd: string): string[] {
 	return DEFAULT_IGNORE;
 }
 
+// --- tmp path filtering ---
+
+// Files under the OS temp dirs are never reviewable output: throwaway
+// scripts, captures, editor temp files. Checked at every tracking entry
+// point before any snapshotting, so they cost no content reads and never
+// leave an Original behind. macOS tmpdir is a per-user confstr path and
+// /tmp is a symlink to /private/tmp, so both the resolved and the real
+// (symlink-free) forms are matched.
+let tmpRoots: string[] | null = null; // computed once, on first use
+let tmpRootsOverride: string[] | null = null; // test seam: __setTmpRootsForTest
+
+/** Each root in both its logical and its realpath form (macOS: /tmp vs /private/tmp, /var vs /private/var). */
+function expandRoots(roots: Iterable<string>): string[] {
+	const out = new Set<string>();
+	for (const r of roots) {
+		out.add(r);
+		try {
+			out.add(realpathSync(r));
+		} catch {
+			// does not exist (yet): keep the logical form only
+		}
+	}
+	return [...out];
+}
+
+function getTmpRoots(): string[] {
+	if (tmpRootsOverride) return tmpRootsOverride;
+	if (!tmpRoots) tmpRoots = expandRoots([resolve(tmpdir()), "/tmp", "/private/tmp", "/var/tmp"]);
+	return tmpRoots;
+}
+
+function underRoot(p: string, root: string): boolean {
+	return p === root || p.startsWith(root.endsWith(sep) ? root : root + sep);
+}
+
+/** Realpath of the file itself, or of its nearest existing ancestor when it does not exist yet. */
+function nearestRealPath(p: string): string {
+	let cur = resolve(p);
+	for (;;) {
+		try {
+			return realpathSync(cur);
+		} catch {
+			const parent = dirname(cur);
+			if (parent === cur) return cur;
+			cur = parent;
+		}
+	}
+}
+
+/** True when the path lives in an OS temp dir (both path forms against both root forms). */
+function isTmpPath(absPath: string): boolean {
+	const p = resolve(absPath);
+	const real = nearestRealPath(p);
+	const forms = real === p ? [p] : [p, real];
+	for (const form of forms) for (const root of getTmpRoots()) if (underRoot(form, root)) return true;
+	return false;
+}
+
+/** Test seam: point the tmp check at fixture dirs instead of the real tmpdir. Pass null to restore. */
+export function __setTmpRootsForTest(roots: string[] | null): void {
+	tmpRootsOverride = roots ? expandRoots(roots) : null;
+}
+
 function sanitizeRestored(item: any): Change | null {
 	if (!item || typeof item.path !== "string" || typeof item.absPath !== "string") return null;
+	if (isTmpPath(item.absPath)) return null;
 	if (!KINDS.has(item.kind)) return null;
 	return {
 		path: item.path,
@@ -718,6 +794,9 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	async function trackChange(ctx: ExtensionContext, path: string, absPath: string, beforeSnap: FileSnapshot): Promise<void> {
+		// Backstop: tmp files are filtered at every entry point, but nothing
+		// may ever be tracked (or leave an Original) for them.
+		if (isTmpPath(absPath)) return;
 		dirtySinceSettle = true;
 		roundPaths.add(path);
 		ensureOriginal(path, absPath, beforeSnap);
@@ -898,7 +977,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("tool_call", async (event, ctx) => {
 		if (isToolCallEventType("edit", event) || isToolCallEventType("write", event)) {
 			const { absPath, relPath } = normalizeToolPath(ctx.cwd, (event.input as any).path);
-			if (isIgnored(relPath, getIgnorePatterns(ctx.cwd))) return;
+			if (isIgnored(relPath, getIgnorePatterns(ctx.cwd)) || isTmpPath(absPath)) return;
 			const before = await readFileSnapshot(absPath);
 			pendingByToolCallId.set(event.toolCallId, { path: relPath, absPath, before });
 			return;
@@ -909,10 +988,12 @@ export default function (pi: ExtensionAPI) {
 			const realCwd = await getRealCwd(ctx.cwd);
 			const repoRoot = await getRepoRoot(ctx.cwd);
 			const beforeMap = repoRoot ? await snapshotGitStatus(repoRoot) : new Map<string, string>();
-				const candidates = new Map<string, FileSnapshot>();
+			const candidates = new Map<string, FileSnapshot>();
 			await Promise.all(
-				extractBashCandidates(command, realCwd).map(async (absPath) => {
-					candidates.set(absPath, await readCandidateSnapshot(absPath));
+				extractBashCandidates(command, realCwd)
+					.filter((absPath) => !isTmpPath(absPath))
+					.map(async (absPath) => {
+						candidates.set(absPath, await readCandidateSnapshot(absPath));
 				}),
 			);
 			pendingBashSnapshots.set(event.toolCallId, { repoRoot, before: new Set(beforeMap.keys()), candidates });
@@ -947,6 +1028,7 @@ export default function (pi: ExtensionAPI) {
 			// cwd repo. Runs before the git diff so the pre-call content wins as
 			// the Original when both mechanisms see the same file.
 			for (const [absPath, beforeSnap] of snap.candidates) {
+				if (isTmpPath(absPath)) continue; // defense in depth: capture already filters
 				const afterSnap = await readCandidateSnapshot(absPath);
 				if (buffersEqual(beforeSnap.buf, afterSnap.buf)) continue;
 				const { relPath } = normalizeToolPath(realCwd, absPath);
@@ -970,6 +1052,7 @@ export default function (pi: ExtensionAPI) {
 				const relevant: { repoRelPath: string; absPath: string; relPath: string }[] = [];
 				for (const repoRelPath of touched) {
 					const absPath = resolve(repoRoot, repoRelPath);
+					if (isTmpPath(absPath)) continue;
 					const { relPath } = normalizeToolPath(realCwd, absPath);
 					if (isIgnored(relPath, patterns)) continue;
 					relevant.push({ repoRelPath, absPath, relPath });

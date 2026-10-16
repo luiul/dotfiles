@@ -85,6 +85,9 @@ const MIN_SECTION_ROWS = 4;
 let tuiRef: any;
 let widgetSet = false;
 let startupTimer: ReturnType<typeof setTimeout> | null = null;
+/** Clear timer for the transient "left: response only|full transcript" status
+ * hint; cancelled on re-toggle so the new hint always gets its full 4s. */
+let trimHintTimer: ReturnType<typeof setTimeout> | null = null;
 /** The saved startup composition is still unapplied; consumed by the widget
  * factory (first point where the fullscreen root exists, before first paint)
  * or by the deferred startup timer as a fallback (upstream SV-14 pattern). */
@@ -792,9 +795,13 @@ export default function (pi: ExtensionAPI) {
 			// The notify lands in the native transcript, which is not rendered
 			// while response-only is ON — so also show a transient status hint,
 			// which is visible in both views (upstream had the same blind spot).
+			// Cancel any prior clear timer first: rapid toggles would otherwise
+			// let the OLD timer wipe the NEWER hint early (4s from ITS toggle).
 			try {
 				ctx.ui.setStatus("split", trimResponse ? "left: response only" : "left: full transcript");
-				setTimeout(() => {
+				if (trimHintTimer) clearTimeout(trimHintTimer);
+				trimHintTimer = setTimeout(() => {
+					trimHintTimer = null;
 					try {
 						ctx.ui.setStatus("split", undefined);
 					} catch {

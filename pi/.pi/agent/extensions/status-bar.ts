@@ -19,7 +19,9 @@
  *
  * While a turn runs, line 1 shows a live "working <elapsed>" timer in canopy's
  * humanizeSince format (45s, 3m, 2h15m), driven by a 1s tick that only exists
- * between before_agent_start and agent_settled, and coloured warning past 10m.
+ * between before_agent_start and agent_settled. The elapsed time is yellow
+ * (warning), matching canopy's working state, and escalates to error (red)
+ * past 10m.
  *
  * Git working-tree state (changed count, ahead/behind) is polled on a timer and
  * cached, since the footer render path must stay synchronous.
@@ -229,12 +231,13 @@ export default function (pi: ExtensionAPI) {
 				return theme.getThinkingBorderColor(level)(`thinking ${level}`);
 			};
 
-			// Live turn timer, canopy-style. Warning colour past 10m, same pattern
-			// as the "free" tokens colouring below.
+			// Live turn timer, canopy-style. Yellow while working to match canopy's
+			// working state; escalates to error (red) past 10m, same pattern as the
+			// "free" tokens colouring below.
 			const workingTag = (): string => {
 				if (turnStartedAt == null) return "";
 				const elapsed = Date.now() - turnStartedAt;
-				const color = elapsed >= 10 * 60 * 1000 ? "warning" : "muted";
+				const color = elapsed >= 10 * 60 * 1000 ? "error" : "warning";
 				return theme.fg("dim", "working ") + theme.fg(color, humanizeSince(elapsed));
 			};
 

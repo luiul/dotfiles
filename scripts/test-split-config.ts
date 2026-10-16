@@ -45,8 +45,10 @@ function check(name: string, cond: boolean, detail?: unknown) {
 {
 	const d = normalizeConfig({ split: true });
 	check("panels default ON when split is on, files biggest", d.split && d.thinking && d.tools && d.files, d);
-	const off = normalizeConfig({});
-	check("split off: every panel flag off", !off.split && !off.thinking && !off.tools && !off.files, off);
+	const bare = normalizeConfig({});
+	check("no config: split ON by default (new windows open split)", bare.split && bare.thinking && bare.tools && bare.files && !bare.trimResponse, bare);
+	const off = normalizeConfig({ split: false });
+	check("explicit split false honored: every panel flag off", !off.split && !off.thinking && !off.tools && !off.files, off);
 }
 {
 	const c = normalizeConfig({ split: true, thinking: false, tools: true, files: false, toolMode: "full", trimResponse: true, leftWidthPct: 75, thinkingPct: 20, toolsPct: 20, filesPct: 60 });

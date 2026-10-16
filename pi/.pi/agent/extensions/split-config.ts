@@ -39,7 +39,9 @@ export function __setConfigPathForTest(p: string): void {
 export type ToolMode = "compact" | "full";
 
 export interface SplitConfig {
-	/** Master: is the split composition active. */
+	/** Master: is the split composition active. Defaults true (new pi
+	 * windows open with the split layout on); an explicit false in the
+	 * saved config is always honored. */
 	split?: boolean;
 	/** Thinking panel in the right column. Defaults true when split is on. */
 	thinking?: boolean;
@@ -122,7 +124,11 @@ export function normalizeConfig(raw: unknown): NormalizedSplitConfig {
 		typeof raw === "object" && raw !== null && !Array.isArray(raw)
 			? (raw as SplitConfig)
 			: {};
-	const split = boolOr(root.split, false);
+	// Default ON: a new pi window opens with the split layout composed even
+	// with no saved config. An explicit false (or the --no-split flag) turns
+	// it off; absent or wrongly-typed values fall back to ON, same policy as
+	// the other flags below.
+	const split = boolOr(root.split, true);
 	const thinking = split && boolOr(root.thinking, true);
 	const tools = split && boolOr(root.tools, true);
 	const files = split && boolOr(root.files, true);

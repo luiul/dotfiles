@@ -65,32 +65,61 @@ capture
 check_not_contains "no startup errors" "Extension.*(error|failed|cannot)|TypeError|ReferenceError"
 if tmux list-sessions 2>/dev/null | grep -q "$SESSION"; then ok "session alive"; else bad "session alive"; fi
 
-# 2. /split composes the split layout
-tmux send-keys -t "$SESSION" "/split" Enter
-sleep 2
+# 2. /split composes the split layout. The toggle only turns the layout ON
+#    when it is currently off: the saved ~/.pi/agent/split.json startup
+#    defaults may already have composed it at boot (split: true), and a blind
+#    toggle would turn it OFF and fail every panel assertion. So only send the
+#    toggle when the panels are not already on screen.
+capture
+if echo "$CAP" | grep -q "Tool Usage"; then
+	say "── split already composed at startup (saved or built-in default; no toggle needed)"
+else
+	tmux send-keys -t "$SESSION" "/split" Enter
+	sleep 2
+fi
 capture
 check_contains "thinking panel header" "Thinking"
 check_contains "tool usage panel header" "Tool Usage"
 check_contains "file changes panel header" "File Changes"
 check_contains "compact divider column" "│"
 
-# 3. /split-width recomposes
+# 3. /split-width recomposes. The "Left column: 45%" notify is invisible
+#    while response-only is active (the extension's documented notify blind
+#    spot), so assert the divider actually moved instead: its column is the
+#    one where nearly every rendered row has │. 45% of 170 cols ≈ column 76.
+divider_col() {
+	tmux capture-pane -t "$SESSION" -p | python3 -c '
+import sys, collections
+cnt = collections.Counter()
+for line in sys.stdin:
+    for col, ch in enumerate(line.rstrip("\n")):
+        if ch == "│":
+            cnt[col] += 1
+print(cnt.most_common(1)[0][0] if cnt else -1)
+'
+}
+DIV0=$(divider_col)
 tmux send-keys -t "$SESSION" "/split-width 45" Enter
 sleep 2
-capture
-check_contains "width notify" "Left column: 45%"
+DIV1=$(divider_col)
+if [ "$DIV1" -ge 70 ] && [ "$DIV1" -le 82 ]; then ok "divider moved to 45% (col $DIV0 → $DIV1)"; else bad "divider at 45% (got col $DIV1, was $DIV0)"; fi
 
 # 5. response-only mode — test while provably IDLE (before the agent turn):
 # a command sent while a turn is still streaming gets queued as a follow-up
-# prompt to the model instead of executing.
+# prompt to the model instead of executing. Toggles are direction-agnostic:
+# the saved startup config may start in either state, so assert the status
+# hint appears and cycles ("left: response only" <-> "left: full transcript",
+# both visible in either view; the notify itself is blind-spotted).
 tmux send-keys -t "$SESSION" "/split-trim-response" Enter
 sleep 2
 capture
-check_contains "trim on notify" "response only"
+HINT1=$(echo "$CAP" | grep -oE "left: (response only|full transcript)" | head -1)
+if [ -n "$HINT1" ]; then ok "trim toggle 1 shows hint ($HINT1)"; else bad "trim toggle 1 shows hint"; fi
 tmux send-keys -t "$SESSION" "/split-trim-response" Enter
 sleep 2
 capture
-check_contains "trim off notify" "full transcript"
+HINT2=$(echo "$CAP" | grep -oE "left: (response only|full transcript)" | head -1)
+if [ -n "$HINT2" ] && [ "$HINT2" != "$HINT1" ]; then ok "trim toggle 2 cycles hint ($HINT2)"; else bad "trim toggle 2 cycles hint (got '$HINT2', had '$HINT1')"; fi
 
 # 4. real agent turn: two write calls (one long nested path), tracked in the
 # right panels; the long path must WRAP in File Changes, not truncate.

@@ -26,6 +26,7 @@ set -u
 EXT="$HOME/dotfiles/pi/.pi/agent/extensions/split.ts"
 SESSION="split-e2e-$$"
 DIR=$(mktemp -d "${HOME}/.split-e2e-XXXXXX")   # NOT under /tmp: tracker hard-excludes temp dirs
+git -C "$DIR" init -q                     # a repo, so entries carry repoState (untracked)
 PASS=0
 FAIL=0
 CAP=""
@@ -143,6 +144,11 @@ check_contains "tool usage records the write call" "(✓|●) write"
 capture_right
 check_in_right "file changes wraps the long path" "deeply/nested"
 check_in_right "file changes lists both files" "\(\+1/-0\)"
+# Regression (2026-10-16): rows used to overflow the section width and get
+# clipped mid-word at the panel edge ("untracked" rendered "untrac"). The
+# repo state must render whole. (The 8-char-fragment wrap bug is pinned by
+# scripts/test-split-files.ts.)
+check_in_right "repo state renders whole (no edge clipping)" "untracked"
 # Both write calls in the tool panel (compact: adjacent lines, no blanks).
 WRITES=$(echo "$CAP_R" | grep -cE "(✓|●) write")
 if [ "$WRITES" -ge 2 ]; then ok "tool usage lists both writes"; else bad "tool usage lists both writes (found $WRITES of 2)"; fi

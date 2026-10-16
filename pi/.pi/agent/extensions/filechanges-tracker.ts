@@ -119,6 +119,36 @@ type RepoState = "untracked" | "staged" | "unstaged" | "conflicted" | "committed
 export type Mode = "round" | "all";
 
 /**
+ * Semantic theme-key per Kind, shared by every renderer of tracker state
+ * (the filechanges.ts Panel/List and the split extension's File Changes
+ * panel). Color does the scannability job glyphs would, so the words stay
+ * plain: created = success, modified = warning, deleted = error.
+ */
+export const KIND_COLORS: Record<Kind, string> = {
+	created: "success",
+	modified: "warning",
+	deleted: "error",
+};
+
+/**
+ * Semantic theme-key per Repo state, shared by every renderer of tracker
+ * state. The state axis stays quiet metadata so it cannot clash with the
+ * kind hues on the same row: accent marks "in the index" (staged),
+ * committed is dim (done), untracked and unstaged are muted (normal work
+ * states, no alarm), and conflicted is the only state red is spent on.
+ * Warning is deliberately unused here: the normal work state must not
+ * render as an alarm, and a `modified ... unstaged` row must not read
+ * yellow-yellow.
+ */
+export const REPO_STATE_COLORS: Record<RepoState, string> = {
+	untracked: "muted",
+	staged: "accent",
+	unstaged: "muted",
+	conflicted: "error",
+	committed: "dim",
+};
+
+/**
  * Map a porcelain XY code to a Repo state. `tracked` (from `git ls-files`)
  * decides what porcelain silence means: absent and tracked = committed,
  * absent and untracked = no state (git does not know the file).

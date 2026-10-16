@@ -7,14 +7,25 @@
  * Layout inside the section's row budget:
  *
  *     File Changes (7 · round) ───────   ← 1-row header (count + mode)
- *     │ modified src/a.ts (+12/-3)      ← list, one visual row per entry
- *     │ created  b.md (+8) staged
+ *     created  src/a.ts (+12/-3) staged  ← list, one visual row per entry
+ *     modified b.md (+8) unstaged
  *
- * - List entries wrap for readability: a path that does not fit one row
- *   wraps with a hanging indent aligned under the kind word, never
- *   truncated. Entries render NEWEST-FIRST (the tracker's order, same as
- *   the /filechanges widget), so the list does not follow the end: the
- *   viewport stays at the top where the newest change lands.
+ * - Rows mirror the /filechanges widget (formatChangeLine): the kind word
+ *   padded to 9 columns and colored by meaning, the path in text, counts
+ *   in diff colors, the repo state as quiet metadata. No left rail inside
+ *   the panel (the section divider is the rail; a second one rendered as a
+ *   confusing double bar `││`).
+ * - Legibility contract (fixed 2026-10-16 after a live report of
+ *   8-character path fragments and `untrac`-style edge clipping): rows are
+ *   composed from plain pieces, measured, and colored last, so no row can
+ *   overflow the section width. A path that does not fit one row wraps at
+ *   "/" boundaries with a hanging indent under the kind word. The
+ *   counts+state suffix rides the last wrapped line while it would leave
+ *   at least half the row for the path; on a narrow panel it moves to its
+ *   own indented line, and the repo-state word is dropped before the
+ *   counts are ever squeezed. Entries render NEWEST-FIRST (the tracker's
+ *   order, same as the /filechanges widget), so the list does not follow
+ *   the end: the viewport stays at the top where the newest change lands.
  * - Round/all scope follows the tracker's mode (shared with /filechanges-mode,
  *   /filechanges): the panel and the old widget are two views of one state.
  * - While this panel is active, split.ts suppresses the filechanges.ts widget
@@ -31,14 +42,11 @@ import {
 	type ExtensionContext,
 	type Theme,
 } from "@earendil-works/pi-coding-agent";
-import {
-	ScrollView,
-	visibleWidth,
-	wrapTextWithAnsi,
-	type Component,
-} from "@earendil-works/pi-tui";
+import { ScrollView, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import {
 	getSharedFileChangesTracker,
+	KIND_COLORS,
+	REPO_STATE_COLORS,
 	type FileChange,
 	type FileChangesTracker,
 } from "./filechanges-tracker.ts";
@@ -124,17 +132,133 @@ function displayPath(p: string): string {
 // ─── list body ───────────────────────────────────────────────────────────────
 
 /**
- * The changes list: NEWEST-FIRST (the tracker's order, same as the
- * filechanges widget). The ScrollView does not follow the end — the top of
- * the list is the newest change, which is where the eye goes. Rows carry the
- * same semantic colors as the filechanges widget: kind word colored, path
- * plain, +A/-R in diff colors, repo state as quiet metadata.
- *
- * Readability (user decision 2026-10-16): paths are never truncated. An
- * entry that does not fit one row WRAPS with a hanging indent aligned under
- * the kind word, and the counts/state suffix lands on the last wrapped
- * line. So a full entry is scannable regardless of path length.
+ * Greedy-wrap a path at "/" boundaries: a separator ends the segment it
+ * belongs to, so lines break between path segments, never inside one (the
+ * plain-text sibling of the widget's no-wrap rendering). A segment longer
+ * than the width is hard-broken. Returns plain-text lines, each at most
+ * `width` columns (path characters are single-column by nature).
  */
+export function wrapPathSegments(p: string, width: number): string[] {
+	if (width < 1) return [p];
+	if (p.length <= width) return [p];
+	const units: string[] = [];
+	let i = 0;
+	while (i < p.length) {
+		const next = p.indexOf("/", i);
+		const seg = next === -1 ? p.slice(i) : p.slice(i, next + 1);
+		if (seg.length <= width) units.push(seg);
+		else for (let j = 0; j < seg.length; j += width) units.push(seg.slice(j, j + width));
+		if (next === -1) break;
+		i = next + 1;
+	}
+	const lines: string[] = [];
+	let cur = "";
+	for (const u of units) {
+		if (cur && cur.length + u.length > width) {
+			lines.push(cur);
+			cur = u;
+		} else {
+			cur += u;
+		}
+	}
+	if (cur) lines.push(cur);
+	return lines.length ? lines : [p];
+}
+
+/** Counts piece of a row, plain (for measuring) and colored (for output). */
+function buildCounts(th: Theme, e: FileChange): { plain: string; colored: string } {
+	if (e.binary) {
+		const plain = "(binary)";
+		return { plain, colored: th.fg("muted", plain) };
+	}
+	const plain = `(+${e.added}/-${e.removed})`;
+	const plus = e.added === 0 ? th.fg("dim", `+${e.added}`) : th.fg("toolDiffAdded", `+${e.added}`);
+	const minus = e.removed === 0 ? th.fg("dim", `-${e.removed}`) : th.fg("toolDiffRemoved", `-${e.removed}`);
+	return {
+		plain,
+		colored: th.fg("dim", "(") + plus + th.fg("dim", "/") + minus + th.fg("dim", ")"),
+	};
+}
+
+/**
+ * Build the panel's list rows for one width. Pure except for theme colors,
+ * and exported for unit tests. Rows render NEWEST-FIRST (the tracker's
+ * order, same as the /filechanges widget) and mirror its formatChangeLine:
+ * `<kind padded to 9> <path> (+A/-R) <state>` after the section divider.
+ *
+ * Legibility contract (user report 2026-10-16: the panel rendered 8-char
+ * path fragments and clipped `untracked` mid-word at the panel edge):
+ * - Rows are composed from plain pieces, measured, and colored last, so a
+ *   row can never overflow the section width and get clipped mid-word at
+ *   the panel edge.
+ * - A path that does not fit one row wraps at "/" boundaries
+ *   (wrapPathSegments) with a hanging indent under the kind word.
+ * - The counts+state suffix rides the last wrapped line while that would
+ *   leave at least half the row budget for the path. When the suffix is
+ *   wider than that (narrow panels), it moves to its own indented line and
+ *   the path wraps at the full row budget; the repo-state word is dropped
+ *   before the counts are ever squeezed, and a pathological width
+ *   ellipsizes the counts rather than clipping them.
+ * - No left rail inside the panel: the section divider is the rail, and a
+ *   second one rendered as a confusing double bar (`││`). Blank filler
+ *   rows keep the section height stable instead.
+ */
+export function buildFilesRows(
+	theme: Theme,
+	list: FileChange[],
+	width: number,
+	minRows: number,
+): string[] {
+	const th = theme;
+	const labelW = 9; // kind.padEnd(9): "modified" (8) is the longest kind word
+	const indent = 1 + labelW; // 1 col after the divider + the label
+	const budget = Math.max(1, width - indent); // columns for path + suffix
+	const out: string[] = [];
+	if (list.length === 0) {
+		out.push(" " + th.fg("muted", "No changes yet"));
+	}
+	for (const e of list) {
+		const label = e.kind.padEnd(labelW);
+		const kind = th.fg(KIND_COLORS[e.kind], label);
+		const head = " " + kind;
+		const cont = " ".repeat(indent);
+		const counts = buildCounts(th, e);
+		const statePlain = e.repoState ?? "";
+		const state = statePlain ? " " + th.fg(REPO_STATE_COLORS[e.repoState!], statePlain) : "";
+		const suffix = " " + counts.colored + state;
+		const sW = 1 + counts.plain.length + (statePlain ? 1 + statePlain.length : 0);
+		const pathPlain = displayPath(e.path);
+		const pW = visibleWidth(pathPlain);
+		if (pW + sW <= budget) {
+			// One row: the whole entry fits.
+			out.push(head + th.fg("text", pathPlain) + suffix);
+			continue;
+		}
+		// Suffix fits on its own line while leaving at least half the row for
+		// the path; otherwise it gets its own line and the path wraps wide.
+		const suffixFits = (withState: boolean) =>
+			indent + counts.plain.length + (withState && statePlain ? 1 + statePlain.length : 0) <= width;
+		const own = budget - sW < Math.ceil(budget / 2);
+		const wrapW = own ? budget : budget - sW;
+		const chunks = wrapPathSegments(pathPlain, wrapW);
+		for (let i = 0; i < chunks.length; i++) {
+			const tail = !own && i === chunks.length - 1 ? suffix : "";
+			out.push((i === 0 ? head : cont) + th.fg("text", chunks[i]) + tail);
+		}
+		if (own) {
+			// Own suffix line: counts align exactly under the path column (cont
+			// already provides the leading space).
+			if (suffixFits(true)) out.push(cont + counts.colored + state);
+			else if (suffixFits(false)) out.push(cont + counts.colored);
+			else out.push(cont + th.fg("muted", truncateToWidth(counts.plain, width - indent)));
+		}
+	}
+	// Keep the section's row budget stable (blank rows; the scrollbar and
+	// section height do not jump as entries wrap).
+	while (out.length < minRows) out.push("");
+	return out;
+}
+
 class FilesListBody implements Component {
 	private cacheVersion = -1;
 	private cacheWidth = -1;
@@ -142,7 +266,7 @@ class FilesListBody implements Component {
 
 	constructor(
 		private theme: Theme,
-		/** Rows to guarantee so the left │ edge stays continuous (viewport height). */
+		/** Rows to guarantee so the section height stays stable (viewport height). */
 		private minRows: () => number = () => 1,
 	) {}
 
@@ -154,54 +278,8 @@ class FilesListBody implements Component {
 		}
 		if (this.cacheLines.length && this.cacheWidth === width) return this.cacheLines;
 		this.cacheWidth = width;
-
-		const th = this.theme;
-		const inner = Math.max(1, width - 2);
-		const edge = th.fg("border", "│");
-		const filler = edge + " ".repeat(Math.max(0, inner - 1));
-		const list = entries();
-		const out: string[] = [];
-		if (list.length === 0) {
-			const empty = " " + th.fg("dim", "No changes yet");
-			out.push(edge + empty + " ".repeat(Math.max(0, inner - visibleWidth(empty))));
-			while (out.length < this.minRows()) out.push(filler);
-			this.cacheLines = out;
-			return out;
-		}
-		for (const e of list) {
-			const kind =
-				e.kind === "created"
-					? th.fg("success", "created ")
-					: e.kind === "deleted"
-						? th.fg("error", "deleted ")
-						: th.fg("warning", "modified");
-			const p = th.fg("text", displayPath(e.path));
-			const counts = e.binary
-				? th.fg("dim", "(binary)")
-				: th.fg("muted", `(+${e.added}/-${e.removed})`);
-			const state = e.repoState ? " " + th.fg("dim", e.repoState) : "";
-			const prefix = " " + kind;
-			const suffix = ` ${counts}${state}`;
-			const lead = visibleWidth(prefix);
-			// One leading space after the edge, then prefix + path + suffix.
-			const avail = inner - 1;
-			const pathW = Math.max(8, avail - lead - visibleWidth(suffix));
-			if (visibleWidth(p) <= pathW) {
-				out.push(edge + prefix + p + suffix);
-			} else {
-				// Wrap the path: continuation lines are indented to align under
-				// the kind word; the suffix rides the last line.
-				const wrapped = wrapTextWithAnsi(p, pathW);
-				for (let i = 0; i < wrapped.length; i++) {
-					const head = i === 0 ? prefix : " ".repeat(lead);
-					const tail = i === wrapped.length - 1 ? suffix : "";
-					out.push(edge + head + wrapped[i] + tail);
-				}
-			}
-		}
-		while (out.length < this.minRows()) out.push(filler);
-		this.cacheLines = out;
-		return out;
+		this.cacheLines = buildFilesRows(this.theme, entries(), width, this.minRows());
+		return this.cacheLines;
 	}
 
 	invalidate(): void {

@@ -60,7 +60,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getSharedFileChangesTracker } from "./filechanges-tracker.ts";
+import { getSharedFileChangesTracker, KIND_COLORS, REPO_STATE_COLORS } from "./filechanges-tracker.ts";
 import type { FileChange, Mode } from "./filechanges-tracker.ts";
 
 // Test seam: moved to the tracker module (where the tmp filtering lives);
@@ -74,25 +74,14 @@ function countsText(t: FileChange): string {
 	return t.binary ? "(binary)" : `(+${t.added}/-${t.removed})`;
 }
 
-/** Semantic color per Kind: color does the scannability job glyphs would, so the words stay plain. */
-const KIND_COLORS: Record<FileChange["kind"], string> = { created: "success", modified: "warning", deleted: "error" };
-
 /**
- * Semantic color per Repo state. The state axis stays quiet metadata so it
- * cannot clash with the kind hues on the same row: accent marks "in the
- * index" (staged), committed is dim (done), untracked and unstaged are muted
- * (normal work states, no alarm), and conflicted is the only state red is
- * spent on. Warning is deliberately unused here: the normal work state must
- * not render as an alarm, and a `modified ... unstaged` row must not read
- * yellow-yellow.
+ * Kind and Repo-state color keys live in filechanges-tracker.ts (KIND_COLORS,
+ * REPO_STATE_COLORS, exported there so the split panel renders identical
+ * hues): color does the scannability job glyphs would, so the words stay
+ * plain, and the state axis stays quiet metadata so it cannot clash with
+ * the kind hues on the same row (staged = accent, committed = dim,
+ * untracked/unstaged = muted, conflicted = the only state red is spent on).
  */
-const REPO_STATE_COLORS: Record<NonNullable<FileChange["repoState"]>, string> = {
-	untracked: "muted",
-	staged: "accent",
-	unstaged: "muted",
-	conflicted: "error",
-	committed: "dim",
-};
 
 /**
  * Panel framing: a dim left gutter (`│ `) on every line, quote-block style.

@@ -10,10 +10,11 @@
  *     │ modified src/a.ts (+12/-3)      ← list, one visual row per entry
  *     │ created  b.md (+8) staged
  *
- * - List rows are ONE visual row each (truncate, no wrap). Entries render
- *   NEWEST-FIRST (the tracker's order, same as the /filechanges widget), so
- *   the list does not follow the end: the viewport stays at the top where
- *   the newest change lands.
+ * - List entries wrap for readability: a path that does not fit one row
+ *   wraps with a hanging indent aligned under the kind word, never
+ *   truncated. Entries render NEWEST-FIRST (the tracker's order, same as
+ *   the /filechanges widget), so the list does not follow the end: the
+ *   viewport stays at the top where the newest change lands.
  * - Round/all scope follows the tracker's mode (shared with /filechanges-mode,
  *   /filechanges): the panel and the old widget are two views of one state.
  * - While this panel is active, split.ts suppresses the filechanges.ts widget
@@ -32,8 +33,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import {
 	ScrollView,
-	truncateToWidth,
 	visibleWidth,
+	wrapTextWithAnsi,
 	type Component,
 } from "@earendil-works/pi-tui";
 import {
@@ -123,12 +124,16 @@ function displayPath(p: string): string {
 // ─── list body ───────────────────────────────────────────────────────────────
 
 /**
- * The changes list: one visual row per entry (truncate, never wrap),
- * NEWEST-FIRST (the tracker's order, same as the filechanges widget). The
- * ScrollView does not follow the end — the top of the list is the newest
- * change, which is where the eye goes. Rows carry the same semantic colors
- * as the filechanges widget: kind word colored, path plain, +A/-R in diff
- * colors, repo state as quiet metadata.
+ * The changes list: NEWEST-FIRST (the tracker's order, same as the
+ * filechanges widget). The ScrollView does not follow the end — the top of
+ * the list is the newest change, which is where the eye goes. Rows carry the
+ * same semantic colors as the filechanges widget: kind word colored, path
+ * plain, +A/-R in diff colors, repo state as quiet metadata.
+ *
+ * Readability (user decision 2026-10-16): paths are never truncated. An
+ * entry that does not fit one row WRAPS with a hanging indent aligned under
+ * the kind word, and the counts/state suffix lands on the last wrapped
+ * line. So a full entry is scannable regardless of path length.
  */
 class FilesListBody implements Component {
 	private cacheVersion = -1;
@@ -175,8 +180,24 @@ class FilesListBody implements Component {
 				? th.fg("dim", "(binary)")
 				: th.fg("muted", `(+${e.added}/-${e.removed})`);
 			const state = e.repoState ? " " + th.fg("dim", e.repoState) : "";
-			const row = ` ${kind} ${p} ${counts}${state}`;
-			out.push(edge + " " + truncateToWidth(row, inner, "…"));
+			const prefix = " " + kind;
+			const suffix = ` ${counts}${state}`;
+			const lead = visibleWidth(prefix);
+			// One leading space after the edge, then prefix + path + suffix.
+			const avail = inner - 1;
+			const pathW = Math.max(8, avail - lead - visibleWidth(suffix));
+			if (visibleWidth(p) <= pathW) {
+				out.push(edge + prefix + p + suffix);
+			} else {
+				// Wrap the path: continuation lines are indented to align under
+				// the kind word; the suffix rides the last line.
+				const wrapped = wrapTextWithAnsi(p, pathW);
+				for (let i = 0; i < wrapped.length; i++) {
+					const head = i === 0 ? prefix : " ".repeat(lead);
+					const tail = i === wrapped.length - 1 ? suffix : "";
+					out.push(edge + head + wrapped[i] + tail);
+				}
+			}
 		}
 		while (out.length < this.minRows()) out.push(filler);
 		this.cacheLines = out;

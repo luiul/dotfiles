@@ -429,7 +429,9 @@ function toolLines(theme: Theme, width: number): string[] {
 				: "";
 		out.push(prefix + args);
 		if (!full) {
-			if (out.length > 1) out.splice(out.length - 1, 0, "");
+			// Compact: entries are adjacent, no blank separator rows (user
+			// decision 2026-10-16 — the status mark + colored name is enough
+			// visual separation, and the panel shows more entries per screen).
 			continue;
 		}
 		const content = (e.output || "")

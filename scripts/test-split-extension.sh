@@ -7,8 +7,9 @@
 #   1. clean start, no extension errors
 #   2. /split composes: Thinking + Tool Usage + File Changes headers, divider
 #   3. /split-width recomposes at a new left share
-#   4. a real agent turn (write tool) lands in the Tool Usage panel and the
-#      File Changes panel (tracker-driven)
+#   4. a real agent turn (two write calls, one with a long nested path) lands
+#      in the Tool Usage and File Changes panels, and the long path WRAPS
+#      (hanging indent) instead of truncating
 #   5. /split-trim-response reports response-only mode
 #   6. /split off restores the bare layout
 #   7. the tracker's session-set entry persists in the session jsonl
@@ -36,10 +37,16 @@ check_contains() {
 	# check_contains <name> <regex>
 	if echo "$CAP" | grep -qE "$2"; then ok "$1"; else bad "$1 (pattern not found: $2)"; fi
 }
+check_in_right() {
+	if echo "$CAP_R" | grep -qE "$2"; then ok "$1"; else bad "$1 (pattern not found in right column: $2)"; fi
+}
 check_not_contains() {
 	if ! echo "$CAP" | grep -qE "$2"; then ok "$1"; else bad "$1 (unexpected pattern found: $2)"; fi
 }
 capture() { CAP=$(tmux capture-pane -t "$SESSION" -p); }
+# Right-column region only (left is ~45% + divider after /split-width 45;
+# cut from column 80 so panel assertions cannot match transcript text).
+capture_right() { CAP_R=$(tmux capture-pane -t "$SESSION" -p | cut -c 80-); }
 
 cleanup() {
 	tmux kill-session -t "$SESSION" 2>/dev/null
@@ -85,18 +92,25 @@ sleep 2
 capture
 check_contains "trim off notify" "full transcript"
 
-# 4. real agent turn: one write tool call, tracked in both right panels
-tmux send-keys -t "$SESSION" "Use the write tool to create a file test.txt containing exactly the word hi in the current directory. Nothing else." Enter
+# 4. real agent turn: two write calls (one long nested path), tracked in the
+# right panels; the long path must WRAP in File Changes, not truncate.
+tmux send-keys -t "$SESSION" "Use the write tool twice: create test.txt containing exactly the word hi, and create deeply/nested/directory/structure/with/a/very-long-descriptive-file-name.md containing exactly the word ok. Both in the current directory. Nothing else." Enter
 sleep 15
-# poll until the turn settles (files panel lists the file) or timeout
+# poll until the LAST artifact (the long-path write) appears, then settle.
 for _ in $(seq 1 20); do
 	capture
-	if echo "$CAP" | grep -q "test.txt"; then break; fi
+	if echo "$CAP" | grep -q "very-long"; then break; fi
 	sleep 3
 done
 capture
 check_contains "file changes lists the written file" "test.txt"
 check_contains "tool usage records the write call" "(✓|●) write"
+capture_right
+check_in_right "file changes wraps the long path" "deeply/nested"
+check_in_right "file changes lists both files" "\(\+1/-0\)"
+# Both write calls in the tool panel (compact: adjacent lines, no blanks).
+WRITES=$(echo "$CAP_R" | grep -cE "(✓|●) write")
+if [ "$WRITES" -ge 2 ]; then ok "tool usage lists both writes"; else bad "tool usage lists both writes (found $WRITES of 2)"; fi
 
 # Let the turn fully settle before the next command (see the trim note above).
 sleep 10

@@ -55,6 +55,7 @@ Key behaviors:
 - Colors are semantic: the header is bold with the scope's totals (`+A/-R`), the kind word is colored by meaning (created green, modified yellow, deleted red), the path is plain text, counts use the theme's diff colors with zeros dimmed, and the state word stays quiet metadata (staged accent, committed dim, untracked and unstaged muted, conflicted red), so it never clashes with the kind hues on the same row.
 - The set, the Round, and the Mode persist via `pi.appendEntry()` on settle, so `/reload` restores the Panel. Originals are re-captured from `git show HEAD:<path>` in a repo; outside a repo restored counts stay frozen.
 - Ignore patterns via `filechanges.ignore` in `.pi/settings.json` (project wins over global); defaults cover lockfiles, `node_modules`, `dist`, `build`, `.env*`, and editor temp names (`*.tmp`, `*.temp`, `*~`, `*.swp`, `*.swo`, `.#*`). Files under the OS temp dirs (`tmpdir()`, `/tmp`, `/private/tmp`, `/var/tmp`) are always excluded, hardcoded, at every tracking entry point and on restore. Binary files are NUL-sniffed and shown as `(binary)`.
+- The tracking state is shared, not private: it lives in `filechanges-tracker.ts` (a per-session singleton on `globalThis`, keyed by session id, so subagent child sessions never mix with the main one). `filechanges.ts` only renders the Panel and registers the commands. The split extension's File Changes panel reads the same tracker state; while that panel is active, it suppresses the above-editor widget through the tracker, so nothing is shown twice. Tracking always continues, only the presentation switches.
 
 Verification from the repository root:
 
@@ -63,6 +64,33 @@ bun scripts/test-filechanges-extension.ts
 ```
 
 The script drives the real extension with a stubbed ExtensionAPI against a real temp git repo: accumulation across prompts, revert detection, bash-driven changes, bash changes outside the cwd repo via path sniffing (other repos, non-repo dirs, `cd` + relative redirects), the 8-row cap, Clear semantics, reload-restore with HEAD re-capture, Round/All mode toggling (command and `/filechanges` view args), malformed-entry handling, Repo state annotation (unstaged -> staged -> committed across real `git add`/`git commit` bash calls, untracked for created files, no word for non-repo files, refresh-point timing, restore recompute), and semantic colors plus header totals (via a recording theme). A live check additionally runs `pi --no-extensions -e ~/.pi/agent/extensions/filechanges.ts --thinking off -p '<prompt that creates a file>'` and confirms a `filechanges:session-set` custom entry lands in the session jsonl. The script needs the pi-coding-agent package resolvable; a gitignored `node_modules` symlink to the global install covers that.
+
+## Split view
+
+`split.ts` is our own split layout, built after trying [Hugo-W/pi-split-view](https://github.com/Hugo-W/pi-split-view) (uninstalled once this replaced it). One adjustable vertical split: the left column is the full transcript (or a response-only view), the right column stacks Thinking, Tool Usage, and File Changes. The File Changes panel is the biggest by design (45% of the right column rows by default) because it is the most useful section.
+
+Key behaviors:
+
+- Minimal frames: no box borders anywhere. Each right panel is a single 1-row header (` Thinking ────`) plus the body; the next panel's header row doubles as the separator, and the ScrollView's border-styled scrollbar track is each panel's right frame edge. The vertical divider is a single dim `│` column, accent-colored while dragging.
+- The divider is mouse-draggable: press on it captures the drag (so all later move events route to it, even far outside its 1-column bounds), and the left column share clamps to the 20–80% band. `/split-width <pct>` is the keyboard path. Terminal below 90 columns hides the whole right column; the left column keeps the full width.
+- Left column: pi's own base root verbatim, or, with `/split-trim-response`, the response-only view. That view reuses pi's own user and assistant message components in a ScrollView with full scrollback, drops thinking blocks and tool calls (the right panels own those), and reuses pi's editor dock unchanged. The ScrollView is a retained singleton, so the scroll offset survives branch switches.
+- Right column panels: Thinking (coalesced 100ms flushes, 400 line bound, newest window) and Tool Usage (60 call bound, compact or full detail via `/split-tools-view`) are ported from upstream's panel logic. File Changes renders the shared `filechanges-tracker.ts` state: same rows, same semantic colors as the widget, newest first, with a click-to-pin diff subpanel (Original → current content) at the bottom. Round and All scope follow `/filechanges-mode`.
+- One layout layer: the composition registers as a single layer in `split-layout.ts`, the owner of pi's one fullscreen layout-root slot, so it never fights other extensions over the root and `/reload` unwraps stale compositions.
+- Fullscreen only (`tuiMode: fullscreen` in settings). In regular mode the extension stays dormant and `/split` says why. Panel flags are session-local, so concurrent pi windows never clobber each other; only `/split-save` writes `~/.pi/agent/split.json` as startup defaults for new windows. `--no-split` starts bare.
+- Feedback blind spot, inherited from upstream and mitigated: `ctx.ui.notify` entries land in the native transcript, which response-only mode replaces, so the `/split-trim-response` toggle also sets a transient status hint via `ctx.ui.setStatus` that is visible in both views.
+
+Commands: `/split` (master toggle, off = bare pi layout, on = saved defaults or all three panels), `/split-thinking`, `/split-tools`, `/split-files`, `/split-tools-view`, `/split-width <pct>`, `/split-thinking-height|/split-tools-height|/split-files-height <pct>` (right column row shares, renormalized to 100), `/split-trim-response`, `/split-save`.
+
+Module layout: `split.ts` (entry: composition, events, commands), `split-layout.ts` (layout slot owner and drag divider), `split-render.ts` (measurement-safe rendering primitives), `split-panels.ts` (thinking and tool buffers), `split-response.ts` (response-only view), `split-files.ts` (file changes panel), `split-config.ts` (validated config), `filechanges-tracker.ts` (shared tracking, see the section above).
+
+Verification from the repository root:
+
+```sh
+bun scripts/test-split-config.ts      # config normalization + drag divider math
+scripts/test-split-extension.sh       # real pi E2E in tmux (one tiny LLM call)
+```
+
+The E2E asserts: clean startup, the three panel headers and the divider, `/split-width` recompose, a real write-tool turn landing in both the Tool Usage and File Changes panels, trim on/off, split off restoring the bare layout, and the tracker's `filechanges:session-set` entry persisting in the session jsonl. Commands sent while a turn is still streaming get queued as follow-up prompts, so the script only sends commands while the turn is settled. Mouse dragging is not scriptable through tmux; divider math is unit-tested and the drag itself needs a manual try in a real terminal.
 
 ## Bedrock pricing overrides
 

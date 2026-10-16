@@ -44,9 +44,15 @@ check_not_contains() {
 	if ! echo "$CAP" | grep -qE "$2"; then ok "$1"; else bad "$1 (unexpected pattern found: $2)"; fi
 }
 capture() { CAP=$(tmux capture-pane -t "$SESSION" -p); }
-# Right-column region only (left is ~45% + divider after /split-width 45;
-# cut from column 80 so panel assertions cannot match transcript text).
-capture_right() { CAP_R=$(tmux capture-pane -t "$SESSION" -p | cut -c 80-); }
+# Right-column region only: cut just right of the divider so panel
+# assertions cannot match transcript text. The divider column is computed
+# live (it moves with /split-width), and +2 skips the divider itself and the
+# panels' one leading space column (panel content used to sit one column
+# further right, before the body rail was removed from the panels).
+capture_right() {
+	DIV=$(divider_col)
+	CAP_R=$(tmux capture-pane -t "$SESSION" -p | cut -c $(( DIV < 0 ? 80 : DIV + 2 ))-)
+}
 
 cleanup() {
 	tmux kill-session -t "$SESSION" 2>/dev/null

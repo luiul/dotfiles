@@ -6,13 +6,14 @@
  * per-panel border flanks. A panel is:
  *
  *     Thinking ────────────────────────      ← 1-row compact header
- *     │ ⋯ body rows, cached (version,width)   ← ScrollView over RecentBody
+ *      ⋯ body rows, cached (version,width)    ← ScrollView over RecentBody
  *
- * The ScrollView's always-on scrollbar column is the panel's right frame
- * edge (track styled as border), exactly like the retired upstream band
- * panels — nothing ever paints over a frame line and there is no second
- * composite layer. Panels stack directly on each other; the next panel's
- * header row is the separator, so the column reads as one continuous dock.
+ * The vertical divider column is the panels' left frame edge and the
+ * ScrollView's always-on scrollbar column is the right frame edge (track
+ * styled as border), so panels draw NO rail of their own — a body-level
+ * rail renders as a second bar next to the divider (`││`). Panels stack
+ * directly on each other; the next panel's header row is the separator,
+ * so the column reads as one continuous dock.
  *
  * Measurement-safe architecture (inherited from upstream): MeasurementSafeVStack
  * makes the layout engine's discarded intrinsic-height measurement passes
@@ -53,11 +54,12 @@ const MAX_LINE_CHARS = 600;
 const MAX_CACHED_WIDTHS = 4;
 
 /**
- * Renders the recent window with a left │ edge only — the ScrollView's
- * always-on scrollbar column is the right frame edge (track styled as
- * border, so the frame reads as complete; thumb slides when overflowing).
+ * Renders the recent window with no rail of its own — the section divider
+ * is the left frame edge and the ScrollView's always-on scrollbar column
+ * is the right frame edge (track styled as border, so the frame reads as
+ * complete; thumb slides when overflowing).
  * Pads every row to EXACT width and always emits at least `minRows` rows so
- * the left edge is continuous when content is short. A (version, width)
+ * the body stays rectangular when content is short. A (version, width)
  * cache keeps unchanged frames O(1) — pi's renderCache is fresh every frame.
  */
 export class RecentBody {
@@ -70,7 +72,7 @@ export class RecentBody {
 		private lines: (width: number) => string[],
 		private version: () => number,
 		private empty: string,
-		/** Rows to guarantee so the left edge has no gaps (viewport height). */
+		/** Rows to guarantee so the section height stays stable (viewport height). */
 		private minRows: () => number,
 	) {}
 
@@ -88,9 +90,8 @@ export class RecentBody {
 			this.cacheByWidth.set(width, cached);
 			return cached;
 		}
-		const edge = th.fg("border", "│");
 		const pad = (s: string) =>
-			" ".repeat(Math.max(0, width - 1 - visibleWidth(s)));
+			" ".repeat(Math.max(0, width - visibleWidth(s)));
 		// Wrap newest-first, keep only the newest MAX_BODY_ROWS visual rows;
 		// giant logical lines are suffix-capped before wrapping. Fragments of
 		// ONE source line are wrapped as a group and inserted in order; the
@@ -106,9 +107,12 @@ export class RecentBody {
 				src[i].length > MAX_LINE_CHARS
 					? "… " + src[i].slice(-MAX_LINE_CHARS + 1)
 					: src[i];
+			// One leading space after the divider; the freed rail column goes
+			// back to the content (the wrap width is one wider than in the
+			// railed design). No rail: the divider is the left frame edge.
 			const frags = wrapTextWithAnsi(
 				this.style(line),
-				Math.max(1, width - 3),
+				Math.max(1, width - 2),
 			).map((w: string) => " " + w);
 			if (used + frags.length > MAX_BODY_ROWS) {
 				if (groups.length === 0 && frags.length > MAX_BODY_ROWS)
@@ -124,13 +128,13 @@ export class RecentBody {
 		let out: string[];
 		if (rows.length === 0) {
 			const empty = " " + th.fg("dim", this.empty);
-			out = [edge + empty + pad(empty)];
+			out = [empty + pad(empty)];
 		} else {
-			out = rows.map((r) => edge + r + pad(r));
+			out = rows.map((r) => r + pad(r));
 		}
-		// Guarantee a continuous left edge: fill short content up to minRows.
+		// Fill short content up to minRows so the section height stays stable.
 		const min = Math.max(1, this.minRows());
-		const filler = edge + " ".repeat(Math.max(0, width - 1));
+		const filler = " ".repeat(Math.max(0, width));
 		while (out.length < min) out.push(filler);
 		this.cacheByWidth.set(width, out);
 		// Bound the number of cached widths (Map preserves insertion order;

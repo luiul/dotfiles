@@ -11,7 +11,7 @@ System-level macOS tweaks that don't fit any single app's package. Two parts:
 ## `com.luisaceituno.gui-env` (LaunchAgent, stowed)
 
 Runs `~/.local/bin/gui-env-sync.sh` at login to push selected secrets from `~/dotfiles/.env`
-into the GUI session environment via `launchctl setenv`, so Dock-launched apps (e.g. Zed) see
+into the GUI session environment via `launchctl setenv`, so Dock-launched apps see
 them at process start. See the script's own header comment for the full "why".
 
 ## `com.luisaceituno.awdl-disable` (LaunchDaemon, manual install)

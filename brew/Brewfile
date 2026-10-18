@@ -141,14 +141,14 @@ cask "jordanbaird-ice"
 cask "keycastr"
 # Knowledge base that works on top of a local folder of plain text Markdown files
 cask "obsidian"
+# Open-source application manager and system cleaner
+cask "puremac"
 # Quick Look generator for Markdown files
 cask "qlmarkdown"
 # Native screenshots, recording, annotation, and editing from the menu bar
 cask "snapzy"
 # Pluggable Terraform linter
 cask "terraform-linters/tap/tflint", trusted: true
-# Multiplayer code editor
-cask "zed"
 vscode "adpyke.codesnap"
 vscode "altimateai.vscode-altimate-mcp-server"
 vscode "anthropic.claude-code"

@@ -3,11 +3,11 @@
 # session environment (launchd), so Dock-launched apps see them at process
 # start.
 #
-# Why this exists: Zed reads provider API keys from its process env exactly
-# once, at provider init. That happens before Zed's own login-shell env
-# capture finishes, so a var that only exists in .zshrc arrives too late and
-# the provider stays unauthenticated (Zed then hides its models from the
-# picker). launchctl setenv puts the var into the exec-level environment.
+# Why this exists: GUI apps read provider API keys from their process env
+# exactly once, at provider init, before any login-shell env capture finishes.
+# A var that only exists in .zshrc therefore arrives too late. (Original case:
+# Zed, since removed.) launchctl setenv puts the var into the exec-level
+# environment.
 #
 # Runs at login via ~/Library/LaunchAgents/com.luisaceituno.gui-env.plist.
 # Add more variable names to VARS when a GUI app needs them.

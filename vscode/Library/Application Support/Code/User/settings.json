@@ -36,7 +36,7 @@
     "workbench.colorCustomizations": {
         // Blue outline on the focused pane, so the focused editor group is
         // easy to spot. Also tints focus outlines in lists and inputs.
-        "focusBorder": "#008cff",
+        "focusBorder": "#008cff80",
         "tab.activeBorderTop": "#ff00ee",
         "notebook.focusedCellBackground": "#0099ff30",
         "editor.findMatchBackground": "#8ffa876b",

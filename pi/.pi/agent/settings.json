@@ -57,9 +57,6 @@
     "npm:context-mode",
     "npm:pi-hermes-memory"
   ],
-  "markdown": {
-    "codeBlockIndent": ""
-  },
   "extensions": [
     "-builtin:mcp"
   ],

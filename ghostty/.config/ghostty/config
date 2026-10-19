@@ -9,7 +9,6 @@ theme = Monokai Pro Spectrum
 
 # Cursor settings
 cursor-style-blink = false
-shell-integration-features = no-cursor
 cursor-color = #B3B3B3
 cursor-style = bar
 adjust-cursor-thickness = 2
@@ -22,6 +21,10 @@ keybind = global:control+command+shift+option+r=toggle_quick_terminal
 # Only consume cmd+c when Ghostty itself has a selection; otherwise pass the
 # key through to the app (pi binds super+c to copy its fullscreen selection).
 keybind = performable:cmd+c=copy_to_clipboard
+
+# Title: disable Ghostty's automatic shell-integration title. The zsh hook in
+# ~/.zsh_config/title.zsh sets it instead (repo root + branch, VS Code style).
+shell-integration-features = no-cursor,no-title
 
 # Padding
 window-padding-x = 8

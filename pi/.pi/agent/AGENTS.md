@@ -24,7 +24,8 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Ask only when genuinely blocked: a decision only the user can make, input that can't be inferred, or an action that's destructive, hard to reverse, or visible to others (force-push, `rm -rf`, sending messages, posting publicly, etc.).
 - Don't ask "should I proceed?" or "want me to also do X?" when the answer is inferable from the request. Do it and report what changed.
 - Stay in scope. Judgment calls that serve the request are yours to make. Changes beyond the request belong in `Next steps`, not in the diff.
-- Standing rules elsewhere in this file still apply. The Commits gate, the GitHub issue gate, and the Scratch Files triggers are not judgment calls.
+- Before implementing an approved task, if its acceptance criteria or scope are ambiguous, ask. Do not silently assume.
+- Standing rules elsewhere in this file still apply. The Commits gate, the task gate, and the Scratch Files triggers are not judgment calls.
 
 ## Writing Style
 
@@ -65,9 +66,17 @@ Work in two modes: planning and execution. Pick the mode from the request.
 ## Planning & Tracking
 
 - Track bigger projects, multi-step plans, and design docs as GitHub issues (`gh issue create`; update via `gh issue comment` or body edits), not markdown files committed to the repo root.
-- GitHub issue gate: discuss the plan or spec in chat first. Run `gh issue create` only after the user approves or explicitly asks. Until then the chat reply is the draft, and `gh issue create` is never a judgment call.
-- Reserve in-repo markdown for code-adjacent docs (READMEs, setup notes). Plans, roadmaps, and trackers belong in issues.
+- Atomic tasks: approved multi-step work is broken into atomic tasks. One concern per task. Each task independently completable, verifiable, and reviewable. Acceptance criteria live in the task, today the GitHub issue.
+- Testability and validity: every task states how its result is verified. If the result is testable or can be validated, run the check before reporting the task done, and say what was checked. A task without a verification path says so explicitly.
+- Task gate: discuss the plan or spec in chat first. Tracker creation only after the user approves or explicitly asks. Until then the chat reply is the draft, and tracker creation is never a judgment call. Never re-litigate what an approved task settled.
+- Reserve in-repo markdown for code-adjacent docs (READMEs, setup notes, glossaries). Plans, roadmaps, and trackers belong in issues.
 - If the team uses a different tracker, use that instead. HelloFresh repos use Jira, and all Business Impact / harvest rules (ticket first, harvest as source of truth, projections to Jira and PR labels) live in `~/projects/hellofresh/AGENTS.md`. They apply to HelloFresh work in any directory, not just repos under `~/projects/hellofresh`.
+
+## Ubiquitous Language
+
+- Each project keeps a glossary at `docs/glossary.md`. Consult it before writing prose (commits, PRs, tickets, docs) and use its terms verbatim.
+- When a new concept appears or a term is ambiguous, propose a glossary entry.
+- Precedence: repo glossary first, then the shared org glossary (`~/projects/hellofresh/docs/glossary.md`), then generic usage.
 
 ## Commits
 

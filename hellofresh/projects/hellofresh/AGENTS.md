@@ -4,7 +4,20 @@ These instructions apply to every repo under `~/projects/hellofresh` (a flat lis
 
 ## Planning & Tracking
 
-HelloFresh repos do not have GitHub Issues enabled, so the global rule (track plans in GitHub issues) does not apply. Track bigger projects and multi-step plans as Jira tickets in project GLOA, following the Business Impact conventions below. Use in-repo markdown only for working notes that are not ticket-worthy.
+Three tiers:
+
+1. HelloFresh business work: a Jira ticket in project GLOA plus its harvest row, following the Business Impact conventions below. Harvest is the source of truth for impact data.
+2. Task and issue management: the existing trackers. In this directory that is Jira (GLOA); personal projects use GitHub issues per the global rules. HelloFresh repos do not have GitHub Issues enabled. Break approved multi-step work into atomic tasks: one concern per task, each independently completable, verifiable, and reviewable, with acceptance criteria in the ticket.
+3. Session scratch: chat.
+
+Task gate: discuss the plan or spec in chat first. Tracker creation only after the user approves or explicitly asks. Never re-litigate what an approved task settled. Use in-repo markdown only for code-adjacent docs (READMEs, setup notes, glossaries) and working notes that are not ticket-worthy.
+
+## Ubiquitous Language
+
+- The shared org glossary lives at `docs/glossary.md` next to this file. A repo under this directory may keep its own `docs/glossary.md`, which wins for that repo.
+- Consult the glossary before writing prose (commits, PRs, tickets, docs) and use its terms verbatim.
+- When a new concept appears or a term is ambiguous, propose a glossary entry.
+- Precedence: repo glossary first, then this shared org glossary, then generic usage.
 
 ## Branch Naming
 

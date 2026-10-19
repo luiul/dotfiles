@@ -246,6 +246,12 @@ pi --list-models | grep 'gpt-5.6-luna'
 
 For a payload level check, temporarily add a `console.log(JSON.stringify(event.payload))` line inside the `before_provider_request` handler, run one small prompt, and remove the logging afterward. Do not leave request payload logging enabled because prompts and tool definitions may contain sensitive data.
 
+## Open cwd in VS Code
+
+`open-vscode.ts` binds `super+e` to open the session's working directory in VS Code via `pi.registerShortcut()` (works mid-turn, shows up in `/hotkeys`). It opens `ctx.cwd`, deliberately not the git repo root: pi sessions are often started inside a dbt project subdir of the global-ops or tardis monorepos on purpose, and the shortcut must open that same scope, not the monorepo root. `code` is spawned detached, so pi never waits and an already-open folder just gets focused. `super` keys require the Kitty keyboard protocol, which ghostty provides; the only other `super` binding in use is `super+c` (`app.message.copy`).
+
+Verification: `pi --no-extensions -e ~/.pi/agent/extensions/open-vscode.ts` inside tmux, run `/hotkeys`, confirm `super+e` is listed, then press `Cmd+E` in ghostty and confirm VS Code opens the session directory.
+
 ## What to do after updating pi
 
 The extension is stored in this dotfiles repository, not inside pi's installed package. A normal pi update should not delete it.

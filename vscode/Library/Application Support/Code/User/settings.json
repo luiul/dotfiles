@@ -8,7 +8,7 @@
     // "workbench.tree.indent": 14,
     "workbench.list.openMode": "doubleClick",
     // "workbench.fontAliasing": "antialiased",
-    // UI font (file explorer, sidebar, tabs) via Custom UI Style: same as Zed
+    // UI font (file explorer, sidebar, tabs) via Custom UI Style: match the editor font
     "custom-ui-style.font.sansSerif": "'JetBrainsMono Nerd Font Mono', -apple-system, sans-serif",
     "custom-ui-style.stylesheet": {
         // Lighter UI font weight, matches editor/terminal weight 300.
@@ -34,8 +34,8 @@
         ".monaco-workbench .part.panel > .title .monaco-action-bar .action-label": "font-size: 11px !important; line-height: 24px !important; padding-top: 0 !important; padding-bottom: 0 !important;"
     },
     "workbench.colorCustomizations": {
-        // Blue outline on the focused pane, like Zed's pane.focused_border.
-        // Also tints focus outlines in lists and inputs.
+        // Blue outline on the focused pane, so the focused editor group is
+        // easy to spot. Also tints focus outlines in lists and inputs.
         "focusBorder": "#008cff",
         "tab.activeBorderTop": "#ff00ee",
         "notebook.focusedCellBackground": "#0099ff30",
@@ -140,8 +140,8 @@
     "terminal.integrated.cursorStyle": "line",
     "terminal.integrated.cursorStyleInactive": "none",
     "terminal.integrated.cursorWidth": 2,
-    // Dim the panes that don't have focus (editors and terminals), like Zed's
-    // inactive pane dimming. Makes it obvious where typed input will go.
+    // Dim the panes that don't have focus (editors and terminals).
+    // Makes it obvious where typed input will go.
     "accessibility.dimUnfocused.enabled": true,
     "accessibility.dimUnfocused.opacity": 0.6,
     // === Diff Editor Settings ===

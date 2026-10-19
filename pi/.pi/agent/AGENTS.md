@@ -109,6 +109,14 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Exception: for Claude work, use the direct Bedrock ids (`eu.anthropic.claude-*`, `us.anthropic.claude-*`), not the router's `claude-*` ids. The router's OpenAI-compatible API does not pass Anthropic prompt caching through, so router Claude turns pay full input price every turn (~8x on a 30K prompt). Direct Bedrock caches (first turn pays a write premium, later turns read the cache).
 - Verify caching after any provider change: a warm trivial turn should show `cacheRead` above zero in usage.
 
+## Background Processes
+
+- Every background or detached process must have a bound: a timeout, a bounded count, or an explicit shutdown step. Never leave a loop, watcher, or server running unattended.
+- tmux sessions created by agents get a name starting with `ag-` (e.g. `ag-canopy-smoke`) and are always killed at the end of the task with `tmux kill-session -t <name>`. The `reap-strays` watchdog kills `ag-` sessions older than 6 hours as a backstop.
+- Bulk `pi --mode json -p` loops (e.g. smoke tests) run with `--no-extensions` when they do not need ctx tools: each extension-enabled run pays a ~10s context-mode bridge spawn (SentinelOne image-load tax) and widens the bridge-leak window.
+- `ctx_execute` with `background: true` is only for servers and long-running tasks that are explicitly stopped afterwards; never for fire-and-forget work.
+- Before reporting a task done, verify what was spawned is gone: `strays` (dry-run audit) shows orphaned processes, stale `ag-` sessions, gitstatusd orphans, and context-mode bridges with dead parents. The launchd agent `com.luisaceituno.reap-strays` reaps those every 15 min and logs to `~/.cache/strays.log`.
+
 ## Large Files
 
 - Read files over 2,000 lines in chunks via the read tool's `offset` and `limit` parameters, not all at once.

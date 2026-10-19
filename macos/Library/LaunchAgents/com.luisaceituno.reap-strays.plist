@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.luisaceituno.reap-strays</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/luis.aceituno/.local/bin/reap-strays</string>
+	</array>
+	<key>StartInterval</key>
+	<integer>900</integer>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>/Users/luis.aceituno/.cache/strays-launchd.err</string>
+</dict>
+</plist>

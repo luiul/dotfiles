@@ -1,0 +1,125 @@
+#!/bin/zsh
+# reap-strays: kill orphaned background processes that should never exist.
+#
+# Run every 15 min by launchd (com.luisaceituno.reap-strays), or manually with
+# --dry-run (the `strays` zsh function uses that). Every action is logged to
+# ~/.cache/strays.log with full ps context for later diagnosis.
+#
+# Rules:
+#   1. zsh with PPID 1, no tty, older than 10 min: a detached login or
+#      interactive shell. It can never show a prompt (see the orphan guard in
+#      .zshrc) and used to spin in zle, stealing ~6 cores across 41 processes
+#      (2026-10-19 incident). The .zshrc guard handles new ones in-process;
+#      this catches shells killed before .zshrc runs or variants with a pty.
+#   2. gitstatusd with PPID 1: one daemon per shell, never legitimately
+#      orphaned (2026-10-19: five found, oldest 2 days 16 h).
+#   3. bun/node running context-mode server.bundle.mjs with PPID 1: a bridge
+#      whose pi process died.
+#   4. tmux sessions named ag-* (agent-created, see AGENTS.md) older than 6 h.
+#
+# Escalation: TERM first; if the pid survives to the next run, KILL it
+# (state file ~/.cache/strays-termed).
+
+setopt no_nomatch
+setopt extendedglob
+zmodload zsh/datetime 2>/dev/null   # EPOCHSECONDS is not available in non-interactive shells without this
+
+typeset DRY_RUN=0
+[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
+
+LOG="$HOME/.cache/strays.log"
+STATE="$HOME/.cache/strays-termed"
+mkdir -p "$HOME/.cache"
+
+log() { print -r -- "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG"; }
+act() {  # act <signal> <pid> <reason> <ps line>
+  integer sig=$1 pid=$2
+  local reason=$3 psline=$4
+  if (( DRY_RUN )); then
+    print "WOULD kill(-$sig) $pid: $reason"
+    print "  $psline"
+    return
+  fi
+  kill -$sig $pid 2>/dev/null || return
+  log "kill(-$sig) $pid: $reason"
+  log "  $psline"
+}
+
+# etime "10-16:48:01" | "21:06:48" | "06:10" -> minutes (integer)
+etime_minutes() {
+  local e=$1
+  # Zombie or weird entries can show "-"; anything not starting with a digit
+  # (which includes the day prefix of real etimes) is treated as age 0.
+  if [[ $e != [0-9]* ]]; then
+    print 0
+    return
+  fi
+  if [[ $e == *-* ]]; then
+    print $(( ${e%%-*} * 1440 + 1 ))   # >= 1 day: certainly past any threshold
+    return
+  fi
+  local parts=("${(@s.:.)e}")
+  case $#parts in
+    3) print $(( parts[1] * 60 + parts[2] ));;
+    2) print $parts[1];;
+    *) print 0;;
+  esac
+}
+
+# --- load prior TERM state for escalation -------------------------------------
+# Dry runs never read or write the escalation state (they must not poison it).
+typeset -A termed_prev
+if (( ! DRY_RUN )); then
+  if [[ -r $STATE ]]; then
+    while IFS= read -r pid; do
+      [[ -n $pid ]] && termed_prev[$pid]=1
+    done < "$STATE"
+  fi
+  : > "$STATE" 2>/dev/null
+fi
+
+# --- rules 1-3: orphaned processes --------------------------------------------
+ps -axo pid=,ppid=,tty=,etime=,command= | while read -r pid ppid tty etime cmd; do
+  (( pid > 0 )) || continue
+  (( ppid == 1 )) || continue
+  integer sig=15
+  local reason=""
+  local lcmd=${cmd:l}
+
+  if [[ $lcmd == *gitstatusd* ]]; then
+    reason="orphaned gitstatusd"
+  elif [[ $lcmd == *server.bundle.mjs* ]]; then
+    reason="orphaned context-mode bridge"
+  elif [[ $lcmd == *zsh* && $tty == '??' ]] && (( $(etime_minutes "$etime") >= 10 )); then
+    reason="orphaned zsh (no tty, $(etime_minutes "$etime") min)"
+  else
+    continue
+  fi
+
+  if (( ${+termed_prev[$pid]} )); then
+    sig=9   # survived last run's TERM
+    reason="$reason (escalated, survived TERM)"
+  elif (( ! DRY_RUN )); then
+    print -r -- $pid >> "$STATE"
+  fi
+  act $sig $pid "$reason" "pid=$pid ppid=$ppid tty=$tty etime=$etime cmd=$cmd"
+done
+
+# --- rule 4: agent tmux sessions older than 6 h -------------------------------
+if (( $+commands[tmux] )) && command tmux ls >/dev/null 2>&1; then
+  local now=${EPOCHSECONDS:-$(date +%s)}
+  command tmux list-sessions -F '#{session_name} #{session_created}' 2>/dev/null | \
+  while read -r name created; do
+    [[ $name == ag-* ]] || continue
+    integer age=$(( now - created ))
+    (( age > 21600 )) || continue
+    if (( DRY_RUN )); then
+      print "WOULD tmux kill-session -t $name ($(( age / 3600 )) h old)"
+    else
+      command tmux kill-session -t $name 2>/dev/null
+      log "tmux kill-session $name ($(( age / 3600 )) h old)"
+    fi
+  done
+fi
+
+exit 0

@@ -192,7 +192,7 @@ function silenceWarns() {
   w.restore()
 }
 
-// --- Scenario 10: no exec during load (pig extension-host compat) ---
+// --- Scenario 10: no exec during load (extension connection not ready) ---
 {
   const w = silenceWarns()
   const pi = new MockPi()

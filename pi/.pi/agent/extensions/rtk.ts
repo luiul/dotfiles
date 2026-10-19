@@ -26,11 +26,10 @@
 //      Fires a handful of times per month; pi's own 50KB cap stays the
 //      outer bound. Deliberately not a full compaction pipeline: read/grep
 //      results and sub-40k outputs stay exact.
-//   5. Initial probe deferred to session_start. pig's extension host drops
-//      pi.exec during extension load ("extension connection closed or
-//      replaced"), so a load-time probe misreports a healthy rtk as missing
-//      and warns at every pig startup. By session_start exec works on both
-//      pi and pig; runtimes without the event fall back to a load-time probe.
+//   5. Initial probe deferred to session_start: a load-time probe can run
+//      before the extension connection is ready, which misreports a healthy
+//      rtk as missing and warns at every startup. By session_start exec is
+//      reliably up; runtimes without the event fall back to a load-time probe.
 
 import type {
   BashToolCallEvent,
@@ -191,10 +190,10 @@ export default async function (pi: ExtensionAPI) {
   let lastProbeAt = 0
   let deniedWarned = false
 
-  // Initial probe. Deferred to session_start: pig's extension host drops
-  // pi.exec during load (header note 5). A missing rtk does not disable the
-  // extension: it starts in the unavailable state and self-heals via the
-  // handler's 30s re-probe. A too-old rtk disables it.
+  // Initial probe. Deferred to session_start: a load-time probe can run
+  // before the extension connection is ready (header note 5). A missing rtk
+  // does not disable the extension: it starts in the unavailable state and
+  // self-heals via the handler's 30s re-probe. A too-old rtk disables it.
   const runInitialProbe = async () => {
     const probe = await probeVersion(pi)
     if (probe.kind === "too-old") {

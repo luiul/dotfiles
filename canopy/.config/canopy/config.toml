@@ -5,8 +5,6 @@
 # Schema and matching rules: https://github.com/luiul/canopy#configuration
 #
 # pi only: state comes from pi's own program-status reports via the
-# canopy-status extension (pig reads "unknown": its extension host runs
-# under a separate pid canopy never matches), and anything without a
-# report reads "unknown" too, so tracking other kinds adds noise, not
-# signal.
+# canopy-status extension, and anything without a report reads "unknown"
+# too, so tracking other kinds adds noise, not signal.
 agents = ["pi"]

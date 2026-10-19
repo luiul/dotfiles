@@ -67,7 +67,7 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Track bigger projects, multi-step plans, and design docs as GitHub issues (`gh issue create`; update via `gh issue comment` or body edits), not markdown files committed to the repo root.
 - GitHub issue gate: discuss the plan or spec in chat first. Run `gh issue create` only after the user approves or explicitly asks. Until then the chat reply is the draft, and `gh issue create` is never a judgment call.
 - Reserve in-repo markdown for code-adjacent docs (READMEs, setup notes). Plans, roadmaps, and trackers belong in issues.
-- If the team uses a different tracker, use that instead. HelloFresh repos use Jira: see `~/projects/hellofresh/AGENTS.md`.
+- If the team uses a different tracker, use that instead. HelloFresh repos use Jira, and all Business Impact / harvest rules (ticket first, harvest as source of truth, projections to Jira and PR labels) live in `~/projects/hellofresh/AGENTS.md`. They apply to HelloFresh work in any directory, not just repos under `~/projects/hellofresh`.
 
 ## Commits
 
@@ -103,12 +103,11 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - The env var skips only the VS Code window. All setup hooks still run (venv symlink, copy-ignored, known-repos registry, AGENTS.md links), so the worktree stays a normal registered worktree visible in `cop list` and understory.
 - `cop new` does not open a VS Code window by default (pass `--open`/`-o` to open one), so it is safe for agents too. Never use raw `git worktree add` (skips hooks and registry).
 
-## HelloFresh Business Impact
+## Model Choice
 
-- The Jira ticket is the source of truth, harvest (`~/.harvest/`, CLI `harvest`, repo `~/projects/personal/harvest`) is its database, the PR is a projection. Never write the same impact data in two places.
-- Sequence, always ticket first: `harvest create ticket --summary ... -c ... -i ... -n ... -s ... -e ... -w ...` (records the full row in harvest AND creates the Jira ticket with the four-field projection block; dollars and estimate basis live only in harvest, never on Jira); branch `type/<KEY>-short-desc`; draft PR with labels only (NEVER a Business Impact block in the PR body), then `harvest record pr <repo>#<n> --ticket <KEY>` (impact fields inherit from the ticket row).
-- Estimate changed: `harvest record ticket <KEY>` with the new flags, then `harvest project <KEY>` if a projected field (Category, Notes, Scope, Work Type) changed; dollar/basis changes never touch Jira. Update PR labels only if category/scope changed.
-- Full spec (taxonomy, block format, label colors): `~/projects/hellofresh/AGENTS.md` section "Business Impact". Reports: `harvest report --year <yyyy>`.
+- Prefer the default provider, the HelloFresh AI Model Router; its models work everywhere in pi (subagents, Explore) and prompt caching works on most of them.
+- Exception: for Claude work, use the direct Bedrock ids (`eu.anthropic.claude-*`, `us.anthropic.claude-*`), not the router's `claude-*` ids. The router's OpenAI-compatible API does not pass Anthropic prompt caching through, so router Claude turns pay full input price every turn (~8x on a 30K prompt). Direct Bedrock caches (first turn pays a write premium, later turns read the cache).
+- Verify caching after any provider change: a warm trivial turn should show `cacheRead` above zero in usage.
 
 ## Large Files
 

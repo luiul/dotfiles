@@ -1,5 +1,22 @@
 zsh_config_dir="$HOME/.zsh_config"
 
+# Orphan guard: interactive shells with no tty and no -c command can never show a
+# prompt, but zle spins in a busy loop forever without one (41 such login shells,
+# some 8 days old, stole ~6 cores until killed on 2026-10-19). Log the spawner
+# and exit. Skipped for tty shells (zero cost on the normal path); shells with
+# a -c command (zsh -ic 'cmd', used by tools) pass through.
+if [[ -o interactive && ! -t 0 && ! -t 1 ]]; then
+	if ! ps -o command= -p $$ | grep -qE -- '(^| )-[a-zA-Z]*c'; then
+		mkdir -p "$HOME/.cache"
+		{
+			print -r -- "$(date '+%Y-%m-%d %H:%M:%S') orphan zsh pid=$$ ppid=$PPID"
+			print -r -- "  parent: $(ps -o command= -p $PPID 2>/dev/null)"
+			print -r -- "  self: $(ps -o command= -p $$ 2>/dev/null)"
+		} >> "$HOME/.cache/zsh-orphan.log"
+		exit 1
+	fi
+fi
+
 if [[ ! -d "$zsh_config_dir" ]]; then
 	echo "Config directory not found: $zsh_config_dir" >&2
 	return 1

@@ -10,12 +10,6 @@
       "lifecycle": "lazy",
       "directTools": false
     },
-    "excalidraw": {
-      "type": "http",
-      "url": "https://mcp.excalidraw.com",
-      "lifecycle": "lazy",
-      "directTools": false
-    },
     "drawio": {
       "type": "http",
       "url": "https://mcp.draw.io/mcp",
@@ -32,12 +26,6 @@
         "--user-data-dir",
         "/Users/luis.aceituno/.pi/agent/data/playwright-brave-beta"
       ],
-      "lifecycle": "lazy",
-      "directTools": false
-    },
-    "playwriter": {
-      "command": "playwriter",
-      "args": [],
       "lifecycle": "lazy",
       "directTools": false
     }

@@ -79,6 +79,107 @@ source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 znap eval fzf 'fzf --zsh'
 
 if command -v wt >/dev/null 2>&1; then znap eval wt 'command wt config shell init zsh'; fi
+
+# wt completion cache. wt's completer shells out to git ~15x per call, and every
+# exec on this machine is taxed ~0.3s by SentinelOne, serialized. One uncached
+# completion therefore costs 4s+. zsh-autocomplete re-runs the completion on EVERY
+# keystroke, each in a throwaway pty fork of the shell, so the result must be
+# cached on disk, not in a shell variable. The cache key is cwd plus position plus
+# the words already on the line; the current word is deliberately emptied in the
+# wt call so the cache holds the FULL candidate list for that position, and zsh
+# itself filters it by the typed prefix. Branches created in another window show
+# up once the TTL expires. Replaces the completer bound by wt's shell init
+# (_wt_lazy_complete) and brew's generated _wt, whose describe logic is copied
+# verbatim so rendering (dirs, descriptions) stays identical.
+_wt_cached() {
+  local -i idx=$(( CURRENT - 1 ))
+  local -i ttl=15
+  (( $+EPOCHSECONDS )) || zmodload zsh/datetime
+  zmodload zsh/stat 2>/dev/null
+  local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/wt/zsh-completion"
+  local key="$PWD"$'\x1f'"$idx"$'\x1f'"${(j: :)words[1,idx]}"
+  local cache_file="$cache_dir/${key//[^a-zA-Z0-9._-]/_}"
+  local now=$EPOCHSECONDS
+  local -a out=()
+  local mtime
+  local -i miss=0
+  if [[ -s $cache_file ]] && zstat -A mtime +mtime -- "$cache_file" 2>/dev/null && (( now - mtime < ttl )); then
+    out=("${(@f)$(<$cache_file)}")
+  else
+    miss=1
+    out=("${(@f)$( _CLAP_IFS=$'\n' _CLAP_COMPLETE_INDEX=$idx COMPLETE=zsh command wt -- "${(@)words[1,idx]}" "" 2>/dev/null )}")
+  fi
+  # Drop empty lines. Under zsh-autocomplete a cache miss runs in a throwaway
+  # pty worker that gets killed after the completion timeout, so a slow wt
+  # call can come back truncated. An empty result must never be cached: it
+  # would poison the position for the whole TTL.
+  local -a lines=()
+  local l
+  for l in $out; do
+    [[ -n $l ]] && lines+=( "$l" )
+  done
+  if (( miss )) && (( $#lines )); then
+    command mkdir -p "$cache_dir"
+    local tmp="$cache_file.tmp.$$"
+    print -rl -- $lines > "$tmp"
+    command mv -f "$tmp" "$cache_file"
+    # Prune entries older than a day. The glob needs nullglob only here.
+    () {
+      setopt localoptions nullglob
+      local -a old=( "$cache_dir"/*(.m+1) )
+      (( $#old )) && command rm -f -- $old
+    }
+  fi
+  # Same describe logic as the generated _wt in brew's site-functions.
+  local -a dirs=() other=()
+  local completion value
+  for completion in $lines; do
+    value="${completion%%:*}"
+    if [[ "$value" == */ ]]; then
+      if [[ "$completion" == *:* ]]; then
+        dirs+=( "${value%/}:${completion#*:}" )
+      else
+        dirs+=( "${value%/}" )
+      fi
+    else
+      other+=( "$completion" )
+    fi
+  done
+  [[ -n $dirs ]] && _describe -V 'values' dirs -S '/' -r '/'
+  [[ -n $other ]] && _describe -V 'values' other
+}
+# The zstyles wt's own generated completer would set when first read. It is
+# shadowed by _wt_cached, so set them here to keep the single-column list.
+zstyle ':completion:*:wt:*' list-max 1
+zstyle ':completion:*:*:wt:*' list-grouped false
+# zsh-autocomplete kills a slow live completion after this timeout (default 1s).
+# wt's fan-out costs 4s+ on a cold cache, so raise the budget: the menu then
+# streams in asynchronously once wt finishes instead of never showing at all.
+# Cached positions complete instantly and ignore this entirely.
+zstyle ':autocomplete:*' timeout 8
+# Bind wt to _wt_cached. compinit runs asynchronously under zsh-autocomplete (and
+# as a fallback later in this file), so compdef does not exist yet at this point;
+# retry from the first prompt where it does, then unhook.
+if (( $+functions[compdef] )); then
+  compdef _wt_cached wt
+else
+  _wt_compdef_once() {
+    if (( $+functions[compdef] )); then
+      compdef _wt_cached wt
+      add-zsh-hook -d precmd _wt_compdef_once
+      unfunction _wt_compdef_once
+    fi
+  }
+  autoload -Uz add-zsh-hook
+  add-zsh-hook precmd _wt_compdef_once
+fi
+
+# understory polls `wt list` for every known repo (~200 taxed execs per cycle).
+# At the 15s default that permanently saturates the machine's serialized exec
+# budget and slows every interactive wt command to 20-60s (see _wt_cached note
+# above). 60s keeps the dashboard fresh enough while cutting that load 4x.
+alias understory='understory --interval 60'
+
 if command -v coppice >/dev/null 2>&1; then znap eval coppice 'command coppice shell init zsh'; fi
 
 # zoxide must be the last thing initialized

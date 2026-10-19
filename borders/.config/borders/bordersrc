@@ -5,7 +5,7 @@ options=(
 	style=round
 
 	# Border width in pixels (adjust as needed)
-	width=4.0
+	width=5.0
 
 	# Enable HiDPI for sharp borders on Retina displays
 	hidpi=on
@@ -17,7 +17,7 @@ options=(
 	active_color=0xffff00ff
 
 	# Inactive border (fully transparent)
-	inactive_color=0x0044475a
+	# inactive_color=0x0044475a
 )
 
 borders "${options[@]}"

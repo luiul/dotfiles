@@ -19,6 +19,25 @@ scripts/test-pi-notifications.sh
 
 The script runs an interactive pi in a detached tmux session with a 2s long-run threshold and asserts a real notification lands in `claude-notifier logs`.
 
+## Zsh bang commands (`!!!`)
+
+`zsh-bang.ts` runs `!!!<cmd>` passthrough commands in the interactive zsh instead of bash. Pi's `!`/`!!` passthrough spawns `/bin/bash -c`, which loads no rc files, so zsh functions and aliases (e.g. `gurl` in `funcs_git.zsh`) fail with `command not found`. With the extension, `!!!type gurl` resolves them.
+
+How it works: the TUI strips the leading bangs first (`!!!gurl` parses as `!!` exclude-from-context plus the command `!gurl`), the extension's `user_bash` handler sees the marker bang, and returns `BashOperations` that strip it and spawn `zsh -ic`. Pi's own streaming, Esc cancellation, truncation, and session recording stay intact; only the shell differs. Two consequences of the bang grammar:
+
+- `!!!` commands are always excluded from the model's context (they ride the `!!` prefix). There is no in-context zsh variant.
+- `zsh -ic` pays the full interactive zsh config load (~0.6s on this machine, mostly znap cache evals). Fine for occasional shell conveniences; do not use it as a per-call prefix via `shellCommandPrefix`, which would also hit every model `bash` tool call.
+
+stderr from znap's cached fzf eval (`can't change option: zle`, printed because stdin is not a tty) is line-filtered so it never reaches the transcript. A background descendant holding the pipes (`!!!long-job &`) cannot hang the bang UI: after zsh exits, an idle grace timer (3s, re-armed on output chunks, mirroring pi's own waitForChildProcess from earendil-works/pi#5303) closes the streams. All listener/timer cleanup runs in a `finally` block, so a spawn error cannot leak the abort listener or timers. The extension loads after `split.ts` (directory order), so split's own `user_bash` handler still sees every command start. Without the marker bang the handler returns `undefined` and pi's normal bash path runs unchanged.
+
+Verification from the repository root:
+
+```sh
+bun scripts/test-zsh-bang-extension.ts
+```
+
+The mock harness covers handler routing (marker vs plain commands), marker stripping, real `zsh -ic` execution with the user's config loaded, noise filtering, real stderr passthrough, exit codes, the empty-command hint, abort cleanup (no orphan zsh), and the background-job grace timer (exec returns while the `&` job keeps running). Live check: in a real pi TUI, `!!!type gurl` prints `gurl is a shell function from ~/.zsh_config/funcs_git.zsh` with no zle noise, while plain `!type gurl` still runs bash and fails; `!!!sleep 10 & echo ok` returns `ok` immediately and unblocks the editor (verified 2026-10-19 in tmux, session jsonl asserts `excludeFromContext: true`).
+
 ## RTK command rewriting and bash output cap
 
 `rtk.ts` rewrites bash tool commands to their `rtk` equivalents for token savings. The base file is the rtk-shipped pi extension (`rtk init -g --agent pi` regenerates it). All rewrite rules live in the rtk binary: `rtk rewrite` is the single source of truth, the extension only delegates.

@@ -2,17 +2,22 @@
  * split.ts — one adjustable vertical split for the pi fullscreen TUI.
  *
  *   ┌ left column (drag the │ divider or /split-width) ┐┌ right column ┐
- *   │ transcript (full, or response-only via           ││ Thinking     │
- *   │ /split-trim-response)                            ││ Tool Usage   │
- *   │ > editor dock (pi's own, reused verbatim)        ││ File Changes │
- *   └───────────────────────────────────────────────────┘└──────────────┘
+ *   │ ▌ pinned user prompt (split-sticky.ts)     ││ Thinking     │
+ *   │ ───────────────────────                        ││ Tool Usage   │
+ *   │ transcript (full, or response-only via           ││ File Changes │
+ *   │ /split-trim-response)                            ││              │
+ *   │ > editor dock (pi's own, reused verbatim)        ││              │
+ *   └──────────────────────────────────────────────────┘└──────────────┘
  *
  * - One vertical split, adjustable: mouse-drag the 1-col dim │ divider
  *   (press captures the drag; move updates the left share 20–80%), or
  *   /split-width <pct>. Session-local; /split-save persists it.
  * - Left: pi's base root verbatim (transcript + editor dock), or the
  *   response-only view from split-response.ts (transcript region swapped,
- *   editor dock reused).
+ *   editor dock reused). Above the transcript: the sticky user prompt bar
+ *   from split-sticky.ts (/split-sticky, on by default) pins the user
+ *   prompt that owns the top visible line while it is scrolled above the
+ *   view (VS Code sticky scroll).
  * - Right: three compact stacked panels — thinking (split-panels.ts), tool
  *   usage (split-panels.ts), file changes (split-files.ts, driven by the
  *   shared tracker from filechanges-tracker.ts — the same data as the
@@ -65,11 +70,21 @@ import {
 import {
 	baseDockOf,
 	buildResponseInner,
+	getResponseDoc,
+	getResponseScrollView,
 	rebuildResponseDoc,
-	responseMessageStart,
+	resetResponseState,
+	responseDocBegin,
+	responseDocEnd,
+	responseIngestEntry,
 	responseMessageEnd,
+	responseMessageStart,
 	responseMessageUpdate,
+	setResponseTui,
+	startLiveBash,
+	syncBranchEntries,
 } from "./split-response.ts";
+import { StickyPromptBar, findTranscriptScrollView } from "./split-sticky.ts";
 import { createFilesPanel, disposeFilesPanel, initFilesPanel, setFilesSuppressed } from "./split-files.ts";
 
 const WIDGET_KEY = "split";
@@ -108,6 +123,10 @@ let thinkingOn = false;
 let toolsOn = false;
 let filesOn = false;
 let trimResponse = false;
+/** Sticky user prompt bar at the top of the left column (split-sticky.ts). */
+let stickyOn = false;
+/** Live bar instance; recreated on recompose, heights shared via WeakMap. */
+let stickyBar: StickyPromptBar | null = null;
 let toolMode: "compact" | "full" = "compact";
 /** LEFT (transcript) column share of usable width in percent, 20–80. */
 let leftWidthPct = 60;
@@ -148,7 +167,23 @@ function requestRender(): void {
 
 const anyPanelActive = () => isLayoutLayerActive(LAYER_ID);
 const rightColumnWanted = () => thinkingOn || toolsOn || filesOn;
-const anyFlagOn = () => thinkingOn || toolsOn || filesOn || trimResponse;
+const anyFlagOn = () => thinkingOn || toolsOn || filesOn || trimResponse || stickyOn;
+
+// ─── sticky bar source ───────────────────────────────────────────────────────
+
+/** Live {sv, doc} for the sticky bar: the response view in trim mode, pi's
+ * transcript ScrollView + document container otherwise. */
+function stickySource(): { sv: unknown; doc: unknown } | null {
+	if (trimResponse) {
+		const sv = getResponseScrollView();
+		return sv ? { sv, doc: getResponseDoc() } : null;
+	}
+	const base = getBaseRoot();
+	if (!base) return null;
+	const sv = findTranscriptScrollView(base);
+	const doc = (sv as any)?.child;
+	return sv && doc ? { sv, doc } : null;
+}
 
 // ─── geometry ────────────────────────────────────────────────────────────────
 
@@ -228,6 +263,17 @@ function composeLayout(theme: Theme, inner: Component): Component {
 	if (trimResponse) {
 		const trimmed = buildResponseInner(theme, getBaseRoot());
 		if (trimmed) root = trimmed;
+	}
+	// Sticky prompt bar: pinned above the transcript in the left column. The
+	// bar returns [] while hidden, so its basis-auto entry takes no rows.
+	if (stickyOn) {
+		stickyBar = new StickyPromptBar(theme, stickySource);
+		root = new MeasurementSafeVStack([
+			{ component: stickyBar, basis: "auto", grow: 0, shrink: 0 },
+			{ component: root, basis: 0, grow: 1, shrink: 1, minSize: 1 },
+		]);
+	} else {
+		stickyBar = null;
 	}
 	if (!rightColumnWanted()) return root;
 
@@ -309,9 +355,11 @@ function composeLayout(theme: Theme, inner: Component): Component {
 		onPctChange: () => reconcileLayout(currentTheme()),
 	});
 
-	const left = new MeasurementSafeVStack([
-		{ component: root, basis: 0, grow: 1, shrink: 1, minSize: 1 },
-	]);
+	const left = stickyOn
+		? (root as Component) // already the MeasurementSafeVStack built above
+		: new MeasurementSafeVStack([
+				{ component: root, basis: 0, grow: 1, shrink: 1, minSize: 1 },
+			]);
 	return new HStack([
 		{ component: left, basis: 0, grow: 1, shrink: 1, minSize: 1 },
 		{
@@ -375,6 +423,8 @@ export default function (pi: ExtensionAPI) {
 			(tui) => {
 				tuiRef = tui;
 				initLayoutManager(tui);
+				// Bash blocks need a TUI handle for their loader spinners.
+				setResponseTui(tui);
 				// Apply the still-pending startup composition here: the widget
 				// factory runs synchronously during session_start, before the
 				// first paint, and the fullscreen root is available right now.
@@ -409,6 +459,11 @@ export default function (pi: ExtensionAPI) {
 						) {
 							reconcileLayout(liveTheme);
 						}
+						// Leaf diff: bang results, compactions, branch summaries,
+						// custom messages land in the branch with NO extension
+						// event — the O(1) getLeafId compare is the whole cost
+						// when nothing moved.
+						if (syncBranchEntries(ctx)) requestRender();
 						return [];
 					},
 				};
@@ -417,44 +472,53 @@ export default function (pi: ExtensionAPI) {
 		);
 	};
 
-	/** Rebuild panel buffers from the current branch (start / reload / tree). */
+	/** Rebuild panel buffers + the response doc from the current branch
+	 * (start / reload / tree), in ONE ordered pass so panel rows keep branch
+	 * order (a skill row stays above the tool calls that follow it). */
 	const reconstruct = (ctx: ExtensionContext) => {
 		thinkingPanel.reset();
 		toolsPanel.reset();
-		rebuildResponseDoc(ctx);
+		responseDocBegin();
+		// ensureWidget FIRST: the widget factory sets tuiRef synchronously, and
+		// bash blocks rebuilt from the branch need it for their loaders.
+		ensureWidget(ctx);
 		const branch = ctx.sessionManager.getBranch();
 		for (const entry of branch) {
-			if (entry.type !== "message") continue;
-			const msg = (entry as any).message;
-			if (!msg) continue;
-			if (msg.role === "assistant" && Array.isArray(msg.content)) {
-				for (const c of msg.content) {
+			if (entry.type === "message") {
+				const msg = (entry as any).message;
+				if (!msg) continue;
+				if (msg.role === "assistant" && Array.isArray(msg.content)) {
+					for (const c of msg.content) {
+						try {
+							if (c?.type === "thinking" && typeof c.thinking === "string") {
+								// Rebuild bounded thinking blocks through the same
+								// ingest path live events use (upstream SV-17).
+								thinkingPanel.start();
+								thinkingPanel.end(c.thinking);
+							}
+							if (c?.type === "toolCall" && c.name) {
+								if (typeof c.id === "string")
+									toolsPanel.ingestCall(c.id, c.name, c.arguments ?? {});
+							}
+						} catch {
+							/* skip */
+						}
+					}
+				}
+				// Rebuild tool outputs from persisted results, correlated by id.
+				if (msg.role === "toolResult" && typeof msg.toolCallId === "string") {
 					try {
-						if (c?.type === "thinking" && typeof c.thinking === "string") {
-							// Rebuild bounded thinking blocks through the same
-							// ingest path live events use (upstream SV-17).
-							thinkingPanel.start();
-							thinkingPanel.end(c.thinking);
-						}
-						if (c?.type === "toolCall" && c.name) {
-							if (typeof c.id === "string")
-								toolsPanel.ingestCall(c.id, c.name, c.arguments ?? {});
-						}
+						toolsPanel.ingestResult(msg.toolCallId, msg.content, msg.isError);
 					} catch {
 						/* skip */
 					}
 				}
 			}
-			// Rebuild tool outputs from persisted results, correlated by id.
-			if (msg.role === "toolResult" && typeof msg.toolCallId === "string") {
-				try {
-					toolsPanel.ingestResult(msg.toolCallId, msg.content, msg.isError);
-				} catch {
-					/* skip */
-				}
-			}
+			// Doc + session-event rows (bash blocks, skills, compaction, branch
+			// summaries, custom display messages), same path the live walk uses.
+			responseIngestEntry(entry);
 		}
-		ensureWidget(ctx);
+		responseDocEnd(ctx);
 		if (anyPanelActive()) requestRender();
 	};
 
@@ -463,6 +527,7 @@ export default function (pi: ExtensionAPI) {
 		toolsOn = cfg.tools;
 		filesOn = cfg.files;
 		trimResponse = cfg.trimResponse;
+		stickyOn = cfg.sticky;
 		toolMode = cfg.toolMode;
 		leftWidthPct = cfg.leftWidthPct;
 		thinkingPct = cfg.thinkingPct;
@@ -476,7 +541,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", (_e, ctx) => {
 		let cfg = normalizeConfig(loadSplitConfig());
 		if (pi.getFlag("no-split")) {
-			cfg = { ...cfg, split: false, thinking: false, tools: false, files: false, trimResponse: false };
+			cfg = { ...cfg, split: false, thinking: false, tools: false, files: false, trimResponse: false, sticky: false };
 		}
 		// Bind the files panel to the session's shared tracker first: the
 		// suppression decision below needs it. Creates it if filechanges.ts
@@ -498,7 +563,7 @@ export default function (pi: ExtensionAPI) {
 							startupPending = false;
 							reconcileLayout(ctx.ui.theme);
 						}
-						if (rightColumnWanted() || trimResponse)
+						if (rightColumnWanted() || trimResponse || stickyOn)
 							ctx.ui.notify("Split view on", "info");
 					}
 				} catch {
@@ -508,6 +573,22 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 	pi.on("session_tree", (_e, ctx) => reconstruct(ctx));
+
+	// A `!`/`!!` bang command started. pi emits user_bash BEFORE executing and
+	// aborts the command if any handler throws, and takes over execution if a
+	// handler returns a result — so this handler must never throw and must
+	// always return undefined. It only drops a running block into the response
+	// doc; the per-frame leaf walk completes it from the appended branch entry.
+	pi.on("user_bash", (event) => {
+		try {
+			const e = event as { command?: string; excludeFromContext?: boolean };
+			startLiveBash(String(e?.command ?? ""), !!e?.excludeFromContext);
+			requestRender();
+		} catch {
+			/* never break bang execution */
+		}
+		return undefined;
+	});
 
 	// Thinking stream + response doc streaming.
 	pi.on("message_update", (event) => {
@@ -568,6 +649,9 @@ export default function (pi: ExtensionAPI) {
 		}
 		setLayoutLayer(LAYER_ID, null);
 		resetLayoutManager();
+		stickyBar?.dispose();
+		stickyBar = null;
+		resetResponseState();
 		setFilesSuppressed(false);
 		disposeFilesPanel();
 		setPanelRenderHook(null);
@@ -605,26 +689,51 @@ export default function (pi: ExtensionAPI) {
 				toolsOn = false;
 				filesOn = false;
 				trimResponse = false;
+				stickyOn = false;
 				setFilesSuppressed(false);
 				reconcileLayout(ctx.ui.theme);
 				ctx.ui.notify("Split off (bare layout)", "info");
 			} else {
 				const cfg = normalizeConfig(loadSplitConfig());
 				if (!cfg.thinking && !cfg.tools && !cfg.files && !cfg.trimResponse) {
-					// Nothing saved: default layout = all three right panels.
+					// Nothing saved: default layout = all three right panels + sticky.
 					thinkingOn = true;
 					toolsOn = true;
 					filesOn = true;
+					stickyOn = true;
 				} else {
 					thinkingOn = cfg.thinking;
 					toolsOn = cfg.tools;
 					filesOn = cfg.files;
 					trimResponse = cfg.trimResponse;
+					stickyOn = cfg.sticky;
 				}
 				setFilesSuppressed(filesOn);
 				reconcileLayout(ctx.ui.theme);
 				ctx.ui.notify("Split on (saved layout)", "info");
 			}
+		},
+	});
+
+	pi.registerCommand("split-sticky", {
+		description:
+			"Sticky user prompt pinned at the top of the left column: toggle, or on|off",
+		handler: async (args, ctx) => {
+			if (!requireFullscreen(ctx)) return;
+			const arg = String(args ?? "").trim().toLowerCase();
+			const next = arg === "on" ? true : arg === "off" ? false : !stickyOn;
+			if (next === stickyOn) {
+				ctx.ui.notify(`Sticky prompt ${stickyOn ? "on" : "off"}`, "info");
+				return;
+			}
+			stickyOn = next;
+			reconcileLayout(ctx.ui.theme);
+			// Sticky was the last flag on and it just went off: whole layout is bare.
+			if (!anyFlagOn()) {
+				ctx.ui.notify("Split off (bare layout)", "info");
+				return;
+			}
+			ctx.ui.notify(`Sticky prompt ${stickyOn ? "on" : "off"}`, "info");
 		},
 	});
 
@@ -825,6 +934,7 @@ export default function (pi: ExtensionAPI) {
 				files: filesOn,
 				toolMode,
 				trimResponse,
+				sticky: stickyOn,
 				leftWidthPct,
 				thinkingPct,
 				toolsPct,

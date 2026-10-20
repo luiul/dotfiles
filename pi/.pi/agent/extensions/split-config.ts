@@ -53,6 +53,8 @@ export interface SplitConfig {
 	toolMode?: ToolMode;
 	/** Left column: response-only view instead of pi's full transcript. */
 	trimResponse?: boolean;
+	/** Sticky user prompt bar pinned at the top of the left column. */
+	sticky?: boolean;
 	/** LEFT column share of usable width in percent (20–80, default 60). */
 	leftWidthPct?: number;
 	/** Right columns: thinking panel share of rows (default 30). */
@@ -70,6 +72,7 @@ export interface NormalizedSplitConfig {
 	files: boolean;
 	toolMode: ToolMode;
 	trimResponse: boolean;
+	sticky: boolean;
 	leftWidthPct: number;
 	thinkingPct: number;
 	toolsPct: number;
@@ -134,6 +137,7 @@ export function normalizeConfig(raw: unknown): NormalizedSplitConfig {
 	const files = split && boolOr(root.files, true);
 	const toolMode: ToolMode = root.toolMode === "full" ? "full" : "compact";
 	const trimResponse = boolOr(root.trimResponse, false);
+	const sticky = split && boolOr(root.sticky, true);
 	const leftWidthPct = clampPct(
 		Math.trunc(numOr(root.leftWidthPct, 60)),
 		20,
@@ -151,6 +155,7 @@ export function normalizeConfig(raw: unknown): NormalizedSplitConfig {
 		files,
 		toolMode,
 		trimResponse,
+		sticky,
 		leftWidthPct,
 		thinkingPct: pcts.thinkingPct,
 		toolsPct: pcts.toolsPct,

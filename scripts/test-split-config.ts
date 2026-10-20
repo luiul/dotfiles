@@ -45,21 +45,25 @@ function check(name: string, cond: boolean, detail?: unknown) {
 {
 	const d = normalizeConfig({ split: true });
 	check("panels default ON when split is on, files biggest", d.split && d.thinking && d.tools && d.files, d);
+	check("sticky default ON when split is on", d.sticky, d);
 	const bare = normalizeConfig({});
 	check("no config: split ON by default (new windows open split)", bare.split && bare.thinking && bare.tools && bare.files && !bare.trimResponse, bare);
+	check("no config: sticky ON by default", bare.sticky, bare);
 	const off = normalizeConfig({ split: false });
 	check("explicit split false honored: every panel flag off", !off.split && !off.thinking && !off.tools && !off.files, off);
+	check("explicit split false: sticky off too", !off.sticky, off);
 }
 {
-	const c = normalizeConfig({ split: true, thinking: false, tools: true, files: false, toolMode: "full", trimResponse: true, leftWidthPct: 75, thinkingPct: 20, toolsPct: 20, filesPct: 60 });
+	const c = normalizeConfig({ split: true, thinking: false, tools: true, files: false, toolMode: "full", trimResponse: true, sticky: false, leftWidthPct: 75, thinkingPct: 20, toolsPct: 20, filesPct: 60 });
 	check("explicit flags honored", c.split && !c.thinking && c.tools && !c.files && c.toolMode === "full" && c.trimResponse);
+	check("explicit sticky false honored", !c.sticky, c);
 	check("explicit geometry honored", c.leftWidthPct === 75 && c.filesPct === 60);
 }
 {
 	// Strict typing: garbage shapes must fall back to defaults, never throw.
-	for (const raw of [null, [], "yes", 42, { split: "yes" }, { split: true, thinking: 1 }, { leftWidthPct: "60" }, { leftWidthPct: NaN }, { leftWidthPct: Infinity }, { thinkingPct: () => 30 }]) {
+	for (const raw of [null, [], "yes", 42, { split: "yes" }, { split: true, thinking: 1 }, { sticky: 1 }, { sticky: "yes" }, { leftWidthPct: "60" }, { leftWidthPct: NaN }, { leftWidthPct: Infinity }, { thinkingPct: () => 30 }]) {
 		const c = normalizeConfig(raw as never);
-		check(`garbage tolerated: ${JSON.stringify(String(raw)).slice(0, 40)}`, typeof c.leftWidthPct === "number" && Number.isFinite(c.leftWidthPct) && c.thinking === c.split && !Number.isNaN(c.thinkingPct + c.toolsPct + c.filesPct), c);
+		check(`garbage tolerated: ${JSON.stringify(String(raw)).slice(0, 40)}`, typeof c.leftWidthPct === "number" && Number.isFinite(c.leftWidthPct) && c.thinking === c.split && c.sticky === c.split && !Number.isNaN(c.thinkingPct + c.toolsPct + c.filesPct), c);
 	}
 }
 {
@@ -91,11 +95,12 @@ function check(name: string, cond: boolean, detail?: unknown) {
 
 // --- config roundtrip (temp HOME) -----------------------------------------------
 {
-	const ok = saveSplitConfig({ split: true, thinking: true, tools: false, files: true, trimResponse: false, leftWidthPct: 66, thinkingPct: 25, toolsPct: 20, filesPct: 55 });
+	const ok = saveSplitConfig({ split: true, thinking: true, tools: false, files: true, trimResponse: false, sticky: true, leftWidthPct: 66, thinkingPct: 25, toolsPct: 20, filesPct: 55 });
 	check("save reports success", ok);
 	check("save writes the file", existsSync(join(TMP, "split.json")));
 	const c = normalizeConfig(loadSplitConfig());
 	check("roundtrip: flags", c.split && c.thinking && !c.tools && c.files);
+	check("roundtrip: sticky", c.sticky, c);
 	check("roundtrip: geometry", c.leftWidthPct === 66 && c.thinkingPct === 25 && c.toolsPct === 20 && c.filesPct === 55, c);
 }
 

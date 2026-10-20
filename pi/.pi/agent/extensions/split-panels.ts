@@ -276,6 +276,10 @@ interface ToolEntry {
 	isError: boolean;
 	subagent?: boolean;
 	agent?: string;
+	/** Present on session-event rows (skill / compaction / branch summary /
+	 * custom): rendered with the event glyph instead of the tool status mark,
+	 * `name` is the event title, `output` the optional body. Never active. */
+	event?: boolean;
 }
 const toolsBy = new Map<string, ToolEntry>();
 const toolOrder: string[] = [];
@@ -410,6 +414,24 @@ function toolLines(theme: Theme, width: number): string[] {
 	for (const id of toolOrder) {
 		const e = toolsBy.get(id);
 		if (!e) continue;
+		// Session events (user decision 2026-10-24): one compact line with a
+		// muted glyph, body detail only in full mode — the panel is the
+		// action/event log, so events read like rows, not tool calls.
+		if (e.event) {
+			const glyph = th.fg("muted", "◆");
+			const title = th.fg("text", e.name);
+			out.push(`${glyph} ${title}`);
+			if (!full) continue;
+			const content = (e.output || "")
+				.split(/\r?\n/)
+				.map((l) => l.trim())
+				.filter(Boolean);
+			for (const l of content.slice(0, 2))
+				out.push(th.fg("toolOutput", `  · ${truncateInline(l, textWidth - 4)}`));
+			if (content.length > 2)
+				out.push(th.fg("dim", `  · +${content.length - 2} more`));
+			continue;
+		}
 		const mark = e.active
 			? th.fg("warning", "●")
 			: e.isError
@@ -455,6 +477,11 @@ export interface ToolsPanelApi {
 	ingestUpdate(id: string, partial: unknown): void;
 	ingestResult(id: string, result: unknown, isError?: boolean): void;
 	ingestSubagent(name: string, args: unknown, agent?: string): void;
+	/** Ingest a session event row (skill / compaction / branch summary /
+	 * custom message). `id` dedupes (use the branch entry id when one
+	 * exists); `title` is the compact line, `body` optional detail for full
+	 * mode. */
+	ingestEvent(id: string, title: string, body?: string): void;
 	reset(): void;
 	version(): number;
 	/** Any tool call currently active (drives the tools header's streaming dot). */
@@ -505,6 +532,28 @@ export const toolsPanel: ToolsPanelApi = {
 				isError: false,
 				subagent: true,
 				agent,
+			});
+			toolsVersionCounter++;
+			if (toolOrder.length > MAX_TOOLS) {
+				const evict = toolOrder.shift()!;
+				toolsBy.delete(evict);
+			}
+		} catch {
+			/* ingestion must never break the event listener */
+		}
+	},
+	ingestEvent(id, title, body) {
+		try {
+			if (toolsBy.has(id)) return; // dedupe (branch entry id is stable)
+			toolOrder.push(id);
+			toolsBy.set(id, {
+				id,
+				name: title,
+				args: "",
+				output: body ? capToolText(body) : "",
+				active: false,
+				isError: false,
+				event: true,
 			});
 			toolsVersionCounter++;
 			if (toolOrder.length > MAX_TOOLS) {

@@ -3,6 +3,8 @@
 #
 # Runs a real pi in a detached tmux session (fullscreen mode comes from
 # settings.json) with ONLY the split extension loaded (--no-extensions -e),
+# started on a SEEDED session (two 50-line turns, crafted jsonl) so the
+# sticky-scroll assertions are deterministic and cost no extra LLM calls,
 # then asserts against the rendered pane:
 #   1. clean start, no extension errors
 #   2. /split composes: Thinking + Tool Usage + File Changes headers, divider
@@ -10,7 +12,15 @@
 #   4. a real agent turn (two write calls, one with a long nested path) lands
 #      in the Tool Usage and File Changes panels, and the long path WRAPS
 #      (hanging indent) instead of truncating
+#   4. the sticky user prompt bar (split-sticky.ts): pins the seeded prompt
+#      while it is scrolled above the view, walks back a turn on PageUp,
+#      hides after jump-to-top, /split-sticky off removes it
 #   5. /split-trim-response reports response-only mode
+#   5.5 no-information-loss (2026-10-24): the seeded !gurl block (exit 127),
+#      the seeded skill turn, and the seeded branch summary survive the split —
+#      bash in the response doc (trim mode), skill + branch summary as Tool
+#      Usage event rows; a LIVE !echo and !!echo land in the doc too
+#      (user_bash + the per-frame leaf walk, no extension events involved)
 #   6. /split off restores the bare layout
 #   7. the tracker's session-set entry persists in the session jsonl
 #
@@ -58,13 +68,43 @@ capture_right() {
 cleanup() {
 	tmux kill-session -t "$SESSION" 2>/dev/null
 	rm -rf "$DIR" 2>/dev/null
+	rm -rf "$SESSDIR" 2>/dev/null
 }
 trap cleanup EXIT
 
 say "── split extension E2E (session $SESSION, dir $DIR)"
 
+# Deterministic long history for the sticky bar tests: a seeded session with
+# two 50-line turns, placed in pi's sessions dir for this cwd (cwd must match
+# $DIR so the tracker's session-file glob still finds it; pi adopts a seeded
+# file in place, unlike an EMPTY precreated file which it moves — that flow
+# is the known /share pitfall).
+SESSDIR="$HOME/.pi/agent/sessions/--Users-luis.aceituno-.split-e2e-$$--"
+mkdir -p "$SESSDIR"
+SEED="$SESSDIR/2026-10-19T00-00-00-000Z_deadbeef-0000-4000-8000-000000000000.jsonl"
+python3 - "$SEED" "$DIR" <<'PYEOF'
+import json, sys
+p, cwd = sys.argv[1], sys.argv[2]
+ts = lambda i: f"2026-10-19T00:00:{i:02d}.000Z"
+usage = lambda n: {"input": 100, "output": n, "cacheRead": 0, "cacheWrite": 0,
+	"totalTokens": 100 + n, "cost": {"input": 0.001, "output": 0.001,
+	"cacheRead": 0, "cacheWrite": 0, "total": 0.002}}
+lines = [
+ {"type": "session", "version": 3, "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "timestamp": ts(0), "cwd": cwd},
+ {"type": "model_change", "id": "m1", "parentId": None, "timestamp": ts(0), "provider": "test", "modelId": "test-model"},
+ {"type": "message", "id": "u1", "parentId": "m1", "timestamp": ts(1), "message": {"role": "user", "content": [{"type": "text", "text": "seed prompt one: tell me about alpha"}]}},
+ {"type": "message", "id": "u2", "parentId": "u1", "timestamp": ts(2), "message": {"role": "assistant", "content": [{"type": "text", "text": "\n".join(f"seed turn one line {n:02d}" for n in range(1, 51))}], "model": "test-model", "stopReason": "stop", "usage": usage(50)}},
+ {"type": "message", "id": "s1", "parentId": "u2", "timestamp": ts(3), "message": {"role": "user", "content": [{"type": "text", "text": "<skill name=\"seeded-skill\" location=\"/skills/seeded/SKILL.md\">\nSeeded skill prompt body for the panel event row.\n</skill>\n\nseed prompt attached to a skill"}]}},
+ {"type": "branch_summary", "id": "br1", "parentId": "s1", "timestamp": ts(4), "summary": "Seeded branch summary for the panel event row.", "fromId": "m1"},
+ {"type": "message", "id": "u3", "parentId": "br1", "timestamp": ts(5), "message": {"role": "user", "content": [{"type": "text", "text": "seed prompt two: tell me about beta"}]}},
+ {"type": "message", "id": "u4", "parentId": "u3", "timestamp": ts(6), "message": {"role": "assistant", "content": [{"type": "text", "text": "\n".join(f"seed turn two line {n:02d}" for n in range(1, 51))}], "model": "test-model", "stopReason": "stop", "usage": usage(50)}},
+ {"type": "message", "id": "b1", "parentId": "u4", "timestamp": ts(7), "message": {"role": "bashExecution", "command": "gurl", "output": "/bin/bash: gurl: command not found\n", "exitCode": 127, "cancelled": False, "truncated": False, "fullOutputPath": None, "timestamp": 1697700000000, "excludeFromContext": False}},
+]
+open(p, "w").write("\n".join(json.dumps(l) for l in lines) + "\n")
+PYEOF
+
 tmux new-session -d -s "$SESSION" -x 170 -y 46
-tmux send-keys -t "$SESSION" "cd $DIR && pi --no-extensions --thinking off -e $EXT" Enter
+tmux send-keys -t "$SESSION" "cd $DIR && pi --no-extensions --thinking off -e $EXT --session $SEED" Enter
 sleep 12
 capture
 
@@ -106,10 +146,78 @@ print(cnt.most_common(1)[0][0] if cnt else -1)
 '
 }
 DIV0=$(divider_col)
+
+# 2.5 session-event rows rebuilt into the Tool Usage panel (no-information-
+# loss policy): the seeded skill turn and branch summary must appear as
+# panel event rows, and the seeded skill turn's RAW <skill block must never
+# show in the left column. (Runs here because capture_right needs divider_col.)
+capture_right
+check_in_right "skill turn logged as a panel event row" "skill: seeded-skill"
+check_in_right "branch summary logged as a panel event row" "branch summary"
+check_not_contains "raw skill block never rendered in the left column" "<skill"
+
 tmux send-keys -t "$SESSION" "/split-width 45" Enter
 sleep 2
 DIV1=$(divider_col)
 if [ "$DIV1" -ge 70 ] && [ "$DIV1" -le 82 ]; then ok "divider moved to 45% (col $DIV0 → $DIV1)"; else bad "divider at 45% (got col $DIV1, was $DIV0)"; fi
+
+# 3.5 sticky user prompt bar (split-sticky.ts, VS Code sticky scroll) —
+# runs on the SEEDED session (deterministic 2-turn history, no LLM needed)
+# while provably idle, before any agent turn. The seeded transcript is far
+# taller than the viewport, so while following the end the bar pins the
+# prompt that owns the top visible line; one PageUp walks the pinned prompt
+# back to the previous turn; ctrl+home hides it (the prompt itself is then
+# on screen); ctrl+end re-pins it; /split-sticky off removes it for real.
+top_rows() {
+	tmux capture-pane -t "$SESSION" -p | head -8
+}
+tmux send-keys -t "$SESSION" "/split-sticky on" Enter
+sleep 2
+TOP=$(top_rows)
+if echo "$TOP" | grep -q "▌" && echo "$TOP" | grep -q "seed prompt two"; then
+	ok "sticky bar pins the owning prompt at the top"
+else
+	bad "sticky bar pins the owning prompt at the top"
+fi
+if echo "$TOP" | grep -q "seed prompt one"; then
+	bad "sticky bar pins the LATEST turn's prompt, not an old turn"
+else
+	ok "sticky bar pins the LATEST turn's prompt, not an old turn"
+fi
+tmux send-keys -t "$SESSION" -l "$(printf '\033[5~')"   # PageUp: into seed turn one
+sleep 2
+TOP=$(top_rows)
+if echo "$TOP" | grep -q "▌" && echo "$TOP" | grep -q "seed prompt one"; then
+	ok "pinned prompt walks turn by turn when scrolling"
+else
+	bad "pinned prompt walks turn by turn when scrolling"
+fi
+tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5H')"   # ctrl+home: to the top
+sleep 2
+TOP=$(top_rows)
+if echo "$TOP" | grep -q "▌"; then
+	bad "sticky bar hides at the transcript top"
+else
+	ok "sticky bar hides at the transcript top"
+fi
+capture
+if echo "$CAP" | grep -q "seed prompt one"; then
+	ok "the actual prompt is on screen after jump-to-top"
+else
+	bad "the actual prompt is on screen after jump-to-top"
+fi
+tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5F')"   # ctrl+end: follow the end
+sleep 2
+tmux send-keys -t "$SESSION" "/split-sticky off" Enter
+sleep 2
+capture
+if echo "$CAP" | grep -q "▌"; then
+	bad "sticky off removes the pinned bar"
+else
+	ok "sticky off removes the pinned bar"
+fi
+tmux send-keys -t "$SESSION" "/split-sticky on" Enter
+sleep 2
 
 # 5. response-only mode — test while provably IDLE (before the agent turn):
 # a command sent while a turn is still streaming gets queued as a follow-up
@@ -127,6 +235,34 @@ sleep 2
 capture
 HINT2=$(echo "$CAP" | grep -oE "left: (response only|full transcript)" | head -1)
 if [ -n "$HINT2" ] && [ "$HINT2" != "$HINT1" ]; then ok "trim toggle 2 cycles hint ($HINT2)"; else bad "trim toggle 2 cycles hint (got '$HINT2', had '$HINT1')"; fi
+
+# 5.5 no-information-loss: with response-only FORCED on, the left column is
+# the response doc — the seeded !gurl block must be right there (the native
+# transcript is not rendered in this mode), proving bash blocks survive
+# trim mode. Then run a LIVE !echo and !!echo and watch them land too
+# (user_bash handler + per-frame leaf walk).
+tmux send-keys -t "$SESSION" "/split-trim-response on" Enter
+sleep 2
+capture
+check_contains "seeded bash block visible in response-only mode" '\$ gurl'
+check_contains "seeded bash exit status visible" "command not found"
+check_contains "seeded bash exit code visible" "\(exit 127\)"
+tmux send-keys -t "$SESSION" "!echo split-e2e-live-bash" Enter
+sleep 3
+capture
+check_contains "live !echo block in the doc" '\$ echo split-e2e-live-bash'
+check_contains "live !echo output in the doc" "split-e2e-live-bash"
+tmux send-keys -t "$SESSION" "!!echo split-e2e-quiet-bash" Enter
+sleep 3
+capture
+check_contains "live !!echo block in the doc (dim, not dropped)" '\$ echo split-e2e-quiet-bash'
+check_contains "live !!echo output in the doc" "split-e2e-quiet-bash"
+# Restore the pre-5.5 trim state so the rest of the script runs as before
+# ("on" forced response-only; a single toggle returns to full transcript).
+if [ "$HINT2" != "left: full transcript" ]; then
+	tmux send-keys -t "$SESSION" "/split-trim-response" Enter
+	sleep 2
+fi
 
 # 4. real agent turn: two write calls (one long nested path), tracked in the
 # right panels; the long path must WRAP in File Changes, not truncate.

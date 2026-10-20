@@ -13,8 +13,7 @@ Pi's own vocabulary is the source of truth: where a concept exists in pi, the sp
 - **right column**: the stack of panels. The top of the right column is the natural glance position. (Earlier notes called this the "dock"; renamed because in pi the dock is the input dock at the bottom.)
 - **divider**: the single-column gap between the left column and the right column. Blank at rest; one accent ASCII `|` column while dragging (chosen over `│` because a full-height box drawing column renders with artifacts in the VS Code terminal). A drag clamps the left share to the 20 to 80 band. The keyboard path is `/split-width <pct>`.
 - **panel**: one section of the right column: a single 1-row header plus a body. Each panel gets a row share of the right column rows (defaults: Thinking 30, Tools 25, File Changes 45), set by the `/split-*-height` commands.
-- **header**: the 1-row panel title bar. It doubles as the separator to the next panel (minimal frame policy: no box borders). Shows the title, an optional count suffix, and the streaming indicator.
-- **streaming indicator**: the dim ` …` in a panel header while that panel is live.
+- **header**: the 1-row panel title bar. It doubles as the separator to the next panel (minimal frame policy: no box borders). The title renders muted at rest and accent while the panel's source is streaming (#48; the color change is the only streaming signal — the dim ` …` indicator was removed).
 - **transient scrollbar**: the scrollbar a panel shows only while the user scrolls: a border-styled track with an accent thumb, overlaying the body's last column, hidden at rest (introduced by #46). This is pi-tui's `scrollbar: "auto"` mode.
 - **block divider**: the separator between CONSECUTIVE response blocks in the response doc (the one boundary where assistant answers merge visually): one blank row above (the divider's own), one full-width `borderMuted` `─` stroke, and the next block's leading blank below — a compact symmetric gap. Never around prompts or bash blocks (both carry their own distinction: prompt styling, bash frame and background). In the Thinking panel, where lines carry no component padding, the divider provides both blank rows itself. (Design 2026-10-20, fourth iteration, measured in a real tmux run; supersedes the #44 and #47 drafts.)
 
@@ -35,14 +34,13 @@ Pi's own vocabulary is the source of truth: where a concept exists in pi, the sp
 - **Tools panel**: renders tool entries. Compact mode is the default; full detail via `/split-tools-view`. 60 entry bound.
 - **tool entry**: one call row, backed by one pi tool call (`ToolCall`, content type `toolCall`): the tool name, an args preview, a status mark, and in full mode up to two output lines plus a `+N more` row.
 - **status mark**: the per entry glyph in the Tools panel: `✓` succeeded, `✗` error, `●` active.
-- **File Changes panel**: renders the shared tracker state (`filechanges-tracker.ts`). Rows and semantic colors always match the filechanges widget, because both read the same tracker. Renders newest first.
+- **File Changes panel**: renders the shared tracker state (`filechanges-tracker.ts`). Rows and semantic colors always match the filechanges widget, because both read the same tracker. Renders oldest-first and follows the end, like every other panel (the widget keeps its own newest-first order).
 - **kind word**: the colored change type word in a File Changes row, for example `modified` or `untracked`, padded to 9 columns. (One letter "kind codes" were proposed and rejected.)
 - **row share**: a panel's percentage of the right column rows, renormalized to 100 across visible panels.
 
 ## Display order
 
-- **newest at top**: every panel renders its newest item as the topmost row, with the viewport anchored there (the File Changes pattern). Decided 2026-10-18; the panels that still render oldest first with follow mode "end" are the open #43 work.
-- **follow mode**: the pi-tui ScrollView `follow` option. `end` follows the newest content at the bottom; `none` keeps the viewport where it is. Newest at top requires `none`.
+- **follow mode**: the pi-tui ScrollView `follow` option. Every panel and the left column use `follow: "end"`: content renders oldest first and the viewport lands on the newest content at the bottom, so both columns read top to bottom and stay consistent (user decision 2026-10-20, reverting the 2026-10-18 newest-at-top idea; the last panel to switch was File Changes). `none` keeps the viewport where it is.
 
 ## Guardrail terms (every issue must respect these)
 

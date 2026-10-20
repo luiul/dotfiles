@@ -122,6 +122,11 @@ export class RecentBody {
 			groups.push(frags);
 			used += frags.length;
 		}
+		// Rows emit oldest to newest and the ScrollView follows the end: the
+		// right panels read top to bottom and land on the newest content at
+		// the bottom, exactly like the left column (user decision 2026-10-20,
+		// reverting the newest-at-top idea). Fragments of one wrapped line
+		// stay in reading order.
 		const rows: string[] = [];
 		for (let g = groups.length - 1; g >= 0; g--)
 			for (const f of groups[g]) rows.push(f);
@@ -158,10 +163,10 @@ export class RecentBody {
 
 /**
  * 1-row panel header: the title in muted at rest and in accent while the
- * panel's source is streaming (#48: the live panel is loud, idle chrome is
- * quiet), a dim "…" indicator while streaming, then a border ─ fill to
- * EXACT width. This row doubles as the separator between stacked panels,
- * so no extra separator rows exist.
+ * panel's source is streaming — the color change is the only streaming
+ * signal (user decision 2026-10-20: the dim … indicator was removed),
+ * then a border ─ fill to EXACT width. This row doubles as the separator
+ * between stacked panels, so no extra separator rows exist.
  */
 export class CompactHeader implements Component {
 	constructor(
@@ -174,11 +179,9 @@ export class CompactHeader implements Component {
 		const th = this.theme;
 		// The title color is derived from state, not configured per panel.
 		const head =
-			" " + th.fg(this.streaming() ? "accent" : "muted", this.title);
-		const withDot = this.streaming() ? head + th.fg("dim", " …") : head;
-		const padded = withDot + " ";
-		const fillW = Math.max(0, width - visibleWidth(padded));
-		return [padded + th.fg("border", "─".repeat(fillW))];
+			" " + th.fg(this.streaming() ? "accent" : "muted", this.title) + " ";
+		const fillW = Math.max(0, width - visibleWidth(head));
+		return [head + th.fg("border", "─".repeat(fillW))];
 	}
 
 	invalidate(): void {}
@@ -236,9 +239,11 @@ export interface FramedPanelSpec {
 
 /**
  * One compact panel: 1-row header + ScrollView body filling the remaining
- * rows. The ScrollView follows the end (newest content), contains overscroll
- * (wheel chains to the nearest ScrollView at the panel edges), and shows a
- * transient scrollbar only while the user scrolls.
+ * rows. The ScrollView follows the end (newest content lands at the bottom),
+ * exactly like the left column: both columns read top to bottom and stay
+ * consistent (user decision 2026-10-20, reverting the 2026-10-18
+ * newest-at-top idea). Wheel overscroll is contained at the panel edges,
+ * and the transient scrollbar shows only while the user scrolls.
  */
 export function framedPanel(theme: Theme, spec: FramedPanelSpec): Component {
 	const header = new CompactHeader(

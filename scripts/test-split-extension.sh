@@ -153,7 +153,7 @@ divider_col() {
 	tmux capture-pane -t "$SESSION" -p | python3 -c '
 import sys, re
 for line in sys.stdin:
-    m = re.search(r"Thinking(?: …)? ─────", line)
+    m = re.search(r"Thinking ─────", line)
     if m:
         print(m.start() - 2)
         sys.exit(0)
@@ -338,7 +338,18 @@ check_in_right "repo state renders whole (no edge clipping)" "untracked"
 # Rows start at the panel's left edge, so anchor: "  write" (settled) or
 # "● write" (still active).
 WRITES=$(echo "$CAP_R" | grep -cE "^(●|  ) write")
-if [ "$WRITES" -ge 2 ]; then ok "tool usage lists both writes"; else bad "tool usage lists both writes (found $WRITES of 2)"; fi
+if [ "$WRITES" -ge 2 ]; then ok "tools panel lists both writes"; else bad "tools panel lists both writes (found $WRITES of 2)"; fi
+# #43 reverted (user decision 2026-10-20): the panels follow the end like
+# the left column, so the OLDER write (test.txt) is the first tool row and
+# the newest sits at the bottom.
+FIRST_WRITE=$(echo "$CAP_R" | grep -E "^(●|  ) write" | head -1)
+if echo "$FIRST_WRITE" | grep -q "test.txt"; then ok "tools panel oldest first, following the end like the left column"; else bad "tools panel order (got: $FIRST_WRITE)"; fi
+# Files panel flipped for consistency (2026-10-20): oldest changed file
+# above newest. The tracker's kind word is "created"; tools rows start
+# with "  write", so "created <path>" anchors on file rows only.
+FC_TT=$(echo "$CAP_R" | grep -nE "created +test\.txt" | head -1 | cut -d: -f1)
+FC_DN=$(echo "$CAP_R" | grep -nE "created +deeply/nested" | head -1 | cut -d: -f1)
+if [ -n "$FC_TT" ] && [ -n "$FC_DN" ] && [ "$FC_TT" -lt "$FC_DN" ]; then ok "files panel oldest first, following the end like the left column"; else bad "files panel order (test.txt at line $FC_TT, deeply/nested at line $FC_DN)"; fi
 
 # Let the turn fully settle before the next command (see the trim note above).
 sleep 10

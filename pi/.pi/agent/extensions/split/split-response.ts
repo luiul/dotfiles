@@ -65,6 +65,7 @@ import {
 import {
 	Container,
 	ScrollView,
+	Spacer,
 	VStack,
 	type Component,
 } from "@earendil-works/pi-tui";
@@ -96,6 +97,21 @@ let responseTheme: Theme | null = null;
 
 export function setResponseTheme(theme: Theme): void {
 	responseTheme = theme;
+}
+
+/**
+ * One blank row of padding before a PROMPT that follows an answer (user
+ * decision 2026-10-20, measured in a real tmux run: prompts carry one leading
+ * marker row of their own and answers end flush, so the answer→prompt gap
+ * was one visible row while prompt→answer had two). With this spacer every
+ * block boundary in the doc shows the same two-row gap. No-op at doc start
+ * or after a bash block (the bash frame already separates).
+ */
+function insertPromptPadding(): void {
+	const kids = responseDoc.children as unknown[];
+	if (kids.length === 0) return;
+	if (!(kids[kids.length - 1] instanceof AssistantMessageComponent)) return;
+	responseDoc.addChild(new Spacer(1));
 }
 
 /**
@@ -148,11 +164,13 @@ function addResponseMessage(msg: any): boolean {
 					skill.content,
 				);
 				if (!skill.userMessage) return true;
+				insertPromptPadding();
 				responseDoc.addChild(
 					new UserMessageComponent(skill.userMessage, getMarkdownTheme()),
 				);
 				return true;
 			}
+			insertPromptPadding();
 			responseDoc.addChild(new UserMessageComponent(text, getMarkdownTheme()));
 			return true;
 		}

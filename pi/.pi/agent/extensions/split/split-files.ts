@@ -182,9 +182,12 @@ function buildCounts(th: Theme, e: FileChange): { plain: string; colored: string
 
 /**
  * Build the panel's list rows for one width. Pure except for theme colors,
- * and exported for unit tests. Rows render NEWEST-FIRST (the tracker's
- * order, same as the /filechanges widget) and mirror its formatChangeLine:
- * `<kind padded to 9> <path> (+A/-R) <state>` after the section divider.
+ * and exported for unit tests. The renderer is order-agnostic: rows mirror
+ * formatChangeLine `<kind padded to 9> <path> (+A/-R) <state>` for the
+ * list IN THE ORDER GIVEN. FilesListBody feeds it oldest-first so the panel
+ * reads top to bottom and follows the end, exactly like the left column
+ * and the other two panels (user decision 2026-10-20); the /filechanges
+ * widget keeps its own newest-first order.
  *
  * Legibility contract (user report 2026-10-16: the panel rendered 8-char
  * path fragments and clipped `untracked` mid-word at the panel edge):
@@ -278,7 +281,16 @@ class FilesListBody implements Component {
 		}
 		if (this.cacheLines.length && this.cacheWidth === width) return this.cacheLines;
 		this.cacheWidth = width;
-		this.cacheLines = buildFilesRows(this.theme, entries(), width, this.minRows());
+		// Oldest first, following the end (2026-10-20): the tracker list is
+		// newest-first; reverse a COPY so the panel reads top to bottom and
+		// lands on the newest entry at the bottom, consistent with the left
+		// column and the other panels.
+		this.cacheLines = buildFilesRows(
+			this.theme,
+			entries().slice().reverse(),
+			width,
+			this.minRows(),
+		);
 		return this.cacheLines;
 	}
 
@@ -324,7 +336,7 @@ export function createFilesPanel(
 
 	const listBody = new FilesListBody(theme, listRows);
 	const scroll = new ScrollView(listBody, {
-		follow: "none",
+		follow: "end",
 		overscroll: "contain",
 		scrollbar: "auto",
 		scrollbarTrackStyle: (t: string) => theme.fg("border", t),

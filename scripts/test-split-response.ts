@@ -27,7 +27,7 @@ import {
 	getMarkdownTheme,
 	initTheme,
 } from "@earendil-works/pi-coding-agent";
-import { Container } from "@earendil-works/pi-tui";
+import { Container, Spacer } from "@earendil-works/pi-tui";
 
 // UserMessageComponent renders through the global pi theme; a bare bun run
 // must install one first (pi's TUI normally does this at startup).
@@ -48,7 +48,7 @@ const {
 const { toolsPanel, thinkingPanel } = await import(
 	"../pi/.pi/agent/extensions/split/split-panels.ts"
 );
-const { RowDivider, CompactHeader } = await import(
+const { RowDivider, CompactHeader, RecentBody } = await import(
 	"../pi/.pi/agent/extensions/split/split-render.ts"
 );
 
@@ -406,16 +406,19 @@ toolsPanel.reset();
 	);
 	check(
 		"divider: inserted before a response continuation",
-		kids[6] instanceof RowDivider && kids[7] instanceof AssistantMessageComponent,
+		kids[7] instanceof RowDivider && kids[8] instanceof AssistantMessageComponent,
 		names,
 	);
 	check(
-		"divider: none around prompts or bash blocks",
-		kids[1] instanceof AssistantMessageComponent &&
-			kids[2] instanceof UserMessageComponent &&
-			kids[3] instanceof AssistantMessageComponent &&
-			kids[4] instanceof BashExecutionComponent &&
-			kids[5] instanceof AssistantMessageComponent,
+		"prompt padding: one Spacer row before a prompt that follows an answer",
+		kids[2] instanceof Spacer && kids[3] instanceof UserMessageComponent,
+		names,
+	);
+	check(
+		"no divider around prompts or bash blocks",
+		kids[4] instanceof AssistantMessageComponent &&
+			kids[5] instanceof BashExecutionComponent &&
+			kids[6] instanceof AssistantMessageComponent,
 		names,
 	);
 	const rows = docRows();
@@ -430,6 +433,14 @@ toolsPanel.reset();
 		"divider: compact symmetric gap, one blank row above and below",
 		di !== undefined && di > 0 && rows[di - 1] === "" && rows[di + 1] === "",
 		di !== undefined ? rows.slice(Math.max(0, di - 2), di + 3) : [],
+	);
+	// Prompt padding (2026-10-20): two blank rows above a prompt that
+	// follows an answer (our Spacer + the prompt's leading marker row).
+	const pi = rows.findIndex((r) => r.includes("second prompt"));
+	check(
+		"prompt padding: two blank rows above the prompt after an answer",
+		pi > 1 && rows[pi - 1] === "" && rows[pi - 2] === "" && rows[pi - 3].includes("first answer"),
+		rows.slice(Math.max(0, pi - 3), pi + 1),
 	);
 }
 {
@@ -467,7 +478,7 @@ toolsPanel.reset();
 		calls.find(([, t]) => t === "Tools")?.[0] === "accent",
 		calls,
 	);
-	check("header: streaming shows the dim … indicator", live[0].includes("…"), live);
+	check("header: color is the only streaming signal, no … glyph", !live[0].includes("…"), live);
 	check("header: one row filled to exact width", live.length === 1 && live[0].length === 30, live);
 	calls.length = 0;
 	const idle = plain(new CompactHeader(th, "Tools", () => false).render(30));
@@ -476,8 +487,64 @@ toolsPanel.reset();
 		calls.find(([, t]) => t === "Tools")?.[0] === "muted",
 		calls,
 	);
-	check("header: idle has no … indicator", !idle[0].includes("…"), idle);
 	check("header: idle row also filled to exact width", idle[0].length === 30, idle);
+}
+
+// ─── 11. RecentBody: oldest first, following the end (#43 reverted) ─────────
+
+{
+	// Rows oldest to newest (newest at the bottom, like the left column).
+	const body = new RecentBody(
+		theme as never,
+		(l) => l,
+		() => ["old one", "old two", "new one", "new two"],
+		() => 1,
+		"empty",
+		() => 4,
+	);
+	const rows = plain(body.render(60)).map((r) => r.trimEnd());
+	check(
+		"RecentBody: oldest first, newest at the bottom",
+		rows[0] === " old one" && rows[1] === " old two" && rows[2] === " new one" && rows[3] === " new two",
+		rows,
+	);
+}
+{
+	// A wrapped line's fragments must stay in READING order regardless of
+	// the emit direction (a naive full-list reversal would flip them).
+	const body = new RecentBody(
+		theme as never,
+		(l) => l,
+		() => ["A".repeat(58) + "B".repeat(20)],
+		() => 1,
+		"empty",
+		() => 2,
+	);
+	const rows = plain(body.render(60)).map((r) => r.trimEnd());
+	check(
+		"RecentBody: wrapped fragments keep reading order (A part above B part)",
+		rows[0].startsWith(" A") && !rows[0].includes("B") && rows[1].startsWith(" B") && !rows[1].includes("A"),
+		rows,
+	);
+}
+{
+	// Windowing: only the newest MAX_BODY_ROWS (96) visual rows survive,
+	// oldest kept row at the top, newest at the bottom (where the view follows).
+	const src = Array.from({ length: 100 }, (_, i) => `line ${String(i + 1).padStart(3, "0")}`);
+	const body = new RecentBody(
+		theme as never,
+		(l) => l,
+		() => src,
+		() => 1,
+		"empty",
+		() => 4,
+	);
+	const rows = plain(body.render(60));
+	check(
+		"RecentBody: newest window kept, oldest kept row at top, newest at bottom",
+		rows.length === 96 && rows[0].trim() === "line 005" && rows[95].trim() === "line 100",
+		{ len: rows.length, top: rows[0].trim(), bottom: rows[rows.length - 1].trim() },
+	);
 }
 
 // ─── teardown: no running loaders, no doc children ───────────────────────────

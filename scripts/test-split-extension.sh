@@ -261,10 +261,12 @@ capture
 check_contains "seeded bash block visible in response-only mode" '\$ gurl'
 check_contains "seeded bash exit status visible" "command not found"
 check_contains "seeded bash exit code visible" "\(exit 127\)"
-# Block divider placement (fix 2026-10-20): jump the doc to the top and
-# assert the FIRST full-width ─ row in view is the divider prefixed before
-# the first seeded response block. The bash block self-frames with ─ rows
-# too, so a bare presence check proves nothing — placement does.
+# Block divider placement (2026-10-20, measured in tmux): jump the doc to
+# the top and assert the first full-width ─ row in view sits above the first
+# seeded response block, with one blank row on each side (the symmetric gap
+# comes from pi's components). The bash block self-frames with full-width
+# ─ rows too, but the window check (the answer text follows) proves this is
+# the divider and not a frame.
 tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5H')"   # ctrl+home: doc top
 sleep 2
 capture
@@ -273,10 +275,12 @@ import sys, re
 lines = sys.stdin.read().split("\n")
 for i, l in enumerate(lines):
     if re.match(r"^─{40,}", l):
-        window = "\n".join(lines[i + 1 : i + 5])
-        print("ok" if "seed turn one line" in window else "bad:" + "|".join(w.strip() for w in lines[i + 1 : i + 3]))
+        above = lines[i - 1].strip() if i > 0 else "x"
+        window = "\n".join(lines[i + 1 : i + 6])
+        sym = above == "" and "seed turn one line" in window
+        print("ok" if sym else "bad:" + "|".join([above, "|", lines[i + 1].strip()[:30]]))
         sys.exit(0)
-print("bad:no-rule-row-in-view")
+print("bad:no-divider-stroke-in-view")
 ')
 if [ "${PLACEMENT%%:*}" = "ok" ]; then ok "block divider prefixed before the first response block"; else bad "block divider placement ($PLACEMENT)"; fi
 tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5F')"   # ctrl+end: back to the tail

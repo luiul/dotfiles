@@ -21,6 +21,7 @@
 //
 // Run: bun scripts/test-split-response.ts
 import {
+	BashExecutionComponent,
 	UserMessageComponent,
 	getMarkdownTheme,
 	initTheme,
@@ -72,9 +73,16 @@ const theme = {
 
 const W = 70;
 
-/** Strip ANSI styling so assertions see plain text. */
+/** Strip ANSI styling (SGR) and OSC marker rows (shell integration 133
+ * prompts: tmux consumes them, they render as blank rows) so assertions see
+ * plain text. */
 function plain(rows: string[]): string[] {
-	return rows.map((r) => r.replace(/\x1b\[[0-9;]*m/g, ""));
+	return rows.map((r) =>
+		r
+			.replace(/\x1b\][^\x07]*\x07/g, "")
+			.replace(/\x1b\[[0-9;]*m/g, "")
+			.trimEnd(),
+	);
 }
 
 /** Render every doc child and return the concatenated plain rows. */
@@ -367,10 +375,13 @@ toolsPanel.reset();
 // ─── 9. block dividers: RowDivider, doc boundaries, thinking panel ────────────
 
 {
+	// RowDivider unit: ONE full-width stroke row; the symmetric gap around it
+	// comes from pi's components (measured in a real tmux run, 2026-10-20),
+	// not from the divider.
 	const d = new RowDivider(() => theme as never);
-	check("RowDivider: one row at exact width", plain(d.render(W)).join("\n") === "─".repeat(W));
-	check("RowDivider: zero width renders empty row", plain(d.render(0))[0] === "");
-	check("RowDivider: theme not resolved yet renders an empty row", plain(new RowDivider(() => null).render(W))[0] === "");
+	check("RowDivider: one full-width stroke row", plain(d.render(W)).join("\n") === "─".repeat(W));
+	check("RowDivider: zero width renders one empty row", plain(d.render(0)).join("|") === "");
+	check("RowDivider: theme not resolved yet renders one empty row", plain(new RowDivider(() => null).render(W)).join("|") === "");
 }
 {
 	responseDocBegin();
@@ -379,16 +390,30 @@ toolsPanel.reset();
 		msgEntry("d2", "d1", { role: "assistant", content: [{ type: "text", text: "first answer" }] }),
 		msgEntry("d3", "d2", { role: "user", content: "second prompt" }),
 		msgEntry("d5", "d3", { role: "assistant", content: [{ type: "text", text: "second answer" }] }),
+		msgEntry("d6", "d5", { role: "bashExecution", command: "ls", output: "x\n", exitCode: 0, timestamp: 9, excludeFromContext: false }),
+		msgEntry("d7", "d6", { role: "assistant", content: [{ type: "text", text: "after bash answer" }] }),
 	];
 	for (const e of entries) responseIngestEntry(e);
+	const kids = getResponseDoc().children as any[];
+	check(
+		"divider: prefixed before response blocks only",
+		kids.filter((c) => c instanceof RowDivider).length === 2,
+		kids.map((c) => c.constructor?.name),
+	);
+	check(
+		"divider: skipped after a bash block (own full-width frame)",
+		kids[kids.length - 2] instanceof BashExecutionComponent,
+		kids.map((c) => c.constructor?.name),
+	);
 	const rows = docRows();
 	const div = "─".repeat(W);
-	check("divider: full-width row before each response block", rows.includes(div));
-	check("divider: exactly one per response block, none for user blocks", rows.filter((r) => r === div).length === 2, rows);
-	check("divider: none before the first block", rows[0] !== div, rows[0]);
-	// Bash blocks self-frame with full-width ─ rows (verified by the bash
-	// sections above); they never get a block divider (user decision
-	// 2026-10-20), so their frame rows are the only ones around them.
+	const i = rows.indexOf(div);
+	check("divider: full-width stroke before the first response block", i > 0, rows[0]);
+	check(
+		"divider: symmetric gap, one blank row above and below",
+		i > 0 && rows[i - 1] === "" && rows[i + 1] === "",
+		rows.slice(Math.max(0, i - 2), i + 3),
+	);
 }
 {
 	thinkingPanel.reset();
@@ -398,12 +423,13 @@ toolsPanel.reset();
 	thinkingPanel.start();
 	thinkingPanel.append("block two thinking");
 	const rows = plain(thinkingPanel.lines(theme as never, 60));
-	// RecentBody wraps source lines at width - 2, so the divider source is
-	// width - 2 wide to render as one unwrapped full-width row.
+	// Full-width stroke at the width-2 wrap budget (58); the panel's own
+	// lines carry no component padding, so the divider provides the blanks.
 	const sep = "─".repeat(58);
-	check("thinking: no divider before the first block", rows[0] !== sep, rows[0]);
+	const i = rows.indexOf(sep);
+	check("thinking: no divider before the first block", i > 0, rows[0]);
 	check("thinking: one full-width divider between blocks", rows.filter((r) => r === sep).length === 1, rows);
-	check("thinking: full width spans the body (width - 2 wrap budget)", rows.includes(sep));
+	check("thinking: symmetric padding around the stroke", i > 0 && rows[i - 1] === "" && rows[i + 1] === "", rows);
 	thinkingPanel.end("block two thinking");
 	thinkingPanel.reset();
 }

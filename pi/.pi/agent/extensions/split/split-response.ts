@@ -102,12 +102,16 @@ export function setResponseTheme(theme: Theme): void {
  * One block divider prefixed before a RESPONSE block (an assistant answer) in
  * the doc (user decision 2026-10-20: user messages are visually distinct and
  * bash blocks frame themselves, so only response blocks get the divider).
- * No-op when the doc is empty (nothing precedes the first block). The theme
- * is resolved lazily at render time, so a doc rebuilt before the first render
- * still shows its dividers.
+ * No-op when the doc is empty. SKIPS the boundary directly after a bash
+ * block: its component ends in its own full-width ─ frame, and prefixing
+ * another stroke would stack a double line (placement fix, measured in a
+ * real tmux run). The theme is resolved lazily at render time, so a doc
+ * rebuilt before the first render still shows its dividers.
  */
 function addResponseDivider(): void {
-	if (responseDoc.children.length === 0) return;
+	const kids = responseDoc.children as unknown[];
+	if (kids.length === 0) return;
+	if (kids[kids.length - 1] instanceof BashExecutionComponent) return;
 	responseDoc.addChild(new RowDivider(() => responseTheme));
 }
 

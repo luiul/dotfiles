@@ -187,18 +187,30 @@ export class CompactHeader implements Component {
 // ─── block divider ───────────────────────────────────────────────────────────
 
 /**
- * Full-width dim ─ row prefixed before each response block in the response
- * doc (and between thinking blocks in the thinking panel, drawn there as a
- * source line). Resolves the theme LAZILY at render time, so a doc rebuilt
- * during session_start — before the render loop ever set a theme — still
- * shows its dividers from the first frame on. Exactly one row per boundary,
- * no blank rows around it (unified block divider, 2026-10-20). Stateless, O(1).
+ * One block-divider stroke: a full-width borderMuted ─ line (modern
+ * separator, 2026-10-20: pi's "subtle borders" token, dimmer than dim in
+ * both bundled themes; the sticky bar's separator row uses the same color).
+ */
+export function blockRuleRow(theme: Theme, width: number): string {
+	return theme.fg("borderMuted", "─".repeat(Math.max(0, width)));
+}
+
+/**
+ * The block divider, prefixed before each response block in the response
+ * doc: one full-width stroke row. The padding around it comes from pi's own
+ * components (user messages end with a blank row, assistant messages begin
+ * with one — measured in a real tmux run, 2026-10-20), so the visual gap is
+ * symmetric one row above and below without the divider adding rows. Skips
+ * boundaries after bash blocks (they end in their own full-width frame) —
+ * see addResponseDivider. Resolves the theme LAZILY at render time, so a
+ * doc rebuilt during session_start still shows its dividers from the first
+ * frame on. Stateless, O(1).
  */
 export class RowDivider implements Component {
 	constructor(private getTheme: () => Theme | null) {}
 	render(width: number): string[] {
 		const th = this.getTheme();
-		return [th ? th.fg("dim", "─".repeat(Math.max(0, width))) : ""];
+		return [th ? blockRuleRow(th, Math.max(0, width)) : ""];
 	}
 	invalidate(): void {}
 	dispose(): void {}

@@ -34,6 +34,7 @@
 
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
+import { blockRuleRow } from "./split-render.ts";
 
 // ─── render hook (registered by split.ts at session start) ───────────────────
 
@@ -197,18 +198,18 @@ const thinkingState = {
  */
 function thinkingLines(theme: Theme, width: number): string[] {
 	const out: string[] = [];
-	// Unified block divider (2026-10-20): one full-width dim ─ row at every
-	// block boundary, no blank rows around it. RecentBody wraps source lines
-	// at width - 2 and prefixes one leading space, so width - 2 renders as a
-	// rule spanning the body area without wrapping; the streaming block gets
-	// the same boundary.
-	const sep = theme.fg("dim", "─".repeat(Math.max(1, width - 2)));
+	// Block divider (2026-10-20): blank row, full-width borderMuted stroke,
+	// blank row — the panel's own lines carry no component padding, so the
+	// divider provides the symmetric gap itself. RecentBody wraps source lines
+	// at width - 2 and prefixes one leading space, so the stroke uses that
+	// budget; the streaming block gets the same boundary.
+	const sep = (): string[] => ["", blockRuleRow(theme, Math.max(0, width - 2)), ""];
 	for (const b of thinkingState.blocks) {
-		if (out.length) out.push(sep);
+		if (out.length) out.push(...sep());
 		for (const l of b.lines) out.push(l);
 	}
 	if (thinkingState.current) {
-		if (out.length) out.push(sep);
+		if (out.length) out.push(...sep());
 		for (const l of thinkingState.current.lines) out.push(l);
 		if (thinkingState.current.tail) out.push(thinkingState.current.tail);
 	}

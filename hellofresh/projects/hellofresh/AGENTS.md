@@ -76,7 +76,7 @@ The six impact fields live as a structured row in harvest, the local DuckDB + Ic
 
 1. `harvest create ticket --summary ... -c ... -i ... -n ... -s ... -e ... -w ... --points N` records the full six-field row locally AND creates the Jira ticket with the four-field projection block, with story points set on the ticket (minimum 0.5; prompted when omitted). Missing impact fields prompt. (For a ticket that already exists in Jira, `harvest record ticket <KEY> ...` only updates the harvest row; `harvest record ticket <KEY> --points N` sets or updates story points.)
 
-Story points rule: **always assign story points to every GLOA ticket at creation, minimum 0.5.** GLOA and ISA share field `customfield_10005`; scale calibrated against the team's estimates: 0.5 tiny/trivial, 1 small single-model or config work, 2 moderate fixes and MVP slices, 3 multi-layer features and deep root-cause bugs, 5 platform-scale builds. Epics carry no points. Points must be set before a ticket reaches Closed: Jira blocks all edits on Closed tickets.
+Story points rule: **always assign story points to every GLOA ticket at creation, minimum 0.5.** GLOA uses field `customfield_10005`; scale calibrated against the team's estimates: 0.5 tiny/trivial, 1 small single-model or config work, 2 moderate fixes and MVP slices, 3 multi-layer features and deep root-cause bugs, 5 platform-scale builds. Epics carry no points. Points must be set before a ticket reaches Closed: Jira blocks all edits on Closed tickets.
 2. Branch `type/<KEY>-short-desc`, open the draft PR (body: Summary / Key Changes / Test Plan + Jira link; labels only, NO Business Impact block), then `harvest record pr <repo>#<n> --ticket <KEY>` (impact fields inherit from the ticket row).
 3. When an estimate changes: update the harvest row (`harvest record ticket <KEY>` with the new flags), then `harvest project <KEY>` if a projected field (Category, Notes, Scope, Work Type) changed. Dollar/basis changes never touch Jira. PR labels only if category/scope changed.
 
@@ -185,6 +185,8 @@ Detailed recipes live next to this file:
 ## Jira (`jira` CLI)
 
 Use the `jira` CLI (jira-cli, configured for project GLOA at `~/.config/.jira/.config.yml`, token from `JIRA_API_TOKEN`). Do not use the Atlassian MCP.
+
+**The ISA project is discontinued (confirmed 2026-10-20).** All ticket work lives in GLOA: never create, comment on, transition, or otherwise update ISA tickets. Historical ISA tickets remain readable for records only.
 
 ```bash
 jira me                                    # verify auth / show current user

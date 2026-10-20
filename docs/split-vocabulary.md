@@ -9,10 +9,11 @@ This is the split domain sub-glossary of the repo glossary (`docs/glossary.md`),
 - **split view**: the fullscreen two-column composition: the left column plus the dock, joined by the divider. Fullscreen only; in regular TUI mode the extension stays dormant.
 - **left column**: the transcript surface. Its width is the left share, 60% by default, clamped to a 20 to 80 band. Two modes: full transcript and response-only.
 - **dock**: the right column, the stack of panels. The top of the dock is the natural glance position. Older docs also say "right column"; "dock" is canonical.
-- **divider**: the single dim `│` column between the left column and the dock. Accent colored while dragging; a drag clamps the left share to the 20 to 80 band. The keyboard path is `/split-width <pct>`.
+- **divider**: the single-column gap between the left column and the dock. Blank at rest; one accent ASCII `|` column while dragging (chosen over `│` because a full-height box drawing column renders with artifacts in the VS Code terminal). A drag clamps the left share to the 20 to 80 band. The keyboard path is `/split-width <pct>`.
 - **panel**: one section of the dock: a single 1-row header plus a body. Each panel gets a row share of the dock rows (defaults: Thinking 30, Tools 25, File Changes 45), set by the `/split-*-height` commands.
 - **header**: the 1-row panel title bar. It doubles as the separator to the next panel (minimal frame policy: no box borders). Shows the title, an optional count suffix, and the streaming indicator.
 - **streaming indicator**: the dim ` …` in a panel header while that panel is live.
+- **transient scrollbar**: the scrollbar a panel shows only while the user scrolls: a border-styled track with an accent thumb, overlaying the body's last column, hidden at rest (introduced by #46).
 
 ## Left column
 

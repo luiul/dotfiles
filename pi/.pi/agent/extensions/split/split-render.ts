@@ -8,10 +8,10 @@
  *     Thinking ────────────────────────      ← 1-row compact header
  *      ⋯ body rows, cached (version,width)    ← ScrollView over RecentBody
  *
- * The vertical divider column is the panels' left frame edge and the
- * ScrollView's always-on scrollbar column is the right frame edge (track
- * styled as border), so panels draw NO rail of their own — a body-level
- * rail renders as a second bar next to the divider (`││`). Panels stack
+ * The vertical divider column is the panels' left frame edge. Panels draw
+ * NO rail of their own at rest; while the user scrolls, a transient
+ * scrollbar (border-styled track, accent thumb) overlays the body's last
+ * column and fades after the scroll stops (#46). Panels stack
  * directly on each other; the next panel's header row is the separator,
  * so the column reads as one continuous dock.
  *
@@ -54,10 +54,10 @@ const MAX_LINE_CHARS = 600;
 const MAX_CACHED_WIDTHS = 4;
 
 /**
- * Renders the recent window with no rail of its own — the section divider
- * is the left frame edge and the ScrollView's always-on scrollbar column
- * is the right frame edge (track styled as border, so the frame reads as
- * complete; thumb slides when overflowing).
+ * Renders the recent window with no rail of its own at rest — the section
+ * divider is the left frame edge; while scrolling, the ScrollView's
+ * transient scrollbar (border-styled track, accent thumb) overlays the
+ * body's last column.
  * Pads every row to EXACT width and always emits at least `minRows` rows so
  * the body stays rectangular when content is short. A (version, width)
  * cache keeps unchanged frames O(1) — pi's renderCache is fresh every frame.
@@ -205,8 +205,8 @@ export interface FramedPanelSpec {
 /**
  * One compact panel: 1-row header + ScrollView body filling the remaining
  * rows. The ScrollView follows the end (newest content), contains overscroll
- * (wheel chains to the nearest ScrollView at the panel edges), and shows an
- * always-on border-styled track as the panel's right frame edge.
+ * (wheel chains to the nearest ScrollView at the panel edges), and shows a
+ * transient scrollbar only while the user scrolls.
  */
 export function framedPanel(theme: Theme, spec: FramedPanelSpec): Component {
 	const header = new CompactHeader(
@@ -226,11 +226,11 @@ export function framedPanel(theme: Theme, spec: FramedPanelSpec): Component {
 	const scroll = new ScrollView(body, {
 		follow: "end",
 		overscroll: "contain",
-		scrollbar: "always",
+		scrollbar: "auto",
 		scrollbarTrackStyle: (t: string) => theme.fg("border", t),
-		// Map the IDLE heavy thumb ┃ to the track's light │ glyph so the right
-		// frame edge is a uniform │ column at rest; the ACTIVE thumb keeps █
-		// in accent for scroll feedback (inherited from upstream SV-25).
+		// Map the IDLE heavy thumb ┃ to the track's light │ glyph so the
+		// transient rail reads as a uniform │ column while visible but idle;
+		// the ACTIVE thumb keeps █ in accent for scroll feedback.
 		scrollbarThumbStyle: (t: string) =>
 			theme.fg(t === "█" ? "accent" : "border", t === "┃" ? "│" : t),
 	});

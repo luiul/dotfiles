@@ -326,7 +326,7 @@ export function createFilesPanel(
 	const scroll = new ScrollView(listBody, {
 		follow: "none",
 		overscroll: "contain",
-		scrollbar: "always",
+		scrollbar: "auto",
 		scrollbarTrackStyle: (t: string) => theme.fg("border", t),
 		scrollbarThumbStyle: (t: string) =>
 			theme.fg(t === "█" ? "accent" : "border", t === "┃" ? "│" : t),

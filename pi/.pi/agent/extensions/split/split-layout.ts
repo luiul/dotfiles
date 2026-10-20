@@ -149,7 +149,7 @@ export interface DragDividerOptions {
 	theme: Theme;
 	/** Live terminal columns (for pct math from absolute mouse coords). */
 	termCols: () => number;
-	/** Live terminal rows (the divider paints one │ per row). */
+	/** Live terminal rows (one blank row at rest, one accent | while dragging). */
 	termRows: () => number;
 	/** Read the current left-share percent. */
 	getLeftPct: () => number;
@@ -162,11 +162,14 @@ export interface DragDividerOptions {
 
 /**
  * The 1-column vertical divider between the transcript column and the right
- * panel column. Minimal by design: a single dim │ per row, accent-colored
- * while a drag is in progress. The grab area is exactly this 1 column, but a
- * press CAPTURES the drag, so every subsequent move/release event is routed
- * here even far outside the divider's bounds — no wide invisible grab strip
- * is needed.
+ * panel column. Minimal by design: blank at rest (no ink at all), a single
+ * accent ASCII | column while a drag is in progress. ASCII rather than │
+ * because a full-height box-drawing column renders with artifacts in the
+ * VS Code integrated terminal (xterm.js font pipeline); ASCII renders
+ * single-cell in every terminal. The grab area is exactly this 1 column,
+ * but a press CAPTURES the drag, so every subsequent move/release event is
+ * routed here even far outside the divider's bounds — no wide invisible
+ * grab strip is needed.
  *
  * pct math uses the event's ABSOLUTE terminal x (screenX): local x would be
  * useless during capture once the pointer leaves the column.
@@ -180,7 +183,8 @@ export class DragDivider implements Component {
 
 	private line(): string {
 		const th = this.opts.theme;
-		return th.fg(this.dragging ? "accent" : "border", "│");
+		// Blank at rest: no ink. While dragging, accent ASCII | (VS Code safe).
+		return this.dragging ? th.fg("accent", "|") : " ";
 	}
 
 	render(_width: number): string[] {

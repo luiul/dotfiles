@@ -128,21 +128,35 @@ capture
 check_contains "thinking panel header" "Thinking"
 check_contains "tool usage panel header" "Tool Usage"
 check_contains "file changes panel header" "File Changes"
-check_contains "compact divider column" "│"
-
-# 3. /split-width recomposes. The "Left column: 45%" notify is invisible
-#    while response-only is active (the extension's documented notify blind
-#    spot), so assert the divider actually moved instead: its column is the
-#    one where nearly every rendered row has │. 45% of 170 cols ≈ column 76.
-divider_col() {
-	tmux capture-pane -t "$SESSION" -p | python3 -c '
+# The divider is blank at rest (2026-10-20 decision: no ink, and a full-height
+# box-drawing column renders with artifacts in the VS Code terminal). Assert
+# no dense │ column anywhere: scattered transcript glyphs are fine, a rail is
+# not (before this change the divider and the panel scrollbars were rails).
+DENSE=$(tmux capture-pane -t "$SESSION" -p | python3 -c '
 import sys, collections
 cnt = collections.Counter()
 for line in sys.stdin:
     for col, ch in enumerate(line.rstrip("\n")):
-        if ch == "│":
-            cnt[col] += 1
-print(cnt.most_common(1)[0][0] if cnt else -1)
+        if ch == "│": cnt[col] += 1
+print(max(cnt.values()) if cnt else 0)
+')
+if [ "$DENSE" -lt 10 ]; then ok "divider blank at rest (max │ density $DENSE)"; else bad "divider blank at rest (max │ density $DENSE)"; fi
+
+# 3. /split-width recomposes. The "Left column: 45%" notify is invisible
+#    while response-only is active (the extension's documented notify blind
+#    spot), so assert the divider actually moved instead: the divider column
+#    is located by the Thinking panel header (" Thinking ────": the header's
+#    leading space is the panel's left edge, the divider sits one column
+#    further left; at 45% of 170 cols ≈ column 76).
+divider_col() {
+	tmux capture-pane -t "$SESSION" -p | python3 -c '
+import sys, re
+for line in sys.stdin:
+    m = re.search(r"Thinking(?: …)? ─────", line)
+    if m:
+        print(m.start() - 2)
+        sys.exit(0)
+print(-1)
 '
 }
 DIV0=$(divider_col)

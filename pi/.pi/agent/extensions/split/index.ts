@@ -1,7 +1,7 @@
 /**
  * split.ts — one adjustable vertical split for the pi fullscreen TUI.
  *
- *   ┌ left column (drag the │ divider or /split-width) ┐┌ right column ┐
+ *   ┌ left column (drag the divider or /split-width) ┐┌ right column ┐
  *   │ ▌ pinned user prompt (split-sticky.ts)     ││ Thinking     │
  *   │ ───────────────────────                        ││ Tool Usage   │
  *   │ transcript (full, or response-only via           ││ File Changes │
@@ -9,9 +9,10 @@
  *   │ > editor dock (pi's own, reused verbatim)        ││              │
  *   └──────────────────────────────────────────────────┘└──────────────┘
  *
- * - One vertical split, adjustable: mouse-drag the 1-col dim │ divider
- *   (press captures the drag; move updates the left share 20–80%), or
- *   /split-width <pct>. Session-local; /split-save persists it.
+ * - One vertical split, adjustable: mouse-drag the 1-col divider (blank
+ *   at rest, accent | while dragging; press captures the drag; move updates
+ *   the left share 20–80%), or /split-width <pct>. Session-local; /split-save
+ *   persists it.
  * - Left: pi's base root verbatim (transcript + editor dock), or the
  *   response-only view from split-response.ts (transcript region swapped,
  *   editor dock reused). Above the transcript: the sticky user prompt bar

@@ -153,6 +153,13 @@ const ev = (type: string, screenX: number, button = "left") =>
 {
 	const lines = divider.render(1);
 	check("render paints one line per terminal row", lines.length === 24, lines.length);
+	check("rest renders blank rows (no ink)", lines.every((l) => l === " "), lines[0]);
+	divider.handleMouse(ev("press", 60));
+	const drag = divider.render(1);
+	check("drag renders accent | rows (ASCII, VS Code safe)", drag.every((l) => l === "|"), drag[0]);
+	divider.handleMouse(ev("release", 60, "none"));
+	const back = divider.render(1);
+	check("release renders blank again", back.every((l) => l === " "), back[0]);
 	divider.invalidate();
 	check("invalidate clears cache", divider.render(1).length === 24);
 }

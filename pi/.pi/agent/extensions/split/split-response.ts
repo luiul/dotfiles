@@ -99,19 +99,18 @@ export function setResponseTheme(theme: Theme): void {
 }
 
 /**
- * One block divider prefixed before a RESPONSE block (an assistant answer) in
- * the doc (user decision 2026-10-20: user messages are visually distinct and
- * bash blocks frame themselves, so only response blocks get the divider).
- * No-op when the doc is empty. SKIPS the boundary directly after a bash
- * block: its component ends in its own full-width ─ frame, and prefixing
- * another stroke would stack a double line (placement fix, measured in a
- * real tmux run). The theme is resolved lazily at render time, so a doc
- * rebuilt before the first render still shows its dividers.
+ * The block divider sits AFTER response blocks only (user decision
+ * 2026-10-20, third iteration): it is inserted between a finished assistant
+ * answer and whatever block follows, a prompt or another response block —
+ * never between a prompt and its answer, and never around bash blocks (they
+ * self-frame and carry their own background). The theme is resolved lazily
+ * at render time, so a doc rebuilt before the first render still shows its
+ * dividers.
  */
-function addResponseDivider(): void {
+function insertBlockDivider(): void {
 	const kids = responseDoc.children as unknown[];
 	if (kids.length === 0) return;
-	if (kids[kids.length - 1] instanceof BashExecutionComponent) return;
+	if (!(kids[kids.length - 1] instanceof AssistantMessageComponent)) return;
 	responseDoc.addChild(new RowDivider(() => responseTheme));
 }
 
@@ -149,11 +148,13 @@ function addResponseMessage(msg: any): boolean {
 					skill.content,
 				);
 				if (!skill.userMessage) return true;
+				insertBlockDivider();
 				responseDoc.addChild(
 					new UserMessageComponent(skill.userMessage, getMarkdownTheme()),
 				);
 				return true;
 			}
+			insertBlockDivider();
 			responseDoc.addChild(new UserMessageComponent(text, getMarkdownTheme()));
 			return true;
 		}
@@ -166,7 +167,7 @@ function addResponseMessage(msg: any): boolean {
 			// Keep empty-text messages whose stopReason shows an error marker.
 			if (!hasText && msg.stopReason !== "error" && msg.stopReason !== "aborted")
 				return false;
-			addResponseDivider();
+			insertBlockDivider();
 			// toolCalls are stripped too so the component's error/abort markers
 			// render (it suppresses them when toolCalls exist — in the full
 			// transcript the tool components show errors instead).
@@ -440,7 +441,7 @@ export function responseMessageUpdate(msg: unknown): void {
 		// spacers accumulate in the doc.
 		if (!hasVisible) return;
 		try {
-			addResponseDivider();
+			insertBlockDivider();
 			streamingResponseComponent = new AssistantMessageComponent(
 				undefined as any,
 				true,

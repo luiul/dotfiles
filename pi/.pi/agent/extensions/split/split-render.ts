@@ -196,21 +196,20 @@ export function blockRuleRow(theme: Theme, width: number): string {
 }
 
 /**
- * The block divider, prefixed before each response block in the response
- * doc: one full-width stroke row. The padding around it comes from pi's own
- * components (user messages end with a blank row, assistant messages begin
- * with one — measured in a real tmux run, 2026-10-20), so the visual gap is
- * symmetric one row above and below without the divider adding rows. Skips
- * boundaries after bash blocks (they end in their own full-width frame) —
- * see addResponseDivider. Resolves the theme LAZILY at render time, so a
- * doc rebuilt during session_start still shows its dividers from the first
- * frame on. Stateless, O(1).
+ * The block divider, inserted AFTER response blocks in the response doc
+ * (between a finished assistant answer and whatever block follows): one
+ * blank row, then the full-width stroke. The blank above is the divider's
+ * own (pi's assistant components end flush, measured in a real tmux run,
+ * 2026-10-20); the blank below comes from the next block's leading row, so
+ * the visual gap is a compact symmetric one row on each side. Resolves the
+ * theme LAZILY at render time, so a doc rebuilt during session_start still
+ * shows its dividers from the first frame on. Stateless, O(1).
  */
 export class RowDivider implements Component {
 	constructor(private getTheme: () => Theme | null) {}
 	render(width: number): string[] {
 		const th = this.getTheme();
-		return [th ? blockRuleRow(th, Math.max(0, width)) : ""];
+		return ["", th ? blockRuleRow(th, Math.max(0, width)) : ""];
 	}
 	invalidate(): void {}
 	dispose(): void {}

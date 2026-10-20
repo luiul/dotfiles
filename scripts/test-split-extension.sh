@@ -261,13 +261,14 @@ capture
 check_contains "seeded bash block visible in response-only mode" '\$ gurl'
 check_contains "seeded bash exit status visible" "command not found"
 check_contains "seeded bash exit code visible" "\(exit 127\)"
-# Block divider placement (2026-10-20, measured in tmux): jump the doc to
-# the top and assert the first full-width ─ row in view sits above the first
-# seeded response block, with one blank row on each side (the symmetric gap
-# comes from pi's components). The bash block self-frames with full-width
-# ─ rows too, but the window check (the answer text follows) proves this is
-# the divider and not a frame.
+# Block divider placement (2026-10-20, third design, measured in tmux):
+# the divider sits AFTER response blocks. Jump the doc to the top and assert
+# the first full-width ─ row in view has the turn-one ANSWER above it (one
+# blank row between text and stroke) and the next prompt below it. Bash
+# frames also render full-width ─ rows, but the skill prompt below the
+# divider disambiguates them.
 tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5H')"   # ctrl+home: doc top
+tmux send-keys -t "$SESSION" NPage   # page down: the divider sits after the 50-line seeded answer
 sleep 2
 capture
 PLACEMENT=$(echo "$CAP" | python3 -c '
@@ -275,14 +276,21 @@ import sys, re
 lines = sys.stdin.read().split("\n")
 for i, l in enumerate(lines):
     if re.match(r"^─{40,}", l):
-        above = lines[i - 1].strip() if i > 0 else "x"
-        window = "\n".join(lines[i + 1 : i + 6])
-        sym = above == "" and "seed turn one line" in window
-        print("ok" if sym else "bad:" + "|".join([above, "|", lines[i + 1].strip()[:30]]))
-        sys.exit(0)
-print("bad:no-divider-stroke-in-view")
+        above = "\n".join(lines[max(0, i - 8) : i])
+        below = "\n".join(lines[i + 1 : i + 6])
+        if (
+            "seed turn one line" in above
+            and (not lines[i - 1].strip() if i > 0 else False)
+            and "seed prompt attached" in below
+        ):
+            print("ok")
+            sys.exit(0)
+        # else: keep scanning — the sticky bar separator is also a
+        # full-width borderMuted row (its row above is the pinned prompt,
+        # not blank).
+print("bad:no-divider-with-answer-above-and-prompt-below")
 ')
-if [ "${PLACEMENT%%:*}" = "ok" ]; then ok "block divider prefixed before the first response block"; else bad "block divider placement ($PLACEMENT)"; fi
+if [ "${PLACEMENT%%:*}" = "ok" ]; then ok "block divider after the first response block"; else bad "block divider placement ($PLACEMENT)"; fi
 tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5F')"   # ctrl+end: back to the tail
 sleep 2
 tmux send-keys -t "$SESSION" "!echo split-e2e-live-bash" Enter

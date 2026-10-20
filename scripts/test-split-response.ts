@@ -21,6 +21,7 @@
 //
 // Run: bun scripts/test-split-response.ts
 import {
+	AssistantMessageComponent,
 	BashExecutionComponent,
 	UserMessageComponent,
 	getMarkdownTheme,
@@ -375,13 +376,14 @@ toolsPanel.reset();
 // ─── 9. block dividers: RowDivider, doc boundaries, thinking panel ────────────
 
 {
-	// RowDivider unit: ONE full-width stroke row; the symmetric gap around it
-	// comes from pi's components (measured in a real tmux run, 2026-10-20),
-	// not from the divider.
+	// RowDivider unit: blank row + full-width stroke. The blank above is the
+	// divider's own; the blank below comes from the next block's leading row
+	// (measured in a real tmux run, 2026-10-20).
 	const d = new RowDivider(() => theme as never);
-	check("RowDivider: one full-width stroke row", plain(d.render(W)).join("\n") === "─".repeat(W));
-	check("RowDivider: zero width renders one empty row", plain(d.render(0)).join("|") === "");
-	check("RowDivider: theme not resolved yet renders one empty row", plain(new RowDivider(() => null).render(W)).join("|") === "");
+	const dRows = plain(d.render(W));
+	check("RowDivider: blank row, then full-width stroke", dRows.length === 2 && dRows[0] === "" && dRows[1] === "─".repeat(W), dRows);
+	check("RowDivider: zero width renders blank + empty row", plain(d.render(0)).join("|") === "|");
+	check("RowDivider: theme not resolved yet renders blank + empty row", plain(new RowDivider(() => null).render(W)).join("|") === "|");
 }
 {
 	responseDocBegin();
@@ -392,25 +394,38 @@ toolsPanel.reset();
 		msgEntry("d5", "d3", { role: "assistant", content: [{ type: "text", text: "second answer" }] }),
 		msgEntry("d6", "d5", { role: "bashExecution", command: "ls", output: "x\n", exitCode: 0, timestamp: 9, excludeFromContext: false }),
 		msgEntry("d7", "d6", { role: "assistant", content: [{ type: "text", text: "after bash answer" }] }),
+		msgEntry("d8", "d7", { role: "assistant", content: [{ type: "text", text: "continuation answer" }] }),
 	];
 	for (const e of entries) responseIngestEntry(e);
 	const kids = getResponseDoc().children as any[];
 	check(
-		"divider: prefixed before response blocks only",
+		"divider: inserted after response blocks only",
 		kids.filter((c) => c instanceof RowDivider).length === 2,
 		kids.map((c) => c.constructor?.name),
 	);
 	check(
-		"divider: skipped after a bash block (own full-width frame)",
-		kids[kids.length - 2] instanceof BashExecutionComponent,
+		"divider: after a response block, before the following prompt",
+		kids[2] instanceof RowDivider && kids[3] instanceof UserMessageComponent,
+		kids.map((c) => c.constructor?.name),
+	);
+	check(
+		"divider: before a response continuation",
+		kids[7] instanceof RowDivider && kids[8] instanceof AssistantMessageComponent,
+		kids.map((c) => c.constructor?.name),
+	);
+	check(
+		"divider: none around bash blocks (own frame and background)",
+		kids[4] instanceof AssistantMessageComponent &&
+			kids[5] instanceof BashExecutionComponent &&
+			kids[6] instanceof AssistantMessageComponent,
 		kids.map((c) => c.constructor?.name),
 	);
 	const rows = docRows();
 	const div = "─".repeat(W);
 	const i = rows.indexOf(div);
-	check("divider: full-width stroke before the first response block", i > 0, rows[0]);
+	check("divider: full-width stroke after the first response block", i > 0, rows[0]);
 	check(
-		"divider: symmetric gap, one blank row above and below",
+		"divider: compact symmetric gap, one blank row above and below",
 		i > 0 && rows[i - 1] === "" && rows[i + 1] === "",
 		rows.slice(Math.max(0, i - 2), i + 3),
 	);

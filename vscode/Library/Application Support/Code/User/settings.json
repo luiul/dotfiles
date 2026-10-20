@@ -468,5 +468,6 @@
     // swallow Cmd+keys (e.g. Cmd+M minimize) as CSI-u escape sequences sent to the app.
     // Only cost: super+key bindings in TUIs stop working; pi has none by default.
     "terminal.integrated.enableKittyKeyboardProtocol": false,
-    "custom-ui-style.reloadWithoutPrompting": true
+    "custom-ui-style.reloadWithoutPrompting": true,
+    "workbench.statusBar.visible": false
 }

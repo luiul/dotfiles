@@ -99,13 +99,13 @@ export function setResponseTheme(theme: Theme): void {
 }
 
 /**
- * The block divider sits AFTER response blocks only (user decision
- * 2026-10-20, third iteration): it is inserted between a finished assistant
- * answer and whatever block follows, a prompt or another response block —
- * never between a prompt and its answer, and never around bash blocks (they
- * self-frame and carry their own background). The theme is resolved lazily
- * at render time, so a doc rebuilt before the first render still shows its
- * dividers.
+ * The block divider sits BETWEEN CONSECUTIVE RESPONSE BLOCKS only
+ * (2026-10-20, fourth iteration): it is inserted before an assistant
+ * block that directly follows another assistant block, the one boundary
+ * where answers merge visually. Prompts and bash blocks carry their own
+ * distinction (prompt styling, bash frame and background) and never get a
+ * divider. The theme is resolved lazily at render time, so a doc rebuilt
+ * before the first render still shows its dividers.
  */
 function insertBlockDivider(): void {
 	const kids = responseDoc.children as unknown[];
@@ -148,13 +148,11 @@ function addResponseMessage(msg: any): boolean {
 					skill.content,
 				);
 				if (!skill.userMessage) return true;
-				insertBlockDivider();
 				responseDoc.addChild(
 					new UserMessageComponent(skill.userMessage, getMarkdownTheme()),
 				);
 				return true;
 			}
-			insertBlockDivider();
 			responseDoc.addChild(new UserMessageComponent(text, getMarkdownTheme()));
 			return true;
 		}

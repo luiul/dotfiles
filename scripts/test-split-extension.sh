@@ -94,7 +94,8 @@ lines = [
  {"type": "model_change", "id": "m1", "parentId": None, "timestamp": ts(0), "provider": "test", "modelId": "test-model"},
  {"type": "message", "id": "u1", "parentId": "m1", "timestamp": ts(1), "message": {"role": "user", "content": [{"type": "text", "text": "seed prompt one: tell me about alpha"}]}},
  {"type": "message", "id": "u2", "parentId": "u1", "timestamp": ts(2), "message": {"role": "assistant", "content": [{"type": "text", "text": "\n".join(f"seed turn one line {n:02d}" for n in range(1, 51))}], "model": "test-model", "stopReason": "stop", "usage": usage(50)}},
- {"type": "message", "id": "s1", "parentId": "u2", "timestamp": ts(3), "message": {"role": "user", "content": [{"type": "text", "text": "<skill name=\"seeded-skill\" location=\"/skills/seeded/SKILL.md\">\nSeeded skill prompt body for the panel event row.\n</skill>\n\nseed prompt attached to a skill"}]}},
+ {"type": "message", "id": "u2b", "parentId": "u2", "timestamp": ts(2), "message": {"role": "assistant", "content": [{"type": "text", "text": "seed answer one continuation line"}], "model": "test-model", "stopReason": "stop", "usage": usage(1)}},
+ {"type": "message", "id": "s1", "parentId": "u2b", "timestamp": ts(3), "message": {"role": "user", "content": [{"type": "text", "text": "<skill name=\"seeded-skill\" location=\"/skills/seeded/SKILL.md\">\nSeeded skill prompt body for the panel event row.\n</skill>\n\nseed prompt attached to a skill"}]}},
  {"type": "branch_summary", "id": "br1", "parentId": "s1", "timestamp": ts(4), "summary": "Seeded branch summary for the panel event row.", "fromId": "m1"},
  {"type": "message", "id": "u3", "parentId": "br1", "timestamp": ts(5), "message": {"role": "user", "content": [{"type": "text", "text": "seed prompt two: tell me about beta"}]}},
  {"type": "message", "id": "u4", "parentId": "u3", "timestamp": ts(6), "message": {"role": "assistant", "content": [{"type": "text", "text": "\n".join(f"seed turn two line {n:02d}" for n in range(1, 51))}], "model": "test-model", "stopReason": "stop", "usage": usage(50)}},
@@ -261,14 +262,15 @@ capture
 check_contains "seeded bash block visible in response-only mode" '\$ gurl'
 check_contains "seeded bash exit status visible" "command not found"
 check_contains "seeded bash exit code visible" "\(exit 127\)"
-# Block divider placement (2026-10-20, third design, measured in tmux):
-# the divider sits AFTER response blocks. Jump the doc to the top and assert
-# the first full-width ─ row in view has the turn-one ANSWER above it (one
-# blank row between text and stroke) and the next prompt below it. Bash
-# frames also render full-width ─ rows, but the skill prompt below the
-# divider disambiguates them.
+# Block divider placement (2026-10-20, fourth design): the divider exists
+# only between CONSECUTIVE response blocks (answers merge visually) — never
+# around prompts or bash blocks. The seeded continuation sits mid-doc after
+# the 50-line turn-one answer, so jump to the top and page down to it. The
+# stroke must have the answer above (one blank row between) and the
+# continuation below. Bash frames and the sticky bar separator also match
+# the stroke pattern; the answer/continuation windows disambiguate.
 tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5H')"   # ctrl+home: doc top
-tmux send-keys -t "$SESSION" NPage   # page down: the divider sits after the 50-line seeded answer
+tmux send-keys -t "$SESSION" NPage   # page down: the continuation sits after the 50-line answer
 sleep 2
 capture
 PLACEMENT=$(echo "$CAP" | python3 -c '
@@ -281,16 +283,15 @@ for i, l in enumerate(lines):
         if (
             "seed turn one line" in above
             and (not lines[i - 1].strip() if i > 0 else False)
-            and "seed prompt attached" in below
+            and "seed answer one continuation" in below
         ):
             print("ok")
             sys.exit(0)
-        # else: keep scanning — the sticky bar separator is also a
-        # full-width borderMuted row (its row above is the pinned prompt,
-        # not blank).
-print("bad:no-divider-with-answer-above-and-prompt-below")
+        # else: keep scanning — bash frames and the sticky bar separator
+        # also render full-width ─ rows.
+print("bad:no-divider-between-answers-and-continuation")
 ')
-if [ "${PLACEMENT%%:*}" = "ok" ]; then ok "block divider after the first response block"; else bad "block divider placement ($PLACEMENT)"; fi
+if [ "${PLACEMENT%%:*}" = "ok" ]; then ok "block divider between consecutive response blocks"; else bad "block divider placement ($PLACEMENT)"; fi
 tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5F')"   # ctrl+end: back to the tail
 sleep 2
 tmux send-keys -t "$SESSION" "!echo split-e2e-live-bash" Enter

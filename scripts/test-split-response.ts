@@ -398,36 +398,38 @@ toolsPanel.reset();
 	];
 	for (const e of entries) responseIngestEntry(e);
 	const kids = getResponseDoc().children as any[];
+	const names = kids.map((c) => c.constructor?.name);
 	check(
-		"divider: inserted after response blocks only",
-		kids.filter((c) => c instanceof RowDivider).length === 2,
-		kids.map((c) => c.constructor?.name),
+		"divider: only between consecutive response blocks",
+		kids.filter((c) => c instanceof RowDivider).length === 1,
+		names,
 	);
 	check(
-		"divider: after a response block, before the following prompt",
-		kids[2] instanceof RowDivider && kids[3] instanceof UserMessageComponent,
-		kids.map((c) => c.constructor?.name),
+		"divider: inserted before a response continuation",
+		kids[6] instanceof RowDivider && kids[7] instanceof AssistantMessageComponent,
+		names,
 	);
 	check(
-		"divider: before a response continuation",
-		kids[7] instanceof RowDivider && kids[8] instanceof AssistantMessageComponent,
-		kids.map((c) => c.constructor?.name),
-	);
-	check(
-		"divider: none around bash blocks (own frame and background)",
-		kids[4] instanceof AssistantMessageComponent &&
-			kids[5] instanceof BashExecutionComponent &&
-			kids[6] instanceof AssistantMessageComponent,
-		kids.map((c) => c.constructor?.name),
+		"divider: none around prompts or bash blocks",
+		kids[1] instanceof AssistantMessageComponent &&
+			kids[2] instanceof UserMessageComponent &&
+			kids[3] instanceof AssistantMessageComponent &&
+			kids[4] instanceof BashExecutionComponent &&
+			kids[5] instanceof AssistantMessageComponent,
+		names,
 	);
 	const rows = docRows();
 	const div = "─".repeat(W);
-	const i = rows.indexOf(div);
-	check("divider: full-width stroke after the first response block", i > 0, rows[0]);
+	// Bash frames also render full-width ─ rows; the divider is the stroke
+	// whose following rows contain the continuation answer.
+	const di = rows
+		.flatMap((r, j) => (r === div ? [j] : []))
+		.find((j) => rows.slice(j + 1, j + 5).some((r) => r.includes("continuation answer")));
+	check("divider: one stroke, followed by the continuation answer", di !== undefined, rows);
 	check(
 		"divider: compact symmetric gap, one blank row above and below",
-		i > 0 && rows[i - 1] === "" && rows[i + 1] === "",
-		rows.slice(Math.max(0, i - 2), i + 3),
+		di !== undefined && di > 0 && rows[di - 1] === "" && rows[di + 1] === "",
+		di !== undefined ? rows.slice(Math.max(0, di - 2), di + 3) : [],
 	);
 }
 {

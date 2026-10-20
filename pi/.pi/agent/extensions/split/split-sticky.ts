@@ -6,7 +6,7 @@
  *   │ ▌ second prompt …            (sticky)   │ ← pinned while its prompt
  *   │ ──────────────────────────────           │    is scrolled above view
  *   │ ... transcript content (scrolled) ...     │
- *   │ > editor dock (pi's own)                 │
+ *   │ > input dock (pi's own)                    │
  *   └──────────────────────────────────────────┘
  *
  * Behavior (user decision 2026-10-17, all-recommended round):

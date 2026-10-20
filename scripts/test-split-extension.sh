@@ -261,6 +261,26 @@ capture
 check_contains "seeded bash block visible in response-only mode" '\$ gurl'
 check_contains "seeded bash exit status visible" "command not found"
 check_contains "seeded bash exit code visible" "\(exit 127\)"
+# Block divider placement (fix 2026-10-20): jump the doc to the top and
+# assert the FIRST full-width ─ row in view is the divider prefixed before
+# the first seeded response block. The bash block self-frames with ─ rows
+# too, so a bare presence check proves nothing — placement does.
+tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5H')"   # ctrl+home: doc top
+sleep 2
+capture
+PLACEMENT=$(echo "$CAP" | python3 -c '
+import sys, re
+lines = sys.stdin.read().split("\n")
+for i, l in enumerate(lines):
+    if re.match(r"^─{40,}", l):
+        window = "\n".join(lines[i + 1 : i + 5])
+        print("ok" if "seed turn one line" in window else "bad:" + "|".join(w.strip() for w in lines[i + 1 : i + 3]))
+        sys.exit(0)
+print("bad:no-rule-row-in-view")
+')
+if [ "${PLACEMENT%%:*}" = "ok" ]; then ok "block divider prefixed before the first response block"; else bad "block divider placement ($PLACEMENT)"; fi
+tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5F')"   # ctrl+end: back to the tail
+sleep 2
 tmux send-keys -t "$SESSION" "!echo split-e2e-live-bash" Enter
 sleep 3
 capture
@@ -290,7 +310,9 @@ for _ in $(seq 1 20); do
 done
 capture
 check_contains "file changes lists the written file" "test.txt"
-check_contains "tool usage records the write call" "(✓|●) write"
+# #45 quiet tool rows: a settled write renders "  write" (empty mark
+# gutter, plain name); an active one still shows "● write".
+check_contains "tool usage records the write call" "(●|  ) write"
 capture_right
 check_in_right "file changes wraps the long path" "deeply/nested"
 check_in_right "file changes lists both files" "\(\+1/-0\)"
@@ -300,7 +322,9 @@ check_in_right "file changes lists both files" "\(\+1/-0\)"
 # scripts/test-split-files.ts.)
 check_in_right "repo state renders whole (no edge clipping)" "untracked"
 # Both write calls in the tool panel (compact: adjacent lines, no blanks).
-WRITES=$(echo "$CAP_R" | grep -cE "(✓|●) write")
+# Rows start at the panel's left edge, so anchor: "  write" (settled) or
+# "● write" (still active).
+WRITES=$(echo "$CAP_R" | grep -cE "^(●|  ) write")
 if [ "$WRITES" -ge 2 ]; then ok "tool usage lists both writes"; else bad "tool usage lists both writes (found $WRITES of 2)"; fi
 
 # Let the turn fully settle before the next command (see the trim note above).

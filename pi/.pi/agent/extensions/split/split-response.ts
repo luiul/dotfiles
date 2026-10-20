@@ -65,11 +65,11 @@ import {
 import {
 	Container,
 	ScrollView,
-	Spacer,
 	VStack,
 	type Component,
 } from "@earendil-works/pi-tui";
 import { toolsPanel } from "./split-panels.ts";
+import { RowDivider } from "./split-render.ts";
 
 // ─── response doc ─────────────────────────────────────────────────────────────
 
@@ -89,6 +89,26 @@ export function setResponseTui(tui: unknown): void {
 		tui && typeof (tui as any).requestRender === "function"
 			? (tui as { requestRender: () => void })
 			: null;
+}
+
+/** Live theme for the doc's block dividers (set from split.ts's render loop). */
+let responseTheme: Theme | null = null;
+
+export function setResponseTheme(theme: Theme): void {
+	responseTheme = theme;
+}
+
+/**
+ * One block divider prefixed before a RESPONSE block (an assistant answer) in
+ * the doc (user decision 2026-10-20: user messages are visually distinct and
+ * bash blocks frame themselves, so only response blocks get the divider).
+ * No-op when the doc is empty (nothing precedes the first block). The theme
+ * is resolved lazily at render time, so a doc rebuilt before the first render
+ * still shows its dividers.
+ */
+function addResponseDivider(): void {
+	if (responseDoc.children.length === 0) return;
+	responseDoc.addChild(new RowDivider(() => responseTheme));
 }
 
 function messageText(msg: any): string {
@@ -125,14 +145,11 @@ function addResponseMessage(msg: any): boolean {
 					skill.content,
 				);
 				if (!skill.userMessage) return true;
-				if (responseDoc.children.length > 0)
-					responseDoc.addChild(new Spacer(1));
 				responseDoc.addChild(
 					new UserMessageComponent(skill.userMessage, getMarkdownTheme()),
 				);
 				return true;
 			}
-			if (responseDoc.children.length > 0) responseDoc.addChild(new Spacer(1));
 			responseDoc.addChild(new UserMessageComponent(text, getMarkdownTheme()));
 			return true;
 		}
@@ -145,7 +162,7 @@ function addResponseMessage(msg: any): boolean {
 			// Keep empty-text messages whose stopReason shows an error marker.
 			if (!hasText && msg.stopReason !== "error" && msg.stopReason !== "aborted")
 				return false;
-			if (responseDoc.children.length > 0) responseDoc.addChild(new Spacer(1));
+			addResponseDivider();
 			// toolCalls are stripped too so the component's error/abort markers
 			// render (it suppresses them when toolCalls exist — in the full
 			// transcript the tool components show errors instead).
@@ -177,7 +194,7 @@ function safeSkillBlock(text: string) {
 }
 
 /** One completed `!`/`!!` bash result as a doc block (native parity: the
- * component frames itself, so no Spacer is added before it). */
+ * component frames itself; no divider — user decision 2026-10-20). */
 function addBashMessage(msg: any): boolean {
 	const pending = bashComponentFor(msg.command);
 	if (pending) {
@@ -419,7 +436,7 @@ export function responseMessageUpdate(msg: unknown): void {
 		// spacers accumulate in the doc.
 		if (!hasVisible) return;
 		try {
-			if (responseDoc.children.length > 0) responseDoc.addChild(new Spacer(1));
+			addResponseDivider();
 			streamingResponseComponent = new AssistantMessageComponent(
 				undefined as any,
 				true,
@@ -500,20 +517,20 @@ export function getResponseDoc(): Container {
 }
 
 /**
- * Extract the editor dock from pi's base root. The base root is a
+ * Extract the input dock from pi's base root. The base root is a
  * VStack[transcriptScrollView, dock]: the transcript entry holds a ScrollView
- * (own `child` property); the dock entry's component has no own `child`, so
- * the entry without `child` is the dock.
+ * (own `child` property); the input dock entry's component has no own
+ * `child`, so the entry without `child` is the input dock.
  */
 export function baseDockOf(base: any): Component | null {
 	const entries = base?.entries;
 	if (!Array.isArray(entries)) return null;
-	// The transcript entry holds the ScrollView (own `child`); the dock is the
+	// The transcript entry holds the ScrollView (own `child`); the input dock is the
 	// other entry.
 	for (const e of entries) {
 		const c = e?.component;
 		if (!c) continue;
-		if (!Object.hasOwn(c, "child")) return c as Component; // not a ScrollView → dock
+		if (!Object.hasOwn(c, "child")) return c as Component; // not a ScrollView → input dock
 	}
 	return null;
 }

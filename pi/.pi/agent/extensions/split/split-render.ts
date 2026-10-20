@@ -13,7 +13,7 @@
  * scrollbar (border-styled track, accent thumb) overlays the body's last
  * column and fades after the scroll stops (#46). Panels stack
  * directly on each other; the next panel's header row is the separator,
- * so the column reads as one continuous dock.
+ * so the column reads as one continuous right column.
  *
  * Measurement-safe architecture (inherited from upstream): MeasurementSafeVStack
  * makes the layout engine's discarded intrinsic-height measurement passes
@@ -181,6 +181,26 @@ export class CompactHeader implements Component {
 
 	invalidate(): void {}
 
+	dispose(): void {}
+}
+
+// ─── block divider ───────────────────────────────────────────────────────────
+
+/**
+ * Full-width dim ─ row prefixed before each response block in the response
+ * doc (and between thinking blocks in the thinking panel, drawn there as a
+ * source line). Resolves the theme LAZILY at render time, so a doc rebuilt
+ * during session_start — before the render loop ever set a theme — still
+ * shows its dividers from the first frame on. Exactly one row per boundary,
+ * no blank rows around it (unified block divider, 2026-10-20). Stateless, O(1).
+ */
+export class RowDivider implements Component {
+	constructor(private getTheme: () => Theme | null) {}
+	render(width: number): string[] {
+		const th = this.getTheme();
+		return [th ? th.fg("dim", "─".repeat(Math.max(0, width))) : ""];
+	}
+	invalidate(): void {}
 	dispose(): void {}
 }
 

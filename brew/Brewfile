@@ -61,6 +61,8 @@ brew "hyperfine"
 brew "jq"
 # Modern and intuitive terminal-based text editor
 brew "micro"
+# Deep clean and optimize your Mac
+brew "mole"
 # Open-source, cross-platform JavaScript runtime environment
 brew "node"
 # Development kit for the Java programming language

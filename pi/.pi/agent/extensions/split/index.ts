@@ -6,16 +6,16 @@
  *   │ ───────────────────────                        ││ Tool Usage   │
  *   │ transcript (full, or response-only via           ││ File Changes │
  *   │ /split-trim-response)                            ││              │
- *   │ > editor dock (pi's own, reused verbatim)        ││              │
+ *   │ > input dock (pi's own, reused verbatim)      ││              │
  *   └──────────────────────────────────────────────────┘└──────────────┘
  *
  * - One vertical split, adjustable: mouse-drag the 1-col divider (blank
  *   at rest, accent | while dragging; press captures the drag; move updates
  *   the left share 20–80%), or /split-width <pct>. Session-local; /split-save
  *   persists it.
- * - Left: pi's base root verbatim (transcript + editor dock), or the
+ * - Left: pi's base root verbatim (transcript + input dock), or the
  *   response-only view from split-response.ts (transcript region swapped,
- *   editor dock reused). Above the transcript: the sticky user prompt bar
+ *   input dock reused). Above the transcript: the sticky user prompt bar
  *   from split-sticky.ts (/split-sticky, on by default) pins the user
  *   prompt that owns the top visible line while it is scrolled above the
  *   view (VS Code sticky scroll).
@@ -81,6 +81,7 @@ import {
 	responseMessageEnd,
 	responseMessageStart,
 	responseMessageUpdate,
+	setResponseTheme,
 	setResponseTui,
 	startLiveBash,
 	syncBranchEntries,
@@ -426,6 +427,9 @@ export default function (pi: ExtensionAPI) {
 				initLayoutManager(tui);
 				// Bash blocks need a TUI handle for their loader spinners.
 				setResponseTui(tui);
+				// Doc block dividers need the theme as early as the first rebuild
+				// (the render loop refreshes it every frame after this).
+				setResponseTheme((tuiRef?.theme ?? ctx.ui.theme) as Theme);
 				// Apply the still-pending startup composition here: the widget
 				// factory runs synchronously during session_start, before the
 				// first paint, and the fullscreen root is available right now.
@@ -437,6 +441,8 @@ export default function (pi: ExtensionAPI) {
 					render: (_width: number) => {
 						selfHealLayout();
 						const liveTheme = (tuiRef?.theme ?? ctx.ui.theme) as Theme;
+						// The response doc's block dividers need the live theme.
+						setResponseTheme(liveTheme);
 						// Theme change: pi swaps the global theme object with no
 						// event; components/caches capture ANSI at build time, so
 						// compare a fingerprint and recompose ONLY on a change.
@@ -872,12 +878,12 @@ export default function (pi: ExtensionAPI) {
 					ctx.ui.notify("Layout root not ready yet", "warning");
 					return;
 				}
-				// Fail loudly if the dock cannot be extracted (upstream SV-22):
+				// Fail loudly if the input dock cannot be extracted (upstream SV-22):
 				// silently claiming response-only while the native transcript
 				// stays would be a lie.
 				if (!baseDockOf(base)) {
 					ctx.ui.notify(
-						"Response-only unavailable: editor dock not found in the layout root",
+						"Response-only unavailable: input dock not found in the layout root",
 						"error",
 					);
 					return;

@@ -197,14 +197,18 @@ const thinkingState = {
  */
 function thinkingLines(theme: Theme, width: number): string[] {
 	const out: string[] = [];
-	const sep = theme.fg("dim", "─".repeat(Math.max(8, Math.min(60, width - 3))));
+	// Unified block divider (2026-10-20): one full-width dim ─ row at every
+	// block boundary, no blank rows around it. RecentBody wraps source lines
+	// at width - 2 and prefixes one leading space, so width - 2 renders as a
+	// rule spanning the body area without wrapping; the streaming block gets
+	// the same boundary.
+	const sep = theme.fg("dim", "─".repeat(Math.max(1, width - 2)));
 	for (const b of thinkingState.blocks) {
-		if (out.length) out.push("");
-		out.push(sep);
+		if (out.length) out.push(sep);
 		for (const l of b.lines) out.push(l);
 	}
 	if (thinkingState.current) {
-		if (out.length) out.push("");
+		if (out.length) out.push(sep);
 		for (const l of thinkingState.current.lines) out.push(l);
 		if (thinkingState.current.tail) out.push(thinkingState.current.tail);
 	}
@@ -432,16 +436,16 @@ function toolLines(theme: Theme, width: number): string[] {
 				out.push(th.fg("dim", `  · +${content.length - 2} more`));
 			continue;
 		}
+		// #45 quiet tool rows: no success ink anywhere. Succeeded calls
+		// render a plain text name with an empty mark gutter (names stay
+		// column-aligned with marked rows); active keeps the warning ●,
+		// errors keep ✗ with the name in error red.
 		const mark = e.active
 			? th.fg("warning", "●")
 			: e.isError
 				? th.fg("error", "✗")
-				: th.fg("success", "✓");
-		const name = e.active
-			? th.fg("accent", e.name)
-			: e.isError
-				? th.fg("error", e.name)
-				: th.fg("success", e.name);
+				: " ";
+		const name = e.isError ? th.fg("error", e.name) : th.fg("text", e.name);
 		const badge = e.subagent ? th.fg("muted", `[${e.agent ?? "sub"}]`) : "";
 		const prefix = `${mark} ${name}${badge}`;
 		const room = textWidth - visibleWidth(prefix) - 1;
@@ -452,8 +456,8 @@ function toolLines(theme: Theme, width: number): string[] {
 		out.push(prefix + args);
 		if (!full) {
 			// Compact: entries are adjacent, no blank separator rows (user
-			// decision 2026-10-16 — the status mark + colored name is enough
-			// visual separation, and the panel shows more entries per screen).
+			// decision 2026-10-16; after #45 the quiet ● / ✗ gutter carries the
+			// only signals, and the panel shows more entries per screen).
 			continue;
 		}
 		const content = (e.output || "")

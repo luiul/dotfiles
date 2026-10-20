@@ -33,6 +33,7 @@ initTheme("system");
 
 const {
 	setResponseTui,
+	setResponseTheme,
 	responseDocBegin,
 	responseDocEnd,
 	responseIngestEntry,
@@ -42,8 +43,11 @@ const {
 	getResponseDoc,
 	resetResponseState,
 } = await import("../pi/.pi/agent/extensions/split/split-response.ts");
-const { toolsPanel } = await import(
+const { toolsPanel, thinkingPanel } = await import(
 	"../pi/.pi/agent/extensions/split/split-panels.ts"
+);
+const { RowDivider } = await import(
+	"../pi/.pi/agent/extensions/split/split-render.ts"
 );
 
 let pass = 0;
@@ -117,6 +121,8 @@ function msgEntry(id: string, parentId: string, message: any): FakeEntry {
 }
 
 setResponseTui({ requestRender: () => {} });
+setResponseTheme(theme as never); // block dividers use the live theme
+
 toolsPanel.reset();
 
 // ─── 1. bash blocks rebuild into the doc with native parity ──────────────────
@@ -356,6 +362,50 @@ toolsPanel.reset();
 	toolsPanel.ingestEvent("same-id", "title", "body");
 	const rows = panelRows().join("\n");
 	check("event: deduped by id", rows.split("title").length - 1 === 1);
+}
+
+// ─── 9. block dividers: RowDivider, doc boundaries, thinking panel ────────────
+
+{
+	const d = new RowDivider(() => theme as never);
+	check("RowDivider: one row at exact width", plain(d.render(W)).join("\n") === "─".repeat(W));
+	check("RowDivider: zero width renders empty row", plain(d.render(0))[0] === "");
+	check("RowDivider: theme not resolved yet renders an empty row", plain(new RowDivider(() => null).render(W))[0] === "");
+}
+{
+	responseDocBegin();
+	const entries: FakeEntry[] = [
+		msgEntry("d1", "d0", { role: "user", content: "first prompt" }),
+		msgEntry("d2", "d1", { role: "assistant", content: [{ type: "text", text: "first answer" }] }),
+		msgEntry("d3", "d2", { role: "user", content: "second prompt" }),
+		msgEntry("d5", "d3", { role: "assistant", content: [{ type: "text", text: "second answer" }] }),
+	];
+	for (const e of entries) responseIngestEntry(e);
+	const rows = docRows();
+	const div = "─".repeat(W);
+	check("divider: full-width row before each response block", rows.includes(div));
+	check("divider: exactly one per response block, none for user blocks", rows.filter((r) => r === div).length === 2, rows);
+	check("divider: none before the first block", rows[0] !== div, rows[0]);
+	// Bash blocks self-frame with full-width ─ rows (verified by the bash
+	// sections above); they never get a block divider (user decision
+	// 2026-10-20), so their frame rows are the only ones around them.
+}
+{
+	thinkingPanel.reset();
+	thinkingPanel.start();
+	thinkingPanel.append("block one thinking");
+	thinkingPanel.end("block one thinking");
+	thinkingPanel.start();
+	thinkingPanel.append("block two thinking");
+	const rows = plain(thinkingPanel.lines(theme as never, 60));
+	// RecentBody wraps source lines at width - 2, so the divider source is
+	// width - 2 wide to render as one unwrapped full-width row.
+	const sep = "─".repeat(58);
+	check("thinking: no divider before the first block", rows[0] !== sep, rows[0]);
+	check("thinking: one full-width divider between blocks", rows.filter((r) => r === sep).length === 1, rows);
+	check("thinking: full width spans the body (width - 2 wrap budget)", rows.includes(sep));
+	thinkingPanel.end("block two thinking");
+	thinkingPanel.reset();
 }
 
 // ─── teardown: no running loaders, no doc children ───────────────────────────

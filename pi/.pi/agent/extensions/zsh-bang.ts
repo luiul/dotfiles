@@ -13,9 +13,10 @@
 // from the model's context. There is no in-context variant; pi's bang parsing
 // collapses any single-bang + marker combination into `!!`.
 //
-// Handler order: this extension must load after split.ts (its user_bash handler
-// tracks command starts and returns undefined). Extension files load in
-// directory order, and "z" sorts last, so no ordering config is needed.
+// Handler order: this extension must load after the split extension
+// (`split/index.ts`, its user_bash handler tracks command starts and returns
+// undefined). Extensions load in directory order, and "z" sorts after
+// "split", so no ordering config is needed.
 
 import { spawn } from "node:child_process"
 import { constants as osConstants } from "node:os"

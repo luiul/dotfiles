@@ -24,8 +24,8 @@ const {
 	saveSplitConfig,
 	loadSplitConfig,
 	__setConfigPathForTest,
-} = await import("../pi/.pi/agent/extensions/split-config.ts");
-const { DragDivider } = await import("../pi/.pi/agent/extensions/split-layout.ts");
+} = await import("../pi/.pi/agent/extensions/split/split-config.ts");
+const { DragDivider } = await import("../pi/.pi/agent/extensions/split/split-layout.ts");
 
 __setConfigPathForTest(join(TMP, "split.json"));
 

@@ -20,7 +20,7 @@
 
 import type { Component } from "@earendil-works/pi-tui";
 import type { TuiMouseEvent, TuiMouseEventResult } from "@earendil-works/pi-tui";
-import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 
 const REG_KEY = Symbol.for("pi.split-layout");
 
@@ -238,13 +238,4 @@ export class DragDivider implements Component {
 	}
 
 	dispose(): void {}
-}
-
-/**
- * This module is a shared utility imported by split.ts. pi auto-discovers
- * every *.ts file in this directory as an extension and requires a default
- * factory export, so expose a no-op one here.
- */
-export default function (_pi: ExtensionAPI) {
-	/* no-op: shared layout module, not an extension */
 }

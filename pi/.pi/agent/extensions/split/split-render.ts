@@ -27,7 +27,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
-import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 
 // ─── measurement-safe wrapper ─────────────────────────────────────────────────
 
@@ -238,13 +238,4 @@ export function framedPanel(theme: Theme, spec: FramedPanelSpec): Component {
 		{ component: header, basis: 1, grow: 0, shrink: 0 },
 		{ component: scroll, basis: 0, grow: 1, shrink: 1, minSize: 1 },
 	]);
-}
-
-/**
- * This module is a shared utility imported by split.ts. pi auto-discovers
- * every *.ts file in this directory as an extension and requires a default
- * factory export, so expose a no-op one here.
- */
-export default function (_pi: ExtensionAPI) {
-	/* no-op: shared render module, not an extension */
 }

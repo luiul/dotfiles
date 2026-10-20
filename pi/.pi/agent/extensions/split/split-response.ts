@@ -59,7 +59,6 @@ import {
 	UserMessageComponent,
 	getMarkdownTheme,
 	parseSkillBlock,
-	type ExtensionAPI,
 	type ExtensionContext,
 	type Theme,
 } from "@earendil-works/pi-coding-agent";
@@ -546,9 +545,4 @@ export function buildResponseInner(
 		{ component: responseScrollView, basis: 0, grow: 1, shrink: 1, minSize: 1 },
 		{ component: dock, basis: "auto", grow: 0, shrink: 1, minSize: 1 },
 	]);
-}
-
-/** Default no-op factory: this module is shared, not an extension. */
-export default function (_pi: ExtensionAPI): void {
-	/* no-op: shared response-view module, not an extension */
 }

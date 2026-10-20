@@ -33,7 +33,7 @@
  */
 
 import { visibleWidth } from "@earendil-works/pi-tui";
-import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 
 // ─── render hook (registered by split.ts at session start) ───────────────────
 
@@ -585,12 +585,3 @@ export const toolsPanel: ToolsPanelApi = {
 	getMode: () => toolMode,
 	lines: (theme: Theme, width: number) => toolLines(theme, width),
 };
-
-/**
- * This module is a shared utility imported by split.ts. pi auto-discovers
- * every *.ts file in this directory as an extension and requires a default
- * factory export, so expose a no-op one here.
- */
-export default function (_pi: ExtensionAPI): void {
-	/* no-op: shared panel-data module, not an extension */
-}

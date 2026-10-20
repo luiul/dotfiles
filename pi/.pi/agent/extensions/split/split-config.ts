@@ -27,7 +27,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import * as path from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 let CONFIG_PATH = path.join(homedir(), ".pi", "agent", "split.json");
 
@@ -182,13 +181,4 @@ export function saveSplitConfig(cfg: SplitConfig): boolean {
 	} catch {
 		return false;
 	}
-}
-
-/**
- * This module is a shared utility imported by split.ts. pi auto-discovers
- * every *.ts file in this directory as an extension and requires a default
- * factory export, so expose a no-op one here.
- */
-export default function (_pi: ExtensionAPI) {
-	/* no-op: shared config module, not an extension */
 }

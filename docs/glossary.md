@@ -34,9 +34,9 @@ Source: `pi/.pi/agent/extensions/README.md`, the `split.ts` section.
 
 ## layer
 
-In the pi TUI, a layout layer is a wrap builder: it receives the inner root component and returns a wrapped root. `split-layout.ts` owns pi's single fullscreen layout-root slot and composes `baseRoot → layer1 → layer2 → …` from its ordered set of active layers. Extensions register as layers so they never fight over the root, and `/reload` unwraps stale compositions.
+In the pi TUI, a layout layer is a wrap builder: it receives the inner root component and returns a wrapped root. `split/split-layout.ts` owns pi's single fullscreen layout-root slot and composes `baseRoot → layer1 → layer2 → …` from its ordered set of active layers. Extensions register as layers so they never fight over the root, and `/reload` unwraps stale compositions.
 
-Source: `pi/.pi/agent/extensions/split-layout.ts` (header comment) and `pi/.pi/agent/extensions/README.md`.
+Source: `pi/.pi/agent/extensions/split/split-layout.ts` (header comment) and `pi/.pi/agent/extensions/README.md`.
 
 ## harvest
 

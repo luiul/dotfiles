@@ -41,9 +41,9 @@ const {
 	syncBranchEntries,
 	getResponseDoc,
 	resetResponseState,
-} = await import("../pi/.pi/agent/extensions/split-response.ts");
+} = await import("../pi/.pi/agent/extensions/split/split-response.ts");
 const { toolsPanel } = await import(
-	"../pi/.pi/agent/extensions/split-panels.ts"
+	"../pi/.pi/agent/extensions/split/split-panels.ts"
 );
 
 let pass = 0;

@@ -17,7 +17,7 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 
 const { buildFilesRows, wrapPathSegments } = await import(
-	"../pi/.pi/agent/extensions/split-files.ts"
+	"../pi/.pi/agent/extensions/split/split-files.ts"
 );
 
 /** Pass-through mock: rows come back plain, so string equality works. */

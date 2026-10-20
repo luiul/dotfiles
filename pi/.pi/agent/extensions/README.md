@@ -28,7 +28,7 @@ How it works: the TUI strips the leading bangs first (`!!!gurl` parses as `!!` e
 - `!!!` commands are always excluded from the model's context (they ride the `!!` prefix). There is no in-context zsh variant.
 - `zsh -ic` pays the full interactive zsh config load (~0.6s on this machine, mostly znap cache evals). Fine for occasional shell conveniences; do not use it as a per-call prefix via `shellCommandPrefix`, which would also hit every model `bash` tool call.
 
-stderr from znap's cached fzf eval (`can't change option: zle`, printed because stdin is not a tty) is line-filtered so it never reaches the transcript. A background descendant holding the pipes (`!!!long-job &`) cannot hang the bang UI: after zsh exits, an idle grace timer (3s, re-armed on output chunks, mirroring pi's own waitForChildProcess from earendil-works/pi#5303) closes the streams. All listener/timer cleanup runs in a `finally` block, so a spawn error cannot leak the abort listener or timers. The extension loads after `split.ts` (directory order), so split's own `user_bash` handler still sees every command start. Without the marker bang the handler returns `undefined` and pi's normal bash path runs unchanged.
+stderr from znap's cached fzf eval (`can't change option: zle`, printed because stdin is not a tty) is line-filtered so it never reaches the transcript. A background descendant holding the pipes (`!!!long-job &`) cannot hang the bang UI: after zsh exits, an idle grace timer (3s, re-armed on output chunks, mirroring pi's own waitForChildProcess from earendil-works/pi#5303) closes the streams. All listener/timer cleanup runs in a `finally` block, so a spawn error cannot leak the abort listener or timers. The extension loads after the split extension (`split/`, directory order), so split's own `user_bash` handler still sees every command start. Without the marker bang the handler returns `undefined` and pi's normal bash path runs unchanged.
 
 Verification from the repository root:
 
@@ -86,7 +86,7 @@ The script drives the real extension with a stubbed ExtensionAPI against a real 
 
 ## Split view
 
-`split.ts` is our own split layout, built after trying [Hugo-W/pi-split-view](https://github.com/Hugo-W/pi-split-view) (uninstalled once this replaced it). One adjustable vertical split: the left column is the full transcript (or a response-only view), the right column stacks Thinking, Tool Usage, and File Changes. The File Changes panel is the biggest by design (45% of the right column rows by default) because it is the most useful section.
+`split/` is our own split layout, built after trying [Hugo-W/pi-split-view](https://github.com/Hugo-W/pi-split-view) (uninstalled once this replaced it). One adjustable vertical split: the left column is the full transcript (or a response-only view), the right column stacks Thinking, Tool Usage, and File Changes. The File Changes panel is the biggest by design (45% of the right column rows by default) because it is the most useful section.
 
 Key behaviors:
 
@@ -101,7 +101,7 @@ Key behaviors:
 
 Commands: `/split` (master toggle, off = bare pi layout, on = saved defaults or all three panels), `/split-thinking`, `/split-tools`, `/split-files`, `/split-tools-view`, `/split-sticky [on|off]`, `/split-width <pct>`, `/split-thinking-height|/split-tools-height|/split-files-height <pct>` (right column row shares, renormalized to 100), `/split-trim-response`, `/split-save`.
 
-Module layout: `split.ts` (entry: composition, events, commands), `split-layout.ts` (layout slot owner and drag divider), `split-render.ts` (measurement-safe rendering primitives), `split-panels.ts` (thinking and tool buffers), `split-response.ts` (response-only view), `split-sticky.ts` (sticky user prompt bar), `split-files.ts` (file changes panel), `split-config.ts` (validated config), `filechanges-tracker.ts` (shared tracking, see the section above).
+Module layout: the eight files live in `extensions/split/` and load as ONE extension through its `index.ts` entry point (before the move they were flat files, each loading as a separate pi extension, seven of them no-op stubs): `index.ts` (entry: composition, events, commands), `split-layout.ts` (layout slot owner and drag divider), `split-render.ts` (measurement-safe rendering primitives), `split-panels.ts` (thinking and tool buffers), `split-response.ts` (response-only view), `split-sticky.ts` (sticky user prompt bar), `split-files.ts` (file changes panel), `split-config.ts` (validated config). The one file outside the directory is `filechanges-tracker.ts` (shared tracking, see the section above).
 
 Verification from the repository root:
 

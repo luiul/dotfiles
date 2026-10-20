@@ -30,7 +30,7 @@ import {
 initTheme("system");
 
 const { StickyPromptBar, findTranscriptScrollView } = await import(
-	"../pi/.pi/agent/extensions/split-sticky.ts"
+	"../pi/.pi/agent/extensions/split/split-sticky.ts"
 );
 
 let pass = 0;

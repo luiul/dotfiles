@@ -52,7 +52,6 @@ import {
 } from "@earendil-works/pi-tui";
 import {
 	UserMessageComponent,
-	type ExtensionAPI,
 	type Theme,
 } from "@earendil-works/pi-coding-agent";
 
@@ -281,13 +280,4 @@ export class StickyPromptBar implements Component {
 		this.rowsKey = null;
 		this.rows = null;
 	}
-}
-
-/**
- * This module is a shared utility imported by split.ts. pi auto-discovers
- * every *.ts file in this directory as an extension and requires a default
- * factory export, so expose a no-op one here.
- */
-export default function (_pi: ExtensionAPI) {
-	/* no-op: shared sticky-bar module, not an extension */
 }

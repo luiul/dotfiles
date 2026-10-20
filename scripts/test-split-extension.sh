@@ -1,5 +1,5 @@
 #!/bin/bash
-# E2E smoke test for the split extension (split.ts + its modules).
+# E2E smoke test for the split extension (extensions/split/ directory extension).
 #
 # Runs a real pi in a detached tmux session (fullscreen mode comes from
 # settings.json) with ONLY the split extension loaded (--no-extensions -e),
@@ -33,7 +33,7 @@
 # Run from the repo root: scripts/test-split-extension.sh
 
 set -u
-EXT="$HOME/dotfiles/pi/.pi/agent/extensions/split.ts"
+EXT="$HOME/dotfiles/pi/.pi/agent/extensions/split"
 SESSION="split-e2e-$$"
 DIR=$(mktemp -d "${HOME}/.split-e2e-XXXXXX")   # NOT under /tmp: tracker hard-excludes temp dirs
 git -C "$DIR" init -q                     # a repo, so entries carry repoState (untracked)

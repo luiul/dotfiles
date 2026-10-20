@@ -49,7 +49,7 @@ import {
 	REPO_STATE_COLORS,
 	type FileChange,
 	type FileChangesTracker,
-} from "./filechanges-tracker.ts";
+} from "../filechanges-tracker.ts";
 import { MeasurementSafeVStack } from "./split-render.ts";
 
 // ─── module state (single-session-per-process assumption) ────────────────────
@@ -342,9 +342,4 @@ export function createFilesPanel(
 			minSize: 1,
 		},
 	]);
-}
-
-/** Default no-op factory: this module is shared, not an extension. */
-export default function (_pi: ExtensionAPI): void {
-	/* no-op: shared files-panel module */
 }

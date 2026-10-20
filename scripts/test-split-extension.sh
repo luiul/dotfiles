@@ -7,10 +7,10 @@
 # sticky-scroll assertions are deterministic and cost no extra LLM calls,
 # then asserts against the rendered pane:
 #   1. clean start, no extension errors
-#   2. /split composes: Thinking + Tool Usage + File Changes headers, divider
+#   2. /split composes: Thinking + Tools + File Changes headers, divider
 #   3. /split-width recomposes at a new left share
 #   4. a real agent turn (two write calls, one with a long nested path) lands
-#      in the Tool Usage and File Changes panels, and the long path WRAPS
+#      in the Tools and File Changes panels, and the long path WRAPS
 #      (hanging indent) instead of truncating
 #   4. the sticky user prompt bar (split-sticky.ts): pins the seeded prompt
 #      while it is scrolled above the view, walks back a turn on PageUp,
@@ -119,7 +119,7 @@ if tmux list-sessions 2>/dev/null | grep -q "$SESSION"; then ok "session alive";
 #    toggle would turn it OFF and fail every panel assertion. So only send the
 #    toggle when the panels are not already on screen.
 capture
-if echo "$CAP" | grep -q "Tool Usage"; then
+if echo "$CAP" | grep -q "Tools"; then
 	say "── split already composed at startup (saved or built-in default; no toggle needed)"
 else
 	tmux send-keys -t "$SESSION" "/split" Enter
@@ -127,7 +127,7 @@ else
 fi
 capture
 check_contains "thinking panel header" "Thinking"
-check_contains "tool usage panel header" "Tool Usage"
+check_contains "tools panel header" "Tools"
 check_contains "file changes panel header" "File Changes"
 # The divider is blank at rest (2026-10-20 decision: no ink, and a full-height
 # box-drawing column renders with artifacts in the VS Code terminal). Assert
@@ -162,7 +162,7 @@ print(-1)
 }
 DIV0=$(divider_col)
 
-# 2.5 session-event rows rebuilt into the Tool Usage panel (no-information-
+# 2.5 session-event rows rebuilt into the Tools panel (no-information-
 # loss policy): the seeded skill turn and branch summary must appear as
 # panel event rows, and the seeded skill turn's RAW <skill block must never
 # show in the left column. (Runs here because capture_right needs divider_col.)

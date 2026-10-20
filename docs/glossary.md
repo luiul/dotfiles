@@ -28,7 +28,7 @@ Source: `pi/.pi/agent/AGENTS.md`, Worktrees section.
 
 ## split panels
 
-The right column panels of the pi split extension: Thinking, Tool Usage, and File Changes. The left column holds the full transcript or a response-only view. File Changes is the biggest panel by design (45% of the right column rows by default). File Changes reads the shared `filechanges-tracker.ts` state, so the panel and the above-editor widget always show the same rows.
+The right column panels of the pi split extension: Thinking, Tools, and File Changes. The left column holds the full transcript or a response-only view. File Changes is the biggest panel by design (45% of the right column rows by default). File Changes reads the shared `filechanges-tracker.ts` state, so the panel and the filechanges widget always show the same rows.
 
 The full split domain vocabulary lives in `docs/split-vocabulary.md` (canonical after review); use its terms verbatim when writing about the split extension.
 

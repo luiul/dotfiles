@@ -44,7 +44,7 @@ export interface SplitConfig {
 	split?: boolean;
 	/** Thinking panel in the right column. Defaults true when split is on. */
 	thinking?: boolean;
-	/** Tool usage panel in the right column. Defaults true when split is on. */
+	/** Tools panel in the right column. Defaults true when split is on. */
 	tools?: boolean;
 	/** File changes panel in the right column. Defaults true when split is on. */
 	files?: boolean;

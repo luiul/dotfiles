@@ -300,7 +300,7 @@ class FilesHeader implements Component {
 		const mode = tracker?.getMode() === "round" ? "round" : "all";
 		const list = entries();
 		let head =
-			" " + th.fg("accent", "File Changes") + th.fg("dim", ` ${list.length} · ${mode}`) + " ";
+			" " + th.fg("muted", "File Changes") + th.fg("dim", ` ${list.length} · ${mode}`) + " ";
 		const fillW = Math.max(0, width - visibleWidth(head));
 		return [head + th.fg("border", "─".repeat(fillW))];
 	}

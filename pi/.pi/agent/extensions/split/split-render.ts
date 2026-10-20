@@ -157,26 +157,28 @@ export class RecentBody {
 // ─── compact header ───────────────────────────────────────────────────────────
 
 /**
- * 1-row panel header: bold title, a dim "…" indicator while the panel's
- * source is streaming, then a dim ─ fill to EXACT width. This row doubles
- * as the separator between stacked panels, so no extra separator rows exist.
+ * 1-row panel header: the title in muted at rest and in accent while the
+ * panel's source is streaming (#48: the live panel is loud, idle chrome is
+ * quiet), a dim "…" indicator while streaming, then a border ─ fill to
+ * EXACT width. This row doubles as the separator between stacked panels,
+ * so no extra separator rows exist.
  */
 export class CompactHeader implements Component {
 	constructor(
 		private theme: Theme,
 		private title: string,
-		private titleColor: "accent" | "muted" | "text",
 		private streaming: () => boolean = () => false,
 	) {}
 
 	render(width: number): string[] {
 		const th = this.theme;
-		// Bold-ish title in the panel's title color; the streaming dot is dim.
-		let head = " " + th.fg(this.titleColor, this.title);
-		if (this.streaming()) head += th.fg("dim", " …");
-		head += " ";
-		const fillW = Math.max(0, width - visibleWidth(head));
-		return [head + th.fg("border", "─".repeat(fillW))];
+		// The title color is derived from state, not configured per panel.
+		const head =
+			" " + th.fg(this.streaming() ? "accent" : "muted", this.title);
+		const withDot = this.streaming() ? head + th.fg("dim", " …") : head;
+		const padded = withDot + " ";
+		const fillW = Math.max(0, width - visibleWidth(padded));
+		return [padded + th.fg("border", "─".repeat(fillW))];
 	}
 
 	invalidate(): void {}
@@ -219,7 +221,6 @@ export class RowDivider implements Component {
 
 export interface FramedPanelSpec {
 	title: string;
-	titleColor: "accent" | "muted" | "text";
 	streaming?: () => boolean;
 	/** Newest-first logical lines for the body. */
 	lines: (width: number) => string[];
@@ -243,7 +244,6 @@ export function framedPanel(theme: Theme, spec: FramedPanelSpec): Component {
 	const header = new CompactHeader(
 		theme,
 		spec.title,
-		spec.titleColor,
 		spec.streaming ?? (() => false),
 	);
 	const body = new RecentBody(

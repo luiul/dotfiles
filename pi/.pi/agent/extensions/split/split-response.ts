@@ -12,7 +12,7 @@
  * No-information-loss policy (user decision 2026-10-24): everything pi's own
  * transcript renders must be visible SOMEWHERE while the split owns the
  * screen, but the response column stays noise-free. So the doc keeps only
- * conversational content, and the rest is dispatched to the Tool Usage panel
+ * conversational content, and the rest is dispatched to the Tools panel
  * as event rows (split-panels.ts):
  *   - `!`/`!!` bash blocks      → doc (BashExecutionComponent, native parity)
  *   - skill-invocation turns    → doc shows the real user prompt (if any),
@@ -251,7 +251,7 @@ function bashComponentFor(command: string): BashExecutionComponent | null {
 
 /**
  * Dispatch ONE branch entry to its owner: doc (user/assistant/bash) or the
- * Tool Usage panel (skill, compaction, branch summary, custom display
+ * Tools panel (skill, compaction, branch summary, custom display
  * messages). Returns true when something was rendered/ingested.
  *
  * message roles user/assistant are exactly-once: the live message stream marks

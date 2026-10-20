@@ -3,7 +3,7 @@
  *
  *   ┌ left column (drag the divider or /split-width) ┐┌ right column ┐
  *   │ ▌ pinned user prompt (split-sticky.ts)     ││ Thinking     │
- *   │ ───────────────────────                        ││ Tool Usage   │
+ *   │ ───────────────────────                        ││ Tools        │
  *   │ transcript (full, or response-only via           ││ File Changes │
  *   │ /split-trim-response)                            ││              │
  *   │ > input dock (pi's own, reused verbatim)      ││              │
@@ -302,7 +302,6 @@ function composeLayout(theme: Theme, inner: Component): Component {
 			build: (sectionRows) =>
 				framedPanel(theme, {
 					title: "Thinking",
-					titleColor: "accent",
 					streaming: () => thinkingPanel.streaming(),
 					lines: (w) => thinkingPanel.lines(theme, w),
 					version: () => thinkingPanel.version(),
@@ -317,8 +316,7 @@ function composeLayout(theme: Theme, inner: Component): Component {
 		specs.push({
 			build: (sectionRows) =>
 				framedPanel(theme, {
-					title: "Tool Usage",
-					titleColor: "muted",
+					title: "Tools",
 					streaming: () => toolsPanel.activeAny(),
 					lines: (w) => toolsPanel.lines(theme, w),
 					version: () => toolsPanel.version(),
@@ -824,7 +822,7 @@ export default function (pi: ExtensionAPI) {
 		ctx: ExtensionContext,
 	) => {
 		const label =
-			which === "thinking" ? "Thinking" : which === "tools" ? "Tool usage" : "File changes";
+			which === "thinking" ? "Thinking" : which === "tools" ? "Tools" : "File Changes";
 		const arg = String(args ?? "").trim();
 		const current = which === "thinking" ? thinkingPct : which === "tools" ? toolsPct : filesPct;
 		if (!arg) {
@@ -857,7 +855,7 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args, ctx) => setRightPct("thinking", args, ctx),
 	});
 	pi.registerCommand("split-tools-height", {
-		description: "Tool usage panel's share of the right column rows in % (10-70)",
+		description: "Tools panel's share of the right column rows in % (10-70)",
 		handler: async (args, ctx) => setRightPct("tools", args, ctx),
 	});
 	pi.registerCommand("split-files-height", {

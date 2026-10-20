@@ -10,7 +10,7 @@
 //   completes it from the appended branch entry — no extension event exists,
 //   the walk is the only public-API path.
 // - Skill turns: the doc shows only the real user prompt, never the raw
-//   <skill …> block; the Tool Usage panel gets the `skill: <name>` event row.
+//   <skill …> block; the Tools panel gets the `skill: <name>` event row.
 // - Compaction clears the doc (native parity) and logs a panel event row.
 // - Branch summaries and custom display messages become panel event rows,
 //   never doc noise; custom messages without display are dropped.
@@ -48,7 +48,7 @@ const {
 const { toolsPanel, thinkingPanel } = await import(
 	"../pi/.pi/agent/extensions/split/split-panels.ts"
 );
-const { RowDivider } = await import(
+const { RowDivider, CompactHeader } = await import(
 	"../pi/.pi/agent/extensions/split/split-render.ts"
 );
 
@@ -449,6 +449,35 @@ toolsPanel.reset();
 	check("thinking: symmetric padding around the stroke", i > 0 && rows[i - 1] === "" && rows[i + 1] === "", rows);
 	thinkingPanel.end("block two thinking");
 	thinkingPanel.reset();
+}
+
+// ─── 10. CompactHeader: state-derived title color (#48) ──────────────────────
+
+{
+	const calls: Array<[string, string]> = [];
+	const th = {
+		fg: (c: string, t: string) => {
+			calls.push([c, t]);
+			return t;
+		},
+	} as never;
+	const live = plain(new CompactHeader(th, "Tools", () => true).render(30));
+	check(
+		"header: streaming title in accent",
+		calls.find(([, t]) => t === "Tools")?.[0] === "accent",
+		calls,
+	);
+	check("header: streaming shows the dim … indicator", live[0].includes("…"), live);
+	check("header: one row filled to exact width", live.length === 1 && live[0].length === 30, live);
+	calls.length = 0;
+	const idle = plain(new CompactHeader(th, "Tools", () => false).render(30));
+	check(
+		"header: idle title in muted",
+		calls.find(([, t]) => t === "Tools")?.[0] === "muted",
+		calls,
+	);
+	check("header: idle has no … indicator", !idle[0].includes("…"), idle);
+	check("header: idle row also filled to exact width", idle[0].length === 30, idle);
 }
 
 // ─── teardown: no running loaders, no doc children ───────────────────────────

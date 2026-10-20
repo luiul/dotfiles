@@ -1,6 +1,6 @@
 # Split Extension Vocabulary
 
-Canonical terms for the pi split extension (`pi/.pi/agent/extensions/split/`). Use these verbatim in issues, commits, reviews, and the extension README. Panel titles today are `Thinking`, `Tool Usage`, and `File Changes`; the header consistency issue (#48) shortens `Tool Usage` to `Tools`, and this vocabulary already uses the short names.
+Canonical terms for the pi split extension (`pi/.pi/agent/extensions/split/`). Use these verbatim in issues, commits, reviews, and the extension README. Panel titles are `Thinking`, `Tools`, and `File Changes` (as of #48: all three headers render muted at rest and switch to accent while the panel is live).
 
 This is the split domain sub-glossary of the repo glossary (`docs/glossary.md`), which keeps the cross repo terms. Sources: the split source files and `pi/.pi/agent/extensions/README.md`, Split view section.
 

@@ -19,8 +19,12 @@
         ".monaco-workbench .part > .content": "font-size: 11px !important;",
         // Editor tab labels
         ".monaco-workbench .part.editor > .content .editor-group-container > .title .tabs-container > .tab .tab-label a": "font-size: 11px !important;",
-        // Status bar
-        ".monaco-workbench .part.statusbar": "font-size: 11px !important;",
+        // Status bar: 11px font, 18px height (default 22px), tighter item padding so
+        // more entries fit before they overflow into the ... menu. Same caveat as the
+        // panel header rules above: if a VS Code update misaligns items, delete these.
+        ".monaco-workbench .part.statusbar": "font-size: 11px !important; height: 18px !important;",
+        ".monaco-workbench .part.statusbar > .items-container > .statusbar-item": "line-height: 18px !important;",
+        ".monaco-workbench .part.statusbar > .items-container > .statusbar-item > .statusbar-item-label": "margin-left: 2px !important; margin-right: 2px !important; padding-left: 4px !important; padding-right: 4px !important;",
         // Section headers (EXPLORER, OUTLINE, TERMINAL, ...)
         ".monaco-workbench .part > .title > .title-label h2, .monaco-pane-view .pane > .pane-header h3.title": "font-size: 11px !important;",
         // Window title in title bar
@@ -451,7 +455,7 @@
     // Convention for sharing diagrams in GitHub READMEs: docs/diagrams.md in this repo.
     // Editor appearance follows the active VS Code theme (Monokai Night = dark).
     "hediet.vscode-drawio.appearance": "automatic",
-    // "workbench.experimental.modernUI": false,
+    "workbench.experimental.modernUI": false,
     // Off: measured on this machine. The DOM renderer drains heavy output about 2x
     // faster than WebGL (650-830ms vs 1650-1900ms per 300k lines of output).
     "terminal.integrated.gpuAcceleration": "off",

@@ -18,6 +18,11 @@ clipboard-trim-trailing-spaces = true
 
 # Keybindings
 keybind = global:control+command+shift+option+r=toggle_quick_terminal
+# Command center: hard-pin the focused tab's title (covers every split in it)
+# and overrides all shell OSC title changes (zsh precmd, pi, canopy).
+# Empty argument clears the override and restores automatic titles.
+keybind = cmd+shift+c=set_tab_title:🎛 cc
+keybind = cmd+shift+x=set_tab_title:
 # Only consume cmd+c when Ghostty itself has a selection; otherwise pass the
 # key through to the app (pi binds super+c to copy its fullscreen selection).
 keybind = performable:cmd+c=copy_to_clipboard

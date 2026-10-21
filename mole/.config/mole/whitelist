@@ -1,0 +1,18 @@
+# Mole Whitelist - Protected paths won't be deleted
+# Saved selections replace optional defaults; built-in safety protections still apply.
+# Add one pattern per line to keep items safe.
+
+~/.gradle/caches/*
+~/.gradle/daemon/*
+~/Library/Caches/tealdeer/tldr-pages
+~/Library/Caches/ms-playwright*
+~/Library/Caches/com.nssurge.surge-mac/*
+~/Library/Application Support/com.nssurge.surge-mac/*
+FINDER_METADATA
+/Users/luis.aceituno/.ollama/models/*
+/Users/luis.aceituno/Library/Caches/JetBrains*
+/Users/luis.aceituno/Library/Caches/com.jetbrains.toolbox*
+/Users/luis.aceituno/Library/Application Support/JetBrains*
+/Users/luis.aceituno/Library/Caches/com.apple.finder
+/Users/luis.aceituno/Library/Mobile Documents*
+~/Library/Caches/go-build

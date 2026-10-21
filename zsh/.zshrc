@@ -207,3 +207,6 @@ if (( ! $+functions[.autocomplete__compinit] )); then
 	compinit -C
 fi
 export PATH="/Users/luis.aceituno/projects/hellofresh/global-ops/scripts:$PATH"  # global-ops: usql wrapper
+
+# Mole CLI (mo) tab completion
+if output="$(mole completion zsh 2>/dev/null)"; then eval "$output"; fi

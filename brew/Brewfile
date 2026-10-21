@@ -123,8 +123,8 @@ brew "shaharia-lab/tap/slackcli", trusted: true
 cask "brave-browser@beta"
 # macOS notifications with Claude icon for Claude Code hooks
 cask "mlz11/tap/claude-notifier", trusted: true
-# OpenAI's coding agent that runs in your terminal
-cask "codex"
+# Databases and SQL IDE
+cask "datagrip"
 # Online diagram software
 cask "drawio"
 cask "font-jetbrains-mono-nerd-font"

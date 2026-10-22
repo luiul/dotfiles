@@ -21,6 +21,10 @@ Ghostty window at `$HOME` and locks the title automatically by sending
 
 ## Notes
 
+- Open is deliberately the last resort: the script only opens a new window
+  when the System Events listing, run twice after activation, confirms no
+  window carries the title. On any listing error it fails loudly with a
+  notification and opens nothing.
 - The focus path ports dashkit's OpenGhostty pattern (activate before the
   System Events listing, then AXRaise the exact-title match): backgrounded
   apps can cull their AX tree and a blind open would stack duplicate

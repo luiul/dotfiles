@@ -48,7 +48,7 @@
   "quietStartup": true,
   "fullscreenCopyOnSelect": false,
   "lastChangelogVersion": "1.4.0",
-  "theme": "one-modern",
+  "theme": "dark",
   "outputPad": 0,
   "packages": [
     "npm:@tintinweb/pi-subagents",

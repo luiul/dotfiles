@@ -198,12 +198,13 @@ const thinkingState = {
  */
 function thinkingLines(theme: Theme, width: number): string[] {
 	const out: string[] = [];
-	// Block divider (2026-10-20): blank row, full-width borderMuted stroke,
-	// blank row — the panel's own lines carry no component padding, so the
-	// divider provides the symmetric gap itself. RecentBody wraps source lines
-	// at width - 2 and prefixes one leading space, so the stroke uses that
-	// budget; the streaming block gets the same boundary.
-	const sep = (): string[] => ["", blockRuleRow(theme, Math.max(0, width - 2)), ""];
+	// Block divider (2026-10-20): blank row, full-width line-tone stroke
+	// (blockRuleRow, Monokai Pro Spectrum #525053), blank row — the panel's own
+	// lines carry no component padding, so the divider provides the symmetric
+	// gap itself. RecentBody wraps source lines at width - 2 and prefixes one
+	// leading space, so the stroke uses that budget; the streaming block gets
+	// the same boundary.
+	const sep = (): string[] => ["", blockRuleRow(Math.max(0, width - 2)), ""];
 	for (const b of thinkingState.blocks) {
 		if (out.length) out.push(...sep());
 		for (const l of b.lines) out.push(l);

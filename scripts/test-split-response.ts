@@ -376,14 +376,18 @@ toolsPanel.reset();
 // ─── 9. block dividers: RowDivider, doc boundaries, thinking panel ────────────
 
 {
-	// RowDivider unit: blank row + full-width stroke. The blank above is the
-	// divider's own; the blank below comes from the next block's leading row
-	// (measured in a real tmux run, 2026-10-20).
-	const d = new RowDivider(() => theme as never);
+	// RowDivider unit: blank row + full-width stroke in the shared split line
+	// tone. The blank above is the divider's own; the blank below comes from the
+	// next block's leading row (measured in a real tmux run, 2026-10-20). The
+	// tone is theme-independent raw SGR (Monokai Pro Spectrum #525053).
+	const d = new RowDivider();
 	const dRows = plain(d.render(W));
 	check("RowDivider: blank row, then full-width stroke", dRows.length === 2 && dRows[0] === "" && dRows[1] === "─".repeat(W), dRows);
 	check("RowDivider: zero width renders blank + empty row", plain(d.render(0)).join("|") === "|");
-	check("RowDivider: theme not resolved yet renders blank + empty row", plain(new RowDivider(() => null).render(W)).join("|") === "|");
+	check(
+		"RowDivider: stroke uses the Monokai Pro Spectrum line tone",
+		d.render(W)[1].includes("\x1b[38;2;82;80;83m"),
+	);
 }
 {
 	responseDocBegin();
@@ -481,13 +485,18 @@ toolsPanel.reset();
 	check("header: color is the only streaming signal, no … glyph", !live[0].includes("…"), live);
 	check("header: one row filled to exact width", live.length === 1 && live[0].length === 30, live);
 	calls.length = 0;
-	const idle = plain(new CompactHeader(th, "Tools", () => false).render(30));
+	const idleRaw = new CompactHeader(th, "Tools", () => false).render(30);
+	const idle = plain(idleRaw);
 	check(
 		"header: idle title in muted",
 		calls.find(([, t]) => t === "Tools")?.[0] === "muted",
 		calls,
 	);
 	check("header: idle row also filled to exact width", idle[0].length === 30, idle);
+	check(
+		"header: fill uses the Monokai Pro Spectrum line tone",
+		idleRaw.some((r) => r.includes("\x1b[38;2;82;80;83m")),
+	);
 }
 
 // ─── 11. RecentBody: oldest first, following the end (#43 reverted) ─────────

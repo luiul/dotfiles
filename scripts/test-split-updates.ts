@@ -13,6 +13,13 @@
 //   "Package Updates Available", `pi update` / `pi update --extensions`,
 //   changelog link) with the release note as plain text, capped to 2 lines
 //   and 160 chars.
+// - buildChangelogNotice is the condensed post-update notice: undefined for
+//   a missing marker (first install), an equal marker, or a NEWER marker
+//   (downgrade); for a newer running version it is one body line naming the
+//   version and linking https://pi.dev/changelog (the full entry, 56 lines
+//   for 1.4.0, is too big for the panel or the doc — user decision
+//   2026-10-24). The fake fixture includes it first and the footer status
+//   leads with "updated to X.Y.Z".
 // - UpdateNoticeBlock renders pi's block shape (blank, warning stroke, bold
 //   title, wrapped body with one leading pad column, warning stroke), never
 //   exceeds the width budget, and renders nothing until a theme resolves.
@@ -35,6 +42,7 @@ const {
 	buildPiUpdateNotice,
 	buildPackageUpdatesNotice,
 	buildSkillConflictsNotice,
+	buildChangelogNotice,
 	noticeBodyText,
 	noticesStatusText,
 	fakeUpdateNotices,
@@ -44,6 +52,7 @@ const {
 	PI_UPDATE_ID,
 	PACKAGE_UPDATES_ID,
 	SKILL_CONFLICTS_ID,
+	CHANGELOG_WHATSNEW_ID,
 	UpdateNoticeBlock,
 } = await import("../pi/.pi/agent/extensions/split/split-updates.ts");
 const {
@@ -159,10 +168,14 @@ check("empty package list: header only, no package rows (collectStartupNotices g
 		!noticeBodyText(buildPackageUpdatesNotice([])).includes("- "));
 
 const fake = fakeUpdateNotices();
-check("fake fixture: three notices", fake.length === 3);
-check("fake fixture: skill conflicts first", fake[0].id === SKILL_CONFLICTS_ID && SKILL_CONFLICTS_ID === "conflicts:skills");
-check("fake fixture: pi version marker 999.0.0", noticeBodyText(fake[1]).includes("999.0.0"));
-check("fake fixture: package names", noticeBodyText(fake[2]).includes("fake-package-a"));
+check("fake fixture: four notices", fake.length === 4);
+check(
+	"fake fixture: changelog first",
+	fake[0].id === CHANGELOG_WHATSNEW_ID && CHANGELOG_WHATSNEW_ID === "changelog:whatsnew",
+);
+check("fake fixture: skill conflicts second", fake[1].id === SKILL_CONFLICTS_ID && SKILL_CONFLICTS_ID === "conflicts:skills");
+check("fake fixture: pi version marker 999.0.0", noticeBodyText(fake[2]).includes("999.0.0"));
+check("fake fixture: package names", noticeBodyText(fake[3]).includes("fake-package-a"));
 
 // ─── skill conflicts notice ──────────────────────────────────────────────────
 
@@ -181,12 +194,47 @@ const twoConflicts = buildSkillConflictsNotice([
 ]);
 check("conflicts: two collisions are 6 lines", twoConflicts.body.length === 6);
 
+// ─── changelog notice ──────────────────────────────────────────────────────────
+
+check(
+	"changelog: no notice without a marker (first install)",
+	buildChangelogNotice(undefined, "1.4.0") === undefined,
+);
+check(
+	"changelog: no notice when the marker equals the running version",
+	buildChangelogNotice("1.4.0", "1.4.0") === undefined,
+);
+check(
+	"changelog: no notice on a downgrade (marker newer than running)",
+	buildChangelogNotice("1.4.1", "1.4.0") === undefined,
+);
+const changelogNotice = buildChangelogNotice("1.3.0", "1.4.0");
+check(
+	"changelog: id",
+	changelogNotice!.id === CHANGELOG_WHATSNEW_ID,
+);
+check(
+	"changelog: title names the running version",
+	changelogNotice!.title === "What's New (1.4.0)",
+);
+check("changelog: one body line", changelogNotice!.body.length === 1);
+const changelogText = noticeBodyText(changelogNotice!);
+check(
+	"changelog: says what you are on now",
+	changelogText.includes("Updated to v1.4.0. Full changelog: https://pi.dev/changelog"),
+);
+
 // ─── footer status text ──────────────────────────────────────────────────────
 
 check("status: undefined when empty", noticesStatusText([]) === undefined);
 check(
-	"status: fake fixture sums all three",
-	noticesStatusText(fake) === "pi 999.0.0 available · 2 package updates · 1 skill conflict",
+	"status: fake fixture sums all four",
+	noticesStatusText(fake) ===
+		"updated to 999.0.0 · pi 999.0.0 available · 2 package updates · 1 skill conflict",
+);
+check(
+	"status: changelog alone",
+	noticesStatusText([changelogNotice!]) === "updated to 1.4.0",
 );
 check(
 	"status: plural conflicts",

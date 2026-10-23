@@ -34,13 +34,18 @@
  *   the left column clean: the filechanges widget stays suppressed while the
  *   hidden set includes the files panel.
  * - Update notices (split-updates.ts): pi's "Update Available" and "Package
- *   Updates Available" startup blocks, and its [Skill conflicts] block, are
- *   transcript-only with no extension event, so the extension re-runs the
- *   checks/scans through pi's public API and mirrors the results through
+ *   Updates Available" startup blocks, its [Skill conflicts] block, and its
+ *   post-update "What's New" changelog block, are transcript-only with no
+ *   extension event, so the extension re-runs the checks/scans through
+ *   pi's public API and mirrors the results through
  *   three surfaces: Tools panel event rows, a framed block at the doc top in
  *   response-only mode (re-appended after every rebuild), and a persistent
  *   footer status line — the one surface visible in every layout state. No
- *   layout state drops them. Session start only; --split-fake-updates forces
+ *   layout state drops them. The changelog notice is condensed (pi's full
+ *   block stays reachable via the transcript toggle in that session) and
+ *   detects the update from settings.lastChangelogVersion captured at module
+ *   import — pi consumes the marker during init(), before session_start.
+ *   Session start only; --split-fake-updates forces
  *   fixture notices for tests.
  * - Toggles are session-local; only /split-save writes ~/.pi/agent/split.json
  *   as startup defaults for NEW windows. --no-split starts bare.

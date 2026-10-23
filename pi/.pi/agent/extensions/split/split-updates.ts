@@ -1,11 +1,15 @@
 /**
  * split-updates.ts — update notices for the split view.
  *
- * pi renders two startup notices as transcript-only UI blocks, with no
+ * pi renders three startup notices as transcript-only UI blocks, with no
  * extension event and no session entry:
  *   - "Update Available"            (checkForNewPiVersion → pi.dev latest)
  *   - "Package Updates Available"  (DefaultPackageManager
  *                                   .checkForAvailableUpdates)
+ *   - "What's New"                 (post-update changelog: init() reads
+ *                                   settings.lastChangelogVersion, shows
+ *                                   the newer CHANGELOG.md entries, and
+ *                                   consumes the marker immediately)
  * In full transcript mode the left column shows pi's own blocks. In
  * response-only mode they are DROPPED — an information-loss hole in the
  * policy of split-response.ts (user decision 2026-10-24). This module closes
@@ -27,6 +31,19 @@
  * public API pieces (SettingsManager.create + DefaultPackageManager.resolve
  * + the exported loadSkills) and gets the SAME collision diagnostics.
  *
+ * The "What's New" changelog notice is CONDENSED (user decision 2026-10-24):
+ * pi's own block carries the full entry (1.4.0's is 56 lines / 10K chars),
+ * far too big for event rows (bodies cap at 2 lines even in full mode) or
+ * for the response doc. One line names the version you are on now and links
+ * the permanent full changelog; pi's own full block stays reachable
+ * in-session because response-only mode DETACHES, not destroys, the chat
+ * container. Detection needs no scan: pi overwrites the marker during
+ * init(), before any session_start handler runs (verified from pi 1.4.0
+ * dist source: extension modules import during runtime creation, before
+ * InteractiveMode; session_start fires after the UI starts, after the
+ * write), so the pre-update value is captured at MODULE IMPORT below — the
+ * one moment it is readable. Read-only; pi owns the setting.
+ *
  * Data comes through pi's PUBLIC API, so results match pi's own checks:
  *   - pi version: the same https://pi.dev/api/latest-version endpoint,
  *     same env guards (PI_OFFLINE, PI_SKIP_VERSION_CHECK), current version
@@ -43,6 +60,8 @@
  * This module is a shared utility imported by split.ts.
  */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
 	DefaultPackageManager,
 	SettingsManager,
@@ -70,6 +89,7 @@ export interface UpdateNotice {
 export const PI_UPDATE_ID = "update:pi";
 export const PACKAGE_UPDATES_ID = "update:packages";
 export const SKILL_CONFLICTS_ID = "conflicts:skills";
+export const CHANGELOG_WHATSNEW_ID = "changelog:whatsnew";
 
 let activeNotices: UpdateNotice[] = [];
 
@@ -316,15 +336,65 @@ export function buildSkillConflictsNotice(
 	};
 }
 
+// ─── post-update changelog notice (pi's "What's New" block) ───────────────────
+
+/**
+ * The pre-update lastChangelogVersion, captured at MODULE IMPORT (see the
+ * header: pi consumes the marker during init(), long before any
+ * session_start handler runs, so this is the one moment it is readable).
+ * Read-only — pi owns the setting and this module never writes it.
+ */
+const changelogMarkerAtImport: string | undefined = (() => {
+	try {
+		const raw: unknown = JSON.parse(
+			readFileSync(join(getAgentDir(), "settings.json"), "utf8"),
+		);
+		const marker = (raw as { lastChangelogVersion?: unknown } | null)
+			?.lastChangelogVersion;
+		return typeof marker === "string" && marker ? marker : undefined;
+	} catch {
+		return undefined;
+	}
+})();
+
+/**
+ * The condensed "What's New" notice. Pure: undefined when nothing is new —
+ * no marker (first install), an equal marker, or a downgrade (marker newer
+ * than the running version). A resumed first session after an update still
+ * gets the notice: pi skips its own display (and leaves the marker
+ * unconsumed) for sessions that already have messages, so this catches
+ * information pi's own transcript never renders.
+ */
+export function buildChangelogNotice(
+	marker: string | undefined,
+	currentVersion: string,
+): UpdateNotice | undefined {
+	if (!marker || marker === currentVersion) return undefined;
+	if (!isNewerVersion(currentVersion, marker)) return undefined;
+	return {
+		id: CHANGELOG_WHATSNEW_ID,
+		title: `What's New (${currentVersion})`,
+		body: [
+			[
+				["muted", `Updated to v${currentVersion}. Full changelog: `] as NoticeSegment,
+				["accent", CHANGELOG_URL] as NoticeSegment,
+			],
+		],
+	};
+}
+
 // ─── collection + footer status ───────────────────────────────────────────────
 
-/** Both update checks plus the skill scan in one; local scan first so
- * conflicts show even when the network is slow. Empty result = nothing to
- * show (also offline/errors). */
+/** The changelog notice plus both update checks plus the skill scan in one;
+ * all local work first (the changelog notice is synchronous, the skill scan
+ * is local) so they show even when the network is slow. Empty result =
+ * nothing to show (also offline/errors). */
 export async function collectStartupNotices(
 	ctx: ExtensionContext,
 ): Promise<UpdateNotice[]> {
 	const notices: UpdateNotice[] = [];
+	const changelog = buildChangelogNotice(changelogMarkerAtImport, VERSION);
+	if (changelog) notices.push(changelog);
 	const collisions = await collectSkillCollisions(ctx);
 	if (collisions.length > 0) notices.push(buildSkillConflictsNotice(collisions));
 	const release = await fetchLatestPiRelease();
@@ -349,6 +419,11 @@ export function noticesStatusText(
 	if (notices.length === 0) return undefined;
 	const byId = new Map(notices.map((n) => [n.id, n]));
 	const parts: string[] = [];
+	const changelog = byId.get(CHANGELOG_WHATSNEW_ID);
+	if (changelog) {
+		const m = /What's New \((\S+)\)/.exec(changelog.title);
+		parts.push(m ? `updated to ${m[1]}` : "updated");
+	}
 	const pi = byId.get(PI_UPDATE_ID);
 	if (pi) {
 		const m = /New version (\S+) is available/.exec(noticeBodyText(pi));
@@ -371,9 +446,11 @@ export function noticesStatusText(
 	return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
-/** --split-fake-updates fixture: deterministic, no network, fake markers. */
+/** --split-fake-updates fixture: deterministic, no network, fake markers.
+ * Changelog notice first, matching collectStartupNotices order. */
 export function fakeUpdateNotices(): UpdateNotice[] {
 	return [
+		buildChangelogNotice("1.0.0", "999.0.0")!,
 		buildSkillConflictsNotice([
 			{
 				name: "fake-skill",

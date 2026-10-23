@@ -54,6 +54,7 @@ import {
 	UserMessageComponent,
 	type Theme,
 } from "@earendil-works/pi-coding-agent";
+import { blockRuleRow } from "./split-render.ts";
 
 /** Max text rows pinned above the transcript (plus 1 separator row). */
 const MAX_TEXT_ROWS = 3;
@@ -259,8 +260,9 @@ export class StickyPromptBar implements Component {
 				th.bg("userMessageBg", th.fg("userMessageText", ` ${line}`) + " ".repeat(pad))
 			);
 		});
-		// Separator: the pinned block's lower edge (VS Code underline).
-		rows.push(th.fg("borderMuted", "─".repeat(Math.max(0, width))));
+		// Separator: the pinned block's lower edge (VS Code underline), in the
+		// shared split line tone (Monokai Pro Spectrum #525053).
+		rows.push(blockRuleRow(Math.max(0, width)));
 
 		this.rowsKey = key;
 		this.rows = rows;

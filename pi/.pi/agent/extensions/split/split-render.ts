@@ -159,14 +159,32 @@ export class RecentBody {
 	dispose(): void {}
 }
 
-// ─── compact header ───────────────────────────────────────────────────────────
+// ─── split line tone ───────────────────────────────────────────────────────────
+
+/**
+ * The split's structural line color: Monokai Pro Spectrum's own selection
+ * gray #525053 on its #222222 background (user decision 2026-10-24: the
+ * split's line colors sit inside the Ghostty theme, not pi's, and the
+ * previous pi `dark` scheme stays for everything else). One tone for every
+ * structural line: panel header fills, block dividers, thinking block
+ * separators, the sticky bar's lower edge. Color stays reserved for state
+ * (accent streaming titles, warning notice strokes). pi's Theme.fg resolves
+ * role names only and throws on raw values, so lines emit raw truecolor SGR
+ * directly — Ghostty is truecolor, and the tone is pinned to this terminal
+ * theme by design.
+ */
+const LINE_TONE_RGB = "82;80;83"; // #525053, Monokai Pro Spectrum selection
+
+// ─── compact header ─────────────────────────────────────────────────────────
 
 /**
  * 1-row panel header: the title in muted at rest and in accent while the
  * panel's source is streaming — the color change is the only streaming
- * signal (user decision 2026-10-20: the dim … indicator was removed),
- * then a border ─ fill to EXACT width. This row doubles as the separator
- * between stacked panels, so no extra separator rows exist.
+ * signal (user decision 2026-10-20: the dim … indicator was removed) — then
+ * a line-tone ─ fill to EXACT width. One hairline weight for every
+ * structural line in the split (2026-10-24, see LINE_TONE_RGB). This row
+ * doubles as the separator between stacked panels, so no extra separator
+ * rows exist.
  */
 export class CompactHeader implements Component {
 	constructor(
@@ -181,7 +199,7 @@ export class CompactHeader implements Component {
 		const head =
 			" " + th.fg(this.streaming() ? "accent" : "muted", this.title) + " ";
 		const fillW = Math.max(0, width - visibleWidth(head));
-		return [head + th.fg("border", "─".repeat(fillW))];
+		return [head + blockRuleRow(fillW)];
 	}
 
 	invalidate(): void {}
@@ -192,12 +210,12 @@ export class CompactHeader implements Component {
 // ─── block divider ───────────────────────────────────────────────────────────
 
 /**
- * One block-divider stroke: a full-width borderMuted ─ line (modern
- * separator, 2026-10-20: pi's "subtle borders" token, dimmer than dim in
- * both bundled themes; the sticky bar's separator row uses the same color).
+ * One structural hairline: a full-width ─ row in the split line tone
+ * (Monokai Pro Spectrum #525053; see LINE_TONE_RGB at the top). This is the
+ * one line function every structural line in the split goes through.
  */
-export function blockRuleRow(theme: Theme, width: number): string {
-	return theme.fg("borderMuted", "─".repeat(Math.max(0, width)));
+export function blockRuleRow(width: number): string {
+	return `\x1b[38;2;${LINE_TONE_RGB}m${"─".repeat(Math.max(0, width))}\x1b[39m`;
 }
 
 /**
@@ -206,15 +224,12 @@ export function blockRuleRow(theme: Theme, width: number): string {
  * blank row, then the full-width stroke. The blank above is the divider's
  * own (pi's assistant components end flush, measured in a real tmux run,
  * 2026-10-20); the blank below comes from the next block's leading row, so
- * the visual gap is a compact symmetric one row on each side. Resolves the
- * theme LAZILY at render time, so a doc rebuilt during session_start still
- * shows its dividers from the first frame on. Stateless, O(1).
+ * the visual gap is a compact symmetric one row on each side. Stateless,
+ * O(1); the line tone is theme-independent (LINE_TONE_RGB).
  */
 export class RowDivider implements Component {
-	constructor(private getTheme: () => Theme | null) {}
 	render(width: number): string[] {
-		const th = this.getTheme();
-		return ["", th ? blockRuleRow(th, Math.max(0, width)) : ""];
+		return ["", blockRuleRow(Math.max(0, width))];
 	}
 	invalidate(): void {}
 	dispose(): void {}

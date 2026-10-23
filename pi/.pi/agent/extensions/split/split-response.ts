@@ -26,16 +26,19 @@
  *     owning view already presents it (e.g. the filechanges tracker feeds the
  *     File Changes panel); no display renderer is reachable from here.
  *   - update notices (pi's   → doc block at the doc TOP (UpdateNoticeBlock,
- *     "Update Available" /        split-updates.ts) + Tools panel event row +
- *     "Package Updates")           persistent footer status. pi renders these
- *                                 transcript-only with no extension event, so
- *                                 the extension re-runs the checks
+ *     "Update Available",        split-updates.ts) + Tools panel event row +
+ *     "Package Updates", and     persistent footer status. pi renders these
+ *     the "What's New"           transcript-only with no extension event, so
+ *     post-update changelog)     the extension re-runs the checks
  *                                 (split-updates.ts) and keeps the notices
  *                                 session-lifetime; re-appended here after every
  *                                 rebuild so no layout state drops them.
  *                                 Same pipeline covers pi's [Skill conflicts]
  *                                 block (same information-loss class, same
- *                                 public-API scan). (User decisions 2026-10-24.)
+ *                                 public-API scan). The changelog notice is
+ *                                 condensed; pi's full block stays in the
+ *                                 detached chat container. (User decisions
+ *                                 2026-10-24.)
  *
  * The doc lives under ONE retained ScrollView singleton. The instance is
  * created once and NEVER recreated across toggles or branch switches, so the
@@ -139,7 +142,7 @@ function insertBlockDivider(): void {
 	const kids = responseDoc.children as unknown[];
 	if (kids.length === 0) return;
 	if (!(kids[kids.length - 1] instanceof AssistantMessageComponent)) return;
-	responseDoc.addChild(new RowDivider(() => responseTheme));
+	responseDoc.addChild(new RowDivider());
 }
 
 function messageText(msg: any): string {

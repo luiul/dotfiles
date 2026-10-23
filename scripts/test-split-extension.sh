@@ -11,9 +11,9 @@
 #      the saved startup defaults): Thinking + Tools + File Changes headers,
 #      divider
 #   2.5 update notices (--split-fake-updates, deterministic): "Update Available",
-#      "Package Updates Available", and "Skill conflicts" as Tools panel event
-#      rows and as framed blocks at the response doc top, plus the persistent
-#      footer status line — no layout state drops them
+#      "Package Updates Available", "Skill conflicts", and "What's New" as Tools
+#      panel event rows and as framed blocks at the response doc top, plus the
+#      persistent footer status line — no layout state drops them
 #   3. /split-width recomposes at a new left share
 #   4. a real agent turn (two write calls, one with a long nested path) lands
 #      in the Tools and File Changes panels, and the long path WRAPS
@@ -191,9 +191,10 @@ check_in_right "branch summary logged as a panel event row" "branch summary"
 # status line must list them (the one surface visible in every layout state).
 # The deferred check fires ~1.5s after session start, long before this capture.
 check_in_right "skill conflicts notice is a Tools panel event row" "Skill conflicts"
+check_in_right "changelog notice is a Tools panel event row" "What's New \\(999\\.0\\.0\\)"
 check_in_right "pi update notice is a Tools panel event row" "Update Available"
 check_in_right "package updates notice is a Tools panel event row" "Package Updates Available"
-check_contains "footer status lists all pending notices" "pi 999.0.0 available · 2 package updates · 1 skill conflict"
+check_contains "footer status lists all pending notices" "updated to 999.0.0 · pi 999.0.0 available · 2 package updates · 1 skill conflict"
 check_not_contains "raw skill block never rendered in the left column" "<skill"
 
 tmux send-keys -t "$SESSION" "/split-width 45" Enter
@@ -298,13 +299,16 @@ tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5H')"   # ctrl+home: doc top
 sleep 2
 capture
 # Update notices ride the doc TOP in response-only mode (pi's own blocks
-# live in the native transcript, which this view replaces — the fake markers
-# only exist in the doc blocks, the compact panel rows show titles only, so
-# this whole-pane grep is left-column-only by construction).
+# live in the native transcript, which this view replaces). The changelog
+# title "What's New (999.0.0)" also shows in the compact panel row, so the
+# doc-top proof greps its BODY text, which only the doc block carries; the
+# other fixtures' fake markers likewise only exist in the doc blocks, so a
+# whole-pane grep is left-column-only by construction.
 check_contains "update notice block visible at the doc top" "999.0.0"
+check_contains "changelog notice block visible at the doc top" "Updated to v999.0.0"
 check_contains "skill conflicts block visible at the doc top" "fake-skill"
 # Block divider: page down until the mid-doc divider is on screen. The
-# startup notice blocks' total height varies with the fixture (three notices
+# startup notice blocks' total height varies with the fixture (four notices
 # now), so a fixed number of pages is brittle; 4 attempts cover the seeded
 # doc, and further pages clamp at the end harmlessly (overscroll contain).
 PLACEMENT="bad:not-started"
@@ -312,13 +316,22 @@ for _attempt in 1 2 3 4; do
 	tmux send-keys -t "$SESSION" NPage   # page down toward the continuation
 	sleep 2
 	capture
-	PLACEMENT=$(echo "$CAP" | python3 -c '
-import sys, re
+	PLACEMENT=$(echo "$CAP" | DIV_COL="$(divider_col)" python3 -c '
+import os, re, sys
+# Left-column region only: the right column shares full-width rows, so the
+# "blank row above the divider" contract (a DOC property) must be judged on
+# the doc columns alone. With the right column visible, the row above the
+# divider stroke can carry panel ink (e.g. a Tools event row), and a
+# full-line blank test fails spuriously; the four-notice fixture stack
+# (split-updates.ts) shifted the divider onto exactly such a row.
+div = os.environ.get("DIV_COL", "-1")
+col = int(div) if div.lstrip("-").isdigit() and int(div) > 0 else 80
+left = lambda s: s[:col]
 lines = sys.stdin.read().split("\n")
 for i, l in enumerate(lines):
-    if re.match(r"^─{40,}", l):
-        above = "\n".join(lines[max(0, i - 8) : i])
-        below = "\n".join(lines[i + 1 : i + 6])
+    if re.match(r"^─{40,}", left(l)):
+        above = "\n".join(left(x) for x in lines[max(0, i - 8) : i])
+        below = "\n".join(left(x) for x in lines[i + 1 : i + 6])
         # "seed answer one" (prefix) not the full continuation text: the update
         # notice blocks (split-updates.ts) sit at the doc top, so the divider
         # lands near the viewport bottom after one page down and the
@@ -326,7 +339,7 @@ for i, l in enumerate(lines):
         # is unique (answer lines read "seed turn one line N").
         if (
             "seed turn one line" in above
-            and (not lines[i - 1].strip() if i > 0 else False)
+            and (not left(lines[i - 1]).strip() if i > 0 else False)
             and "seed answer one" in below
         ):
             print("ok")
@@ -432,7 +445,7 @@ NEWEST=$(ls -t "$HOME/.pi/agent/sessions/--Users-luis.aceituno-.split-e2e-"*/*.j
 if [ -n "$NEWEST" ] && grep -q "filechanges:session-set" "$NEWEST" 2>/dev/null; then
 	ok "tracker session-set entry persisted ($(basename "$NEWEST"))"
 else
-	bad "tracker session-set entry persisted"
+	bad "tracker session-set entry persisted (NEWEST='$NEWEST'; files: $(ls "$HOME/.pi/agent/sessions/--Users-luis.aceituno-.split-e2e-"*/*.jsonl 2>/dev/null | tr '\n' ' '))"
 fi
 
 say ""

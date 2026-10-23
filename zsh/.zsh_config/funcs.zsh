@@ -107,33 +107,3 @@ upgrade-tools() {
 	}
 }
 
-# Loaded once, imports only zf_rm (not a global rm override) so temp-file
-# cleanup in cod() below doesn't fork an external rm process.
-zmodload -F zsh/files b:zf_rm 2>/dev/null
-
-cod() {
-	# Plain file redirect (no mktemp fork) + zsh's fork-free $(<file) read,
-	# so cd stays in the current shell (dir change persists) and no external
-	# process is spawned besides `code` itself. Benchmarked faster than the
-	# original grep-based version, not just more correct.
-	local reuse=false tmp="${TMPDIR:-/tmp}/cod.$$.$RANDOM" rc err
-	if [[ $1 == -r || $1 == --reuse-window ]]; then
-		reuse=true
-		shift
-	fi
-	cd "$@" 2>"$tmp"
-	rc=$?
-	err="$(<$tmp)"
-	zf_rm -f -- "$tmp"
-	if (( rc == 0 )) || [[ "$err" == *"already in the only match"* ]]; then
-		if $reuse; then
-			code -r .
-		else
-			code .
-		fi
-	else
-		[[ -n "$err" ]] && print -r -- "$err" >&2
-		return $rc
-	fi
-}
-

@@ -18,6 +18,10 @@ clipboard-trim-trailing-spaces = true
 
 # Keybindings
 keybind = global:control+command+shift+option+r=toggle_quick_terminal
+# Quick terminal: show on the screen the mouse is hovered over, not the one
+# receiving keyboard input (Ghostty's default `main`, which follows the
+# active window).
+quick-terminal-screen = mouse
 # Command center: hard-pin the focused tab's title (covers every split in it)
 # and overrides all shell OSC title changes (zsh precmd, pi, canopy).
 # Empty argument clears the override and restores automatic titles.

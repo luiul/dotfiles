@@ -116,7 +116,9 @@ zmodload -F zsh/files b:zf_rm 2>/dev/null
 #
 # `cd "$@"` (no `--`, current shell) goes through the zoxide-backed `cd`
 # wrapper, so `piw dot` resolves like `cd dot` does and the dir change
-# persists in the calling shell, exactly as cod behaved. zoxide returns
+# persists in the calling shell, exactly as cod behaved. With no argument,
+# `cd .` keeps the current directory: bare `cd` would jump to $HOME.
+# zoxide returns
 # non-zero with "you are already in the only match" when cwd is already the
 # best match; that's success here (open pi in $PWD). No `--`: zoxide treats
 # it as part of the query and resolution breaks.
@@ -132,6 +134,7 @@ zmodload -F zsh/files b:zf_rm 2>/dev/null
 # windows by that title grammar.
 piw() {
 	local tmp="${TMPDIR:-/tmp}/piw.$$.$RANDOM" rc err
+	(( $# )) || set -- .
 	cd "$@" 2>"$tmp"
 	rc=$?
 	err="$(<$tmp)"

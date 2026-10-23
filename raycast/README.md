@@ -25,10 +25,7 @@ Ghostty window at `$HOME` and locks the title automatically by sending
   when the System Events listing, run twice after activation, confirms no
   window carries the title. On any listing error it fails loudly with a
   notification and opens nothing.
-- The focus path ports dashkit's OpenGhostty pattern (activate before the
-  System Events listing, then AXRaise the exact-title match): backgrounded
-  apps can cull their AX tree and a blind open would stack duplicate
-  windows (luiul/dashkit#9).
+- The focus path finds and raises the cc window through Ghostty's own AppleScript dictionary (`every window whose name is …` plus `activate window`), never through the System Events AX tree. The previous version listed windows via System Events after an activate, but macOS culls the AX tree of backgrounded apps (luiul/dashkit#9) and the re-materialization after activate races any fixed delay: losing that race made the script open a duplicate command center even though one existed. Ghostty answers for its own windows without the AX tree, so that race is gone. Accessibility permission is still needed for the claim path, which sends `cmd+shift+c` via System Events `keystroke`.
 - The auto-claim only sends the keystroke when the focused Ghostty tab is a
   fresh home shell titled `~`, so the lock can never land on a worktree
   window.

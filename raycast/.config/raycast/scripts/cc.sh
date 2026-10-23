@@ -39,27 +39,29 @@ on run argv
 		return "launched"
 	end if
 
-	-- Activate before listing: macOS culls the AX tree of backgrounded
-	-- apps, so a backgrounded listing can miss real windows
-	-- (luiul/dashkit#9, same fix as dashkit's OpenGhostty).
-	activate application "Ghostty"
-
-	tell application "System Events"
-		tell process "ghostty"
+	-- Bring Ghostty frontmost first, so the raise below can land and the
+	-- fresh-window claim later sees a frontmost app. Then find and raise
+	-- the cc window through Ghostty's OWN AppleScript dictionary, not
+	-- System Events. The previous version listed windows through the AX
+	-- tree, which macOS culls for backgrounded apps (luiul/dashkit#9):
+	-- activate-before-list races the AX re-materialization, and a single
+	-- 0.3s retry lost that race often enough to open a duplicate command
+	-- center. Ghostty answers for its own windows without the AX tree, so
+	-- that race is gone. A few short retries still run before concluding
+	-- "missing": open is the last resort, so a transient app-event hiccup
+	-- must not cost a duplicate window either.
+	tell application "Ghostty"
+		activate
+		repeat 4 times
 			set matches to (every window whose name is ccTitle)
-			if (count of matches) is 0 then
-				-- Never conclude "missing" on one listing: activation can take
-				-- a beat to re-materialize the AX tree (luiul/dashkit#9), and
-				-- opening a window when one exists is the failure mode this
-				-- script exists to prevent. Re-list after a short delay.
-				delay 0.3
-				set matches to (every window whose name is ccTitle)
-				if (count of matches) is 0 then return "missing"
+			if (count of matches) is greater than 0 then
+				activate window (item 1 of matches)
+				return "focused"
 			end if
-			perform action "AXRaise" of (item 1 of matches)
-			return "focused"
-		end tell
+			delay 0.25
+		end repeat
 	end tell
+	return "missing"
 end run
 APPLESCRIPT
 }

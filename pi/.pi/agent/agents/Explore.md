@@ -3,7 +3,7 @@ name: Explore
 description: Fast read-only code search. Find files, symbols, references, and definitions. Specify quick, medium, or very thorough search breadth. Not for reviews or open-ended analysis.
 tools: read, bash, grep, find, ls
 extensions: true
-exclude_extensions: canopy-status
+exclude_extensions: canopy-status, pi-blackhole
 skills: true
 model: ai-model-router/gpt-6-luna
 thinking: low

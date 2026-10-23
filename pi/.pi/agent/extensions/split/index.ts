@@ -30,7 +30,9 @@
  * - Fullscreen only. In regular mode the extension stays dormant and /split-toggle
  *   says so. Below MIN_TERM_WIDTH the right column hides (left keeps growing).
  *   /split-toggle-right hides or shows the whole right column at once; the hidden
- *   panel set is remembered, so a re-show restores it exactly.
+ *   panel set is remembered, so a re-show restores it exactly. Hiding keeps
+ *   the left column clean: the filechanges widget stays suppressed while the
+ *   hidden set includes the files panel.
  * - Toggles are session-local; only /split-save writes ~/.pi/agent/split.json
  *   as startup defaults for NEW windows. --no-split starts bare.
  *
@@ -811,7 +813,12 @@ export default function (pi: ExtensionAPI) {
 				thinkingOn = false;
 				toolsOn = false;
 				filesOn = false;
-				setFilesSuppressed(false);
+				// Keep the above-editor filechanges widget suppressed when the
+				// files panel was part of the hidden set: hiding the right column
+				// must yield a CLEAN conversation, not resurrect the widget with
+				// the last round's changes (the tracker keeps running either way;
+				// if files was already off, the widget stays as it was).
+				setFilesSuppressed(rightHiddenSnapshot.files);
 				reconcileLayout(ctx.ui.theme);
 				ctx.ui.notify("Right column off", "info");
 				return;

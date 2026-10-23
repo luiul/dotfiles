@@ -7,7 +7,9 @@
 # sticky-scroll assertions are deterministic and cost no extra LLM calls,
 # then asserts against the rendered pane:
 #   1. clean start, no extension errors
-#   2. /split-toggle composes: Thinking + Tools + File Changes headers, divider
+#   2. the three right panels compose (forced on per-panel, independent of
+#      the saved startup defaults): Thinking + Tools + File Changes headers,
+#      divider
 #   3. /split-width recomposes at a new left share
 #   4. a real agent turn (two write calls, one with a long nested path) lands
 #      in the Tools and File Changes panels, and the long path WRAPS
@@ -22,7 +24,8 @@
 #      Usage event rows; a LIVE !echo and !!echo land in the doc too
 #      (user_bash + the per-frame leaf walk, no extension events involved)
 #   5.7 /split-toggle-right: hide the whole right column at once, re-show restores
-#      the exact panel set
+#      the exact panel set, and the above-editor filechanges widget stays hidden
+#      while the hidden set includes the files panel
 #   6. /split-toggle off restores the bare layout
 #   7. the tracker's session-set entry persists in the session jsonl
 #
@@ -115,18 +118,26 @@ capture
 check_not_contains "no startup errors" "Extension.*(error|failed|cannot)|TypeError|ReferenceError"
 if tmux list-sessions 2>/dev/null | grep -q "$SESSION"; then ok "session alive"; else bad "session alive"; fi
 
-# 2. /split-toggle composes the split layout. The toggle only turns the layout ON
-#    when it is currently off: the saved ~/.pi/agent/split.json startup
-#    defaults may already have composed it at boot (split: true), and a blind
-#    toggle would turn it OFF and fail every panel assertion. So only send the
-#    toggle when the panels are not already on screen.
-capture
-if echo "$CAP" | grep -q "Tools"; then
-	say "── split already composed at startup (saved or built-in default; no toggle needed)"
-else
-	tmux send-keys -t "$SESSION" "/split-toggle" Enter
-	sleep 2
-fi
+# 2. Force the three right panels on, INDEPENDENT of the saved startup
+#    defaults in ~/.pi/agent/split.json (the user's live saved layout may
+#    legitimately have panels off, e.g. all off with trim saved on). Per-panel
+#    toggles, each sent ONLY when that panel's header is missing: a blind
+#    toggle would turn a present panel OFF, and the master /split-toggle
+#    would apply the saved defaults (which may be all panels off).
+ensure_panel() {
+	# ensure_panel <header> <command>
+	local header=$1 cmd=$2
+	capture
+	if echo "$CAP" | grep -q "$header"; then
+		say "── $header already on screen (saved startup default)"
+	else
+		tmux send-keys -t "$SESSION" "$cmd" Enter
+		sleep 2
+	fi
+}
+ensure_panel "Thinking" "/split-toggle-thinking"
+ensure_panel "Tools" "/split-toggle-tools"
+ensure_panel "File Changes" "/split-toggle-files"
 capture
 check_contains "thinking panel header" "Thinking"
 check_contains "tools panel header" "Tools"
@@ -363,6 +374,10 @@ sleep 2
 capture
 check_contains "right column off notify" "Right column off"
 check_not_contains "panels gone after split-toggle-right off" "Thinking idle|No tools called yet|No changes yet"
+# The above-editor filechanges widget must NOT come back with the hide: the
+# goal is a clean conversation, so "Changes last round" stays out of the left
+# column while the hidden set included the files panel (write turn settled above).
+check_not_contains "filechanges widget stays hidden while the right column is off" "Changes last round"
 tmux send-keys -t "$SESSION" "/split-toggle-right" Enter
 sleep 2
 capture

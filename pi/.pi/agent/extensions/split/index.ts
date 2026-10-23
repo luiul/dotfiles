@@ -5,7 +5,7 @@
  *   │ ▌ pinned user prompt (split-sticky.ts)     ││ Thinking     │
  *   │ ───────────────────────                        ││ Tools        │
  *   │ transcript (full, or response-only via           ││ File Changes │
- *   │ /split-trim-response)                            ││              │
+ *   │ /split-toggle-response-only)                   ││              │
  *   │ > input dock (pi's own, reused verbatim)      ││              │
  *   └──────────────────────────────────────────────────┘└──────────────┘
  *
@@ -16,7 +16,7 @@
  * - Left: pi's base root verbatim (transcript + input dock), or the
  *   response-only view from split-response.ts (transcript region swapped,
  *   input dock reused). Above the transcript: the sticky user prompt bar
- *   from split-sticky.ts (/split-sticky, on by default) pins the user
+ *   from split-sticky.ts (/split-toggle-sticky, on by default) pins the user
  *   prompt that owns the top visible line while it is scrolled above the
  *   view (VS Code sticky scroll).
  * - Right: three compact stacked panels — thinking (split-panels.ts), tool
@@ -27,8 +27,10 @@
  *   adjustable via /split-*-height.
  * - Dividers are minimal: no box borders, 1-row compact headers that double
  *   as separators, the ScrollView track is each panel's right frame edge.
- * - Fullscreen only. In regular mode the extension stays dormant and /split
+ * - Fullscreen only. In regular mode the extension stays dormant and /split-toggle
  *   says so. Below MIN_TERM_WIDTH the right column hides (left keeps growing).
+ *   /split-toggle-right hides or shows the whole right column at once; the hidden
+ *   panel set is remembered, so a re-show restores it exactly.
  * - Toggles are session-local; only /split-save writes ~/.pi/agent/split.json
  *   as startup defaults for NEW windows. --no-split starts bare.
  *
@@ -124,6 +126,10 @@ const MY_GEN = ++REG.gen;
 let thinkingOn = false;
 let toolsOn = false;
 let filesOn = false;
+/** Snapshot of the three right-panel flags taken when /split-toggle-right hides
+ * the column, so the re-show restores the exact panel set. Session-local. */
+let rightHiddenSnapshot: { thinking: boolean; tools: boolean; files: boolean } | null =
+	null;
 let trimResponse = false;
 /** Sticky user prompt bar at the top of the left column (split-sticky.ts). */
 let stickyOn = false;
@@ -683,7 +689,7 @@ export default function (pi: ExtensionAPI) {
 
 	// ── panel toggles ──
 
-	pi.registerCommand("split", {
+	pi.registerCommand("split-toggle", {
 		description:
 			"Toggle the split layout: off = bare pi layout, on = saved startup defaults",
 		handler: async (_args, ctx) => {
@@ -720,7 +726,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("split-sticky", {
+	pi.registerCommand("split-toggle-sticky", {
 		description:
 			"Sticky user prompt pinned at the top of the left column: toggle, or on|off",
 		handler: async (args, ctx) => {
@@ -742,7 +748,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("split-thinking", {
+	pi.registerCommand("split-toggle-thinking", {
 		description: "Toggle the thinking panel in the right column",
 		handler: async (_args, ctx) => {
 			if (!requireFullscreen(ctx)) return;
@@ -752,7 +758,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("split-tools", {
+	pi.registerCommand("split-toggle-tools", {
 		description: "Toggle the tool usage panel in the right column",
 		handler: async (_args, ctx) => {
 			if (!requireFullscreen(ctx)) return;
@@ -762,7 +768,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("split-files", {
+	pi.registerCommand("split-toggle-files", {
 		description: "Toggle the file changes panel in the right column",
 		handler: async (_args, ctx) => {
 			if (!requireFullscreen(ctx)) return;
@@ -781,7 +787,62 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("split-tools-view", {
+	pi.registerCommand("split-toggle-right", {
+		description:
+			"Toggle the whole right column: toggle, or on|off; hiding keeps the panel set for re-show",
+		handler: async (args, ctx) => {
+			if (!requireFullscreen(ctx)) return;
+			const arg = String(args ?? "").trim().toLowerCase();
+			const shown = rightColumnWanted();
+			const next = arg === "on" ? true : arg === "off" ? false : !shown;
+			if (next === shown) {
+				ctx.ui.notify(`Right column ${shown ? "on" : "off"}`, "info");
+				return;
+			}
+			if (!next) {
+				// Hide: snapshot the live panel set so the re-show restores it
+				// exactly (per-panel toggles while hidden reshape the live view
+				// only, never the snapshot).
+				rightHiddenSnapshot = {
+					thinking: thinkingOn,
+					tools: toolsOn,
+					files: filesOn,
+				};
+				thinkingOn = false;
+				toolsOn = false;
+				filesOn = false;
+				setFilesSuppressed(false);
+				reconcileLayout(ctx.ui.theme);
+				ctx.ui.notify("Right column off", "info");
+				return;
+			}
+			if (rightHiddenSnapshot) {
+				// Re-show: restore the snapshot (it always has ≥1 panel on, since
+				// it was taken while the column was visible).
+				thinkingOn = rightHiddenSnapshot.thinking;
+				toolsOn = rightHiddenSnapshot.tools;
+				filesOn = rightHiddenSnapshot.files;
+				rightHiddenSnapshot = null;
+			} else {
+				// First show this session: saved startup defaults, or all three
+				// panels when nothing is saved (same policy as /split-toggle's on path).
+				const cfg = normalizeConfig(loadSplitConfig());
+				thinkingOn = cfg.thinking;
+				toolsOn = cfg.tools;
+				filesOn = cfg.files;
+				if (!rightColumnWanted()) {
+					thinkingOn = true;
+					toolsOn = true;
+					filesOn = true;
+				}
+			}
+			setFilesSuppressed(filesOn);
+			reconcileLayout(ctx.ui.theme);
+			ctx.ui.notify("Right column on", "info");
+		},
+	});
+
+	pi.registerCommand("split-toggle-tools-detail", {
 		description: "Toggle tool panel compact ↔ full detail",
 		handler: async (_args, ctx) => {
 			toolMode = toolMode === "compact" ? "full" : "compact";
@@ -863,7 +924,7 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args, ctx) => setRightPct("files", args, ctx),
 	});
 
-	pi.registerCommand("split-trim-response", {
+	pi.registerCommand("split-toggle-response-only", {
 		description:
 			"Left column: full transcript ↔ response-only (text-only, full scrollback, offset preserved)",
 		handler: async (args, ctx) => {

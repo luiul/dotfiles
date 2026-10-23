@@ -7,21 +7,23 @@
 # sticky-scroll assertions are deterministic and cost no extra LLM calls,
 # then asserts against the rendered pane:
 #   1. clean start, no extension errors
-#   2. /split composes: Thinking + Tools + File Changes headers, divider
+#   2. /split-toggle composes: Thinking + Tools + File Changes headers, divider
 #   3. /split-width recomposes at a new left share
 #   4. a real agent turn (two write calls, one with a long nested path) lands
 #      in the Tools and File Changes panels, and the long path WRAPS
 #      (hanging indent) instead of truncating
 #   4. the sticky user prompt bar (split-sticky.ts): pins the seeded prompt
 #      while it is scrolled above the view, walks back a turn on PageUp,
-#      hides after jump-to-top, /split-sticky off removes it
-#   5. /split-trim-response reports response-only mode
+#      hides after jump-to-top, /split-toggle-sticky off removes it
+#   5. /split-toggle-response-only reports response-only mode
 #   5.5 no-information-loss (2026-10-24): the seeded !gurl block (exit 127),
 #      the seeded skill turn, and the seeded branch summary survive the split —
 #      bash in the response doc (trim mode), skill + branch summary as Tool
 #      Usage event rows; a LIVE !echo and !!echo land in the doc too
 #      (user_bash + the per-frame leaf walk, no extension events involved)
-#   6. /split off restores the bare layout
+#   5.7 /split-toggle-right: hide the whole right column at once, re-show restores
+#      the exact panel set
+#   6. /split-toggle off restores the bare layout
 #   7. the tracker's session-set entry persists in the session jsonl
 #
 # Mouse drag is NOT tested here (tmux mouse passthrough is unreliable);
@@ -113,7 +115,7 @@ capture
 check_not_contains "no startup errors" "Extension.*(error|failed|cannot)|TypeError|ReferenceError"
 if tmux list-sessions 2>/dev/null | grep -q "$SESSION"; then ok "session alive"; else bad "session alive"; fi
 
-# 2. /split composes the split layout. The toggle only turns the layout ON
+# 2. /split-toggle composes the split layout. The toggle only turns the layout ON
 #    when it is currently off: the saved ~/.pi/agent/split.json startup
 #    defaults may already have composed it at boot (split: true), and a blind
 #    toggle would turn it OFF and fail every panel assertion. So only send the
@@ -122,7 +124,7 @@ capture
 if echo "$CAP" | grep -q "Tools"; then
 	say "── split already composed at startup (saved or built-in default; no toggle needed)"
 else
-	tmux send-keys -t "$SESSION" "/split" Enter
+	tmux send-keys -t "$SESSION" "/split-toggle" Enter
 	sleep 2
 fi
 capture
@@ -182,11 +184,11 @@ if [ "$DIV1" -ge 70 ] && [ "$DIV1" -le 82 ]; then ok "divider moved to 45% (col 
 # taller than the viewport, so while following the end the bar pins the
 # prompt that owns the top visible line; one PageUp walks the pinned prompt
 # back to the previous turn; ctrl+home hides it (the prompt itself is then
-# on screen); ctrl+end re-pins it; /split-sticky off removes it for real.
+# on screen); ctrl+end re-pins it; /split-toggle-sticky off removes it for real.
 top_rows() {
 	tmux capture-pane -t "$SESSION" -p | head -8
 }
-tmux send-keys -t "$SESSION" "/split-sticky on" Enter
+tmux send-keys -t "$SESSION" "/split-toggle-sticky on" Enter
 sleep 2
 TOP=$(top_rows)
 if echo "$TOP" | grep -q "▌" && echo "$TOP" | grep -q "seed prompt two"; then
@@ -223,7 +225,7 @@ else
 fi
 tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5F')"   # ctrl+end: follow the end
 sleep 2
-tmux send-keys -t "$SESSION" "/split-sticky off" Enter
+tmux send-keys -t "$SESSION" "/split-toggle-sticky off" Enter
 sleep 2
 capture
 if echo "$CAP" | grep -q "▌"; then
@@ -231,7 +233,7 @@ if echo "$CAP" | grep -q "▌"; then
 else
 	ok "sticky off removes the pinned bar"
 fi
-tmux send-keys -t "$SESSION" "/split-sticky on" Enter
+tmux send-keys -t "$SESSION" "/split-toggle-sticky on" Enter
 sleep 2
 
 # 5. response-only mode — test while provably IDLE (before the agent turn):
@@ -240,12 +242,12 @@ sleep 2
 # the saved startup config may start in either state, so assert the status
 # hint appears and cycles ("left: response only" <-> "left: full transcript",
 # both visible in either view; the notify itself is blind-spotted).
-tmux send-keys -t "$SESSION" "/split-trim-response" Enter
+tmux send-keys -t "$SESSION" "/split-toggle-response-only" Enter
 sleep 2
 capture
 HINT1=$(echo "$CAP" | grep -oE "left: (response only|full transcript)" | head -1)
 if [ -n "$HINT1" ]; then ok "trim toggle 1 shows hint ($HINT1)"; else bad "trim toggle 1 shows hint"; fi
-tmux send-keys -t "$SESSION" "/split-trim-response" Enter
+tmux send-keys -t "$SESSION" "/split-toggle-response-only" Enter
 sleep 2
 capture
 HINT2=$(echo "$CAP" | grep -oE "left: (response only|full transcript)" | head -1)
@@ -256,7 +258,7 @@ if [ -n "$HINT2" ] && [ "$HINT2" != "$HINT1" ]; then ok "trim toggle 2 cycles hi
 # transcript is not rendered in this mode), proving bash blocks survive
 # trim mode. Then run a LIVE !echo and !!echo and watch them land too
 # (user_bash handler + per-frame leaf walk).
-tmux send-keys -t "$SESSION" "/split-trim-response on" Enter
+tmux send-keys -t "$SESSION" "/split-toggle-response-only on" Enter
 sleep 2
 capture
 check_contains "seeded bash block visible in response-only mode" '\$ gurl'
@@ -307,7 +309,7 @@ check_contains "live !!echo output in the doc" "split-e2e-quiet-bash"
 # Restore the pre-5.5 trim state so the rest of the script runs as before
 # ("on" forced response-only; a single toggle returns to full transcript).
 if [ "$HINT2" != "left: full transcript" ]; then
-	tmux send-keys -t "$SESSION" "/split-trim-response" Enter
+	tmux send-keys -t "$SESSION" "/split-toggle-response-only" Enter
 	sleep 2
 fi
 
@@ -354,8 +356,23 @@ if [ -n "$FC_TT" ] && [ -n "$FC_DN" ] && [ "$FC_TT" -lt "$FC_DN" ]; then ok "fil
 # Let the turn fully settle before the next command (see the trim note above).
 sleep 10
 
+# 5.7 /split-toggle-right: hide the whole right column at once (left view keeps the
+# full width), then re-show restores the exact panel set.
+tmux send-keys -t "$SESSION" "/split-toggle-right" Enter
+sleep 2
+capture
+check_contains "right column off notify" "Right column off"
+check_not_contains "panels gone after split-toggle-right off" "Thinking idle|No tools called yet|No changes yet"
+tmux send-keys -t "$SESSION" "/split-toggle-right" Enter
+sleep 2
+capture
+check_contains "right column on notify" "Right column on"
+capture_right
+check_in_right "re-show restores the thinking panel" "Thinking"
+check_in_right "re-show restores the tools panel" "Tools"
+
 # 6. split off = bare layout
-tmux send-keys -t "$SESSION" "/split" Enter
+tmux send-keys -t "$SESSION" "/split-toggle" Enter
 sleep 2
 capture
 check_contains "split off notify" "Split off"

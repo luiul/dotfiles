@@ -20,7 +20,7 @@ Pi's own vocabulary is the source of truth: where a concept exists in pi, the sp
 ## Left column
 
 - **full transcript mode**: pi's own base root rendered verbatim in the left column, that is, the pi transcript and the input dock, unmodified.
-- **response-only mode**: the left column shows the response doc instead. Toggle: `/split-trim-response` (the legacy name "trim response" survives in the command).
+- **response-only mode**: the left column shows the response doc instead. Toggle: `/split-toggle-response-only`. The config key keeps the legacy name `trimResponse` (from the retired "trim response" wording).
 - **response doc**: the singleton Container of answer blocks behind response-only mode. Its ScrollView is a retained singleton: the scroll offset survives rebuilds, mode toggles, and branch switches.
 - **answer block**: one block in the response doc: a user message, an assistant message, or a bash block (pi message roles: `user`, `assistant`, `bashExecution`). Thinking and tool calls stay out of the doc; the right column owns them.
 - **response block**: an assistant answer block in the response doc, that is, a pi assistant message. The block type the block divider prefixes; user messages and bash blocks get no divider (user messages are visually distinct, bash blocks frame themselves).
@@ -31,7 +31,7 @@ Pi's own vocabulary is the source of truth: where a concept exists in pi, the sp
 
 - **Thinking panel**: renders thinking blocks. Coalesced 100 ms flushes, 400 line bound.
 - **thinking block**: one reasoning block, that is, one pi `ThinkingContent` block (content type `thinking`). Boundaries between blocks carry the block divider.
-- **Tools panel**: renders tool entries. Compact mode is the default; full detail via `/split-tools-view`. 60 entry bound.
+- **Tools panel**: renders tool entries. Compact mode is the default; full detail via `/split-toggle-tools-detail`. 60 entry bound.
 - **tool entry**: one call row, backed by one pi tool call (`ToolCall`, content type `toolCall`): the tool name, an args preview, a status mark, and in full mode up to two output lines plus a `+N more` row.
 - **status mark**: the per entry glyph in the Tools panel: `✓` succeeded, `✗` error, `●` active.
 - **File Changes panel**: renders the shared tracker state (`filechanges-tracker.ts`). Rows and semantic colors always match the filechanges widget, because both read the same tracker. Renders oldest-first and follows the end, like every other panel (the widget keeps its own newest-first order).

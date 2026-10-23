@@ -123,15 +123,25 @@ zmodload -F zsh/files b:zf_rm 2>/dev/null
 # best match; that's success here (open pi in $PWD). No `--`: zoxide treats
 # it as part of the query and resolution breaks.
 #
-# macOS Ghostty 1.3.x has no `ghostty +new-window` CLI action, so `open -na`
-# spawns a separate Ghostty instance per window; the instance goes away when
-# its window is closed. `--window-save-state=never` stops macOS resume from
-# re-opening the previous saved session in the new instance. Config keys must
-# come before `-e`, because `-e` consumes all remaining arguments. The `zsh -ic`
-# wrapper loads .zshrc first so pi inherits the same env as a normal terminal
-# (direnv, hooks). No --title: the title pipeline (title.zsh hook, then the
-# session-title pi extension) owns the window title, and mycelium matches
-# windows by that title grammar.
+# The new window MUST land in the ONE running Ghostty instance. The old
+# `open -na` spawned a second Ghostty process per call, which broke the
+# Switch window switcher (one app, two processes: windows split between
+# them) and super+c (cc.sh finds the command center via `tell application
+# "Ghostty"`, which resolves to only one of the running instances; from the
+# other one the cc window looks missing and cc.sh opens an unclaimed home
+# window as a duplicate). Ghostty 1.3's AppleScript dictionary opens windows
+# in the running instance instead: `new window with configuration` accepts
+# `initial working directory` and `command`. Only when Ghostty is not
+# running at all does `open -a` (never `-n`: that flag is what spawned the
+# extra instances) start the single instance; `--args` are dropped by an
+# already-running app, hence the running check first.
+# `--window-save-state=never` stops macOS resume from re-opening the previous
+# saved session in the new instance. Config keys must come before `-e`, because
+# `-e` consumes all remaining arguments. The `zsh -ic` wrapper loads .zshrc
+# first so pi inherits the same env as a normal terminal (direnv, hooks).
+# No --title: the title pipeline (title.zsh hook, then the session-title pi
+# extension) owns the window title, and mycelium matches windows by that
+# title grammar.
 piw() {
 	local tmp="${TMPDIR:-/tmp}/piw.$$.$RANDOM" rc err
 	(( $# )) || set -- .
@@ -140,8 +150,23 @@ piw() {
 	err="$(<$tmp)"
 	zf_rm -f -- "$tmp"
 	if (( rc == 0 )) || [[ "$err" == *"already in the only match"* ]]; then
-		open -na Ghostty.app --args --window-save-state=never \
-			--working-directory="$PWD" -e /bin/zsh -ic 'exec pi'
+		if [[ "$(osascript -e 'tell application "System Events" to (exists process "ghostty")')" == true ]]; then
+			if ! osascript - "$PWD" >/dev/null 2>&1 <<'APPLESCRIPT'
+on run argv
+	tell application "Ghostty"
+		activate
+		new window with configuration {initial working directory:(item 1 of argv), command:"/bin/zsh -ic 'exec pi'"}
+	end tell
+end run
+APPLESCRIPT
+			then
+				print -u2 "piw: Ghostty is running but no window could be created in it."
+				return 1
+			fi
+		else
+			open -a Ghostty.app --args --window-save-state=never \
+				--working-directory="$PWD" -e /bin/zsh -ic 'exec pi'
+		fi
 	else
 		[[ -n "$err" ]] && print -r -- "$err" >&2
 		return $rc

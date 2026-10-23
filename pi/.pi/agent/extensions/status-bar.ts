@@ -335,7 +335,20 @@ export default function (pi: ExtensionAPI) {
 						);
 					}
 					// one-modern restyle: money is neutral, not success green.
-				parts2.push(theme.fg("muted", `$${cost.toFixed(3)}`));
+					parts2.push(theme.fg("muted", `$${cost.toFixed(3)}`));
+					// Extension status segments (e.g. pi-blackhole's O/P/X pipeline meters):
+					// the footer is the one surface that renders in every TUI mode, so
+					// extension state stays visible where transient notifications do not
+					// (fullscreen mode drops extension ui.notify output entirely).
+					const statuses =
+						typeof footerData?.getExtensionStatuses === "function"
+							? footerData.getExtensionStatuses()
+							: undefined;
+					if (statuses) {
+						for (const s of statuses.values()) {
+							if (s) parts2.push(s);
+						}
+					}
 					const l2 = parts2.join("  ");
 
 					let r2: string;

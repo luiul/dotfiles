@@ -154,7 +154,7 @@ check("pkg notice title (pi's own wording)", pkgNotice.title === "Package Update
 const pkgText = noticeBodyText(pkgNotice);
 check("pkg notice command is --extensions", pkgText.includes("pi update --extensions"));
 check("pkg notice lists packages", pkgText.includes("- pkg-a") && pkgText.includes("- pkg-b"));
-check("empty package list: header only, no package rows (collectUpdateNotices guards the >0 case)",
+check("empty package list: header only, no package rows (collectStartupNotices guards the >0 case)",
 	buildPackageUpdatesNotice([]).body.length === 2 &&
 		!noticeBodyText(buildPackageUpdatesNotice([])).includes("- "));
 
@@ -216,6 +216,11 @@ const narrow = new UpdateNoticeBlock(() => theme as never, piNotice).render(20);
 check(
 	"block: wraps at narrow widths without overflow",
 	narrow.every((r) => visibleWidth(r) <= 20),
+);
+const ultra = new UpdateNoticeBlock(() => theme as never, piNotice).render(8);
+check(
+	"block: never overflows even below the 10-col clamp",
+	ultra.every((r) => visibleWidth(r) <= 8),
 );
 check(
 	"block: no theme resolved yet renders nothing (RowDivider pattern)",

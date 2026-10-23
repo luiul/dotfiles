@@ -26,8 +26,6 @@
  * no extension event, so collectSkillCollisions() reproduces the scan through
  * public API pieces (SettingsManager.create + DefaultPackageManager.resolve
  * + the exported loadSkills) and gets the SAME collision diagnostics.
- *   - Full transcript + right column: pi's own block AND the panel row.
- *   - Full transcript + right hidden: pi's own block.
  *
  * Data comes through pi's PUBLIC API, so results match pi's own checks:
  *   - pi version: the same https://pi.dev/api/latest-version endpoint,
@@ -413,8 +411,14 @@ export class UpdateNoticeBlock implements Component {
 		const th = this.getTheme();
 		if (!th) return [];
 		const stroke = th.fg("warning", "─".repeat(Math.max(0, width)));
-		const lines: string[] = ["", stroke, th.bold(th.fg("warning", this.notice.title))];
-		const bodyWidth = Math.max(8, width - 2);
+		// The title wraps too, so the block never overflows even at widths no
+		// real layout produces (the doc keeps ≥ 30 cols; the longest title is 26).
+		const titleRows = wrapTextWithAnsi(
+			th.bold(th.fg("warning", this.notice.title)),
+			Math.max(1, width),
+		);
+		const lines: string[] = ["", stroke, ...titleRows];
+		const bodyWidth = Math.max(1, width - 2);
 		for (const segs of this.notice.body) {
 			const styled = segs
 				.map(([role, text]) => th.fg(role as never, text))

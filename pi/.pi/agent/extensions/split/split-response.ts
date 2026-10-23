@@ -25,6 +25,17 @@
  *   - `custom` extension entries → skipped: extension-internal data whose
  *     owning view already presents it (e.g. the filechanges tracker feeds the
  *     File Changes panel); no display renderer is reachable from here.
+ *   - update notices (pi's   → doc block at the doc TOP (UpdateNoticeBlock,
+ *     "Update Available" /        split-updates.ts) + Tools panel event row +
+ *     "Package Updates")           persistent footer status. pi renders these
+ *                                 transcript-only with no extension event, so
+ *                                 the extension re-runs the checks
+ *                                 (split-updates.ts) and keeps the notices
+ *                                 session-lifetime; re-appended here after every
+ *                                 rebuild so no layout state drops them.
+ *                                 Same pipeline covers pi's [Skill conflicts]
+ *                                 block (same information-loss class, same
+ *                                 public-API scan). (User decisions 2026-10-24.)
  *
  * The doc lives under ONE retained ScrollView singleton. The instance is
  * created once and NEVER recreated across toggles or branch switches, so the
@@ -71,6 +82,7 @@ import {
 } from "@earendil-works/pi-tui";
 import { toolsPanel } from "./split-panels.ts";
 import { RowDivider } from "./split-render.ts";
+import { UpdateNoticeBlock, getActiveNotices } from "./split-updates.ts";
 
 // ─── response doc ─────────────────────────────────────────────────────────────
 
@@ -359,7 +371,30 @@ export function responseDocBegin(): void {
 
 /** End a full rebuild: park the leaf cursor so the per-frame walk starts clean. */
 export function responseDocEnd(ctx: ExtensionContext): void {
+	appendUpdateNoticesToDoc();
 	markBranchCursor(ctx);
+}
+
+/**
+ * Re-append the active update notices' blocks at the TOP of the doc, the
+ * position pi's own transcript shows them at (session start; the doc follows
+ * the end, so the notices ride above the conversation). Idempotent: called
+ * after every rebuild (responseDocEnd) and once when the checks land
+ * (split.ts), so existing notice blocks are removed first — a rebuild wipes
+ * doc children, but a live append onto an already-notified doc must not
+ * duplicate. Container exposes no insert API, so top insertion goes through
+ * the public children array; invalidate() drops its layout cache.
+ */
+export function appendUpdateNoticesToDoc(): void {
+	for (const child of [...responseDoc.children]) {
+		if (child instanceof UpdateNoticeBlock) responseDoc.removeChild(child);
+	}
+	const notices = getActiveNotices();
+	if (notices.length === 0) return;
+	responseDoc.children.unshift(
+		...notices.map((n) => new UpdateNoticeBlock(() => responseTheme, n)),
+	);
+	responseDoc.invalidate();
 }
 
 /** Rebuild the whole response doc from the current branch (start / reload / tree switch). */

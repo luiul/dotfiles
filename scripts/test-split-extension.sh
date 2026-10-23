@@ -10,6 +10,10 @@
 #   2. the three right panels compose (forced on per-panel, independent of
 #      the saved startup defaults): Thinking + Tools + File Changes headers,
 #      divider
+#   2.5 update notices (--split-fake-updates, deterministic): "Update Available",
+#      "Package Updates Available", and "Skill conflicts" as Tools panel event
+#      rows and as framed blocks at the response doc top, plus the persistent
+#      footer status line — no layout state drops them
 #   3. /split-width recomposes at a new left share
 #   4. a real agent turn (two write calls, one with a long nested path) lands
 #      in the Tools and File Changes panels, and the long path WRAPS
@@ -110,7 +114,7 @@ open(p, "w").write("\n".join(json.dumps(l) for l in lines) + "\n")
 PYEOF
 
 tmux new-session -d -s "$SESSION" -x 170 -y 46
-tmux send-keys -t "$SESSION" "cd $DIR && pi --no-extensions --thinking off -e $EXT --session $SEED" Enter
+tmux send-keys -t "$SESSION" "cd $DIR && pi --no-extensions --thinking off --split-fake-updates -e $EXT --session $SEED" Enter
 sleep 12
 capture
 
@@ -182,6 +186,14 @@ DIV0=$(divider_col)
 capture_right
 check_in_right "skill turn logged as a panel event row" "skill: seeded-skill"
 check_in_right "branch summary logged as a panel event row" "branch summary"
+# Update notices (split-updates.ts, forced by --split-fake-updates so this is
+# deterministic): all three must be Tools panel event rows, and the footer
+# status line must list them (the one surface visible in every layout state).
+# The deferred check fires ~1.5s after session start, long before this capture.
+check_in_right "skill conflicts notice is a Tools panel event row" "Skill conflicts"
+check_in_right "pi update notice is a Tools panel event row" "Update Available"
+check_in_right "package updates notice is a Tools panel event row" "Package Updates Available"
+check_contains "footer status lists all pending notices" "pi 999.0.0 available · 2 package updates · 1 skill conflict"
 check_not_contains "raw skill block never rendered in the left column" "<skill"
 
 tmux send-keys -t "$SESSION" "/split-width 45" Enter
@@ -283,20 +295,39 @@ check_contains "seeded bash exit code visible" "\(exit 127\)"
 # continuation below. Bash frames and the sticky bar separator also match
 # the stroke pattern; the answer/continuation windows disambiguate.
 tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5H')"   # ctrl+home: doc top
-tmux send-keys -t "$SESSION" NPage   # page down: the continuation sits after the 50-line answer
 sleep 2
 capture
-PLACEMENT=$(echo "$CAP" | python3 -c '
+# Update notices ride the doc TOP in response-only mode (pi's own blocks
+# live in the native transcript, which this view replaces — the fake markers
+# only exist in the doc blocks, the compact panel rows show titles only, so
+# this whole-pane grep is left-column-only by construction).
+check_contains "update notice block visible at the doc top" "999.0.0"
+check_contains "skill conflicts block visible at the doc top" "fake-skill"
+# Block divider: page down until the mid-doc divider is on screen. The
+# startup notice blocks' total height varies with the fixture (three notices
+# now), so a fixed number of pages is brittle; 4 attempts cover the seeded
+# doc, and further pages clamp at the end harmlessly (overscroll contain).
+PLACEMENT="bad:not-started"
+for _attempt in 1 2 3 4; do
+	tmux send-keys -t "$SESSION" NPage   # page down toward the continuation
+	sleep 2
+	capture
+	PLACEMENT=$(echo "$CAP" | python3 -c '
 import sys, re
 lines = sys.stdin.read().split("\n")
 for i, l in enumerate(lines):
     if re.match(r"^─{40,}", l):
         above = "\n".join(lines[max(0, i - 8) : i])
         below = "\n".join(lines[i + 1 : i + 6])
+        # "seed answer one" (prefix) not the full continuation text: the update
+        # notice blocks (split-updates.ts) sit at the doc top, so the divider
+        # lands near the viewport bottom after one page down and the
+        # continuation line can be cut mid-word by the screen edge. The prefix
+        # is unique (answer lines read "seed turn one line N").
         if (
             "seed turn one line" in above
             and (not lines[i - 1].strip() if i > 0 else False)
-            and "seed answer one continuation" in below
+            and "seed answer one" in below
         ):
             print("ok")
             sys.exit(0)
@@ -304,6 +335,8 @@ for i, l in enumerate(lines):
         # also render full-width ─ rows.
 print("bad:no-divider-between-answers-and-continuation")
 ')
+	if [ "${PLACEMENT%%:*}" = "ok" ]; then break; fi
+done
 if [ "${PLACEMENT%%:*}" = "ok" ]; then ok "block divider between consecutive response blocks"; else bad "block divider placement ($PLACEMENT)"; fi
 tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5F')"   # ctrl+end: back to the tail
 sleep 2

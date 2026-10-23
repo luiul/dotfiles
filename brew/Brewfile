@@ -1,4 +1,5 @@
 tap "ankitpokhrel/jira-cli"
+tap "crmne/tap"
 tap "databricks/tap", trusted: true
 tap "felixkratz/formulae", "https://github.com/FelixKratz/homebrew-formulae"
 tap "hashicorp/tap"
@@ -149,6 +150,10 @@ cask "puremac"
 cask "qlmarkdown"
 # Native screenshots, recording, annotation, and editing from the menu bar
 cask "snapzy"
+# Native Spotify client
+cask "crmne/tap/spotifast", trusted: true
+# Music streaming service
+cask "spotify"
 # Pluggable Terraform linter
 cask "terraform-linters/tap/tflint", trusted: true
 vscode "adpyke.codesnap"

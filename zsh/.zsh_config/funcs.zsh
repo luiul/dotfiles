@@ -107,3 +107,41 @@ upgrade-tools() {
 	}
 }
 
+# Loaded once, imports only zf_rm (not a global rm override) so temp-file
+# cleanup in piw() below doesn't fork an external rm process.
+zmodload -F zsh/files b:zf_rm 2>/dev/null
+
+# piw: open a new Ghostty window running pi, wherever `cd <args>` lands.
+# cod() replacement for agentic workflows (pi in a terminal, no VS Code).
+#
+# `cd "$@"` (no `--`, current shell) goes through the zoxide-backed `cd`
+# wrapper, so `piw dot` resolves like `cd dot` does and the dir change
+# persists in the calling shell, exactly as cod behaved. zoxide returns
+# non-zero with "you are already in the only match" when cwd is already the
+# best match; that's success here (open pi in $PWD). No `--`: zoxide treats
+# it as part of the query and resolution breaks.
+#
+# macOS Ghostty 1.3.x has no `ghostty +new-window` CLI action, so `open -na`
+# spawns a separate Ghostty instance per window; the instance goes away when
+# its window is closed. `--window-save-state=never` stops macOS resume from
+# re-opening the previous saved session in the new instance. Config keys must
+# come before `-e`, because `-e` consumes all remaining arguments. The `zsh -ic`
+# wrapper loads .zshrc first so pi inherits the same env as a normal terminal
+# (direnv, hooks). No --title: the title pipeline (title.zsh hook, then the
+# session-title pi extension) owns the window title, and mycelium matches
+# windows by that title grammar.
+piw() {
+	local tmp="${TMPDIR:-/tmp}/piw.$$.$RANDOM" rc err
+	cd "$@" 2>"$tmp"
+	rc=$?
+	err="$(<$tmp)"
+	zf_rm -f -- "$tmp"
+	if (( rc == 0 )) || [[ "$err" == *"already in the only match"* ]]; then
+		open -na Ghostty.app --args --window-save-state=never \
+			--working-directory="$PWD" -e /bin/zsh -ic 'exec pi'
+	else
+		[[ -n "$err" ]] && print -r -- "$err" >&2
+		return $rc
+	fi
+}
+

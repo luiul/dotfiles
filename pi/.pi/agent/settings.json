@@ -55,8 +55,12 @@
     "npm:pi-web-access",
     "npm:pi-mcp-adapter",
     "npm:context-mode",
-    "npm:pi-hermes-memory"
+    "npm:pi-hermes-memory",
+    "npm:pi-blackhole"
   ],
+  "markdown": {
+    "codeBlockIndent": ""
+  },
   "extensions": [
     "-builtin:mcp"
   ],

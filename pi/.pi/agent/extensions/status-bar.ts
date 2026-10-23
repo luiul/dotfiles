@@ -204,8 +204,11 @@ export default function (pi: ExtensionAPI) {
 				const ratio = contextWindow > 0 ? tokens / contextWindow : 0;
 				const filled = Math.min(slots, Math.max(0, Math.round(ratio * slots)));
 				const compactRatio = usable > 0 ? tokens / usable : ratio;
+				// one-modern restyle (2026-10-24): the healthy fill is the accent blue, not
+				// success green — a usage bar is state, not a verdict. Warning/error
+				// escalation by compaction proximity is unchanged.
 				const color =
-					compactRatio >= 0.95 ? "error" : compactRatio >= 0.75 ? "warning" : "success";
+					compactRatio >= 0.95 ? "error" : compactRatio >= 0.75 ? "warning" : "accent";
 				// Slot (1-based) just before which auto-compaction becomes reachable.
 				const threshold =
 					compaction.enabled && contextWindow > 0
@@ -222,7 +225,8 @@ export default function (pi: ExtensionAPI) {
 						out += theme.fg("dim", "░");
 					}
 				}
-				return `[${out}]`;
+				// Brackets render dim so they read as chrome, not content.
+				return theme.fg("dim", "[") + out + theme.fg("dim", "]");
 			};
 
 			const thinkingTag = (): string => {
@@ -295,7 +299,8 @@ export default function (pi: ExtensionAPI) {
 									theme.fg("muted", `${fmtTokens(contextTokens)}/${fmtTokens(contextWindow)}`)
 								: "",
 							usage?.percent != null ? theme.fg("muted", `${Math.round(usage.percent)}%`) : "",
-							theme.fg("success", `$${cost.toFixed(2)}`),
+							// one-modern restyle: money is neutral, not success green.
+						theme.fg("muted", `$${cost.toFixed(2)}`),
 							workingTag(),
 							// Mid-turn the static model name yields its slot to the live
 							// timer; the compact line is too narrow for both.
@@ -329,7 +334,8 @@ export default function (pi: ExtensionAPI) {
 							theme.fg("dim", "hit ") + theme.fg(hitColor, `${Math.round(lastHitRate)}%`),
 						);
 					}
-					parts2.push(theme.fg("success", `$${cost.toFixed(3)}`));
+					// one-modern restyle: money is neutral, not success green.
+				parts2.push(theme.fg("muted", `$${cost.toFixed(3)}`));
 					const l2 = parts2.join("  ");
 
 					let r2: string;

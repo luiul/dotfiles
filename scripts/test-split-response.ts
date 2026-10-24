@@ -379,14 +379,14 @@ toolsPanel.reset();
 	// RowDivider unit: blank row + full-width stroke in the shared split line
 	// tone. The blank above is the divider's own; the blank below comes from the
 	// next block's leading row (measured in a real tmux run, 2026-10-20). The
-	// tone is theme-independent raw SGR (Monokai Pro Spectrum #525053).
+	// tone is theme-independent raw SGR (Monokai Pro Spectrum #69676c).
 	const d = new RowDivider();
 	const dRows = plain(d.render(W));
 	check("RowDivider: blank row, then full-width stroke", dRows.length === 2 && dRows[0] === "" && dRows[1] === "─".repeat(W), dRows);
 	check("RowDivider: zero width renders blank + empty row", plain(d.render(0)).join("|") === "|");
 	check(
 		"RowDivider: stroke uses the Monokai Pro Spectrum line tone",
-		d.render(W)[1].includes("\x1b[38;2;82;80;83m"),
+		d.render(W)[1].includes("\x1b[38;2;105;103;108m"),
 	);
 }
 {
@@ -495,7 +495,7 @@ toolsPanel.reset();
 	check("header: idle row also filled to exact width", idle[0].length === 30, idle);
 	check(
 		"header: fill uses the Monokai Pro Spectrum line tone",
-		idleRaw.some((r) => r.includes("\x1b[38;2;82;80;83m")),
+		idleRaw.some((r) => r.includes("\x1b[38;2;105;103;108m")),
 	);
 }
 

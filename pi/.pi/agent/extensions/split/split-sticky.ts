@@ -261,7 +261,7 @@ export class StickyPromptBar implements Component {
 			);
 		});
 		// Separator: the pinned block's lower edge (VS Code underline), in the
-		// shared split line tone (Monokai Pro Spectrum #525053).
+		// shared split line tone (Monokai Pro Spectrum #69676c).
 		rows.push(blockRuleRow(Math.max(0, width)));
 
 		this.rowsKey = key;

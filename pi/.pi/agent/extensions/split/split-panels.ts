@@ -199,7 +199,7 @@ const thinkingState = {
 function thinkingLines(theme: Theme, width: number): string[] {
 	const out: string[] = [];
 	// Block divider (2026-10-20): blank row, full-width line-tone stroke
-	// (blockRuleRow, Monokai Pro Spectrum #525053), blank row — the panel's own
+	// (blockRuleRow, Monokai Pro Spectrum #69676c), blank row — the panel's own
 	// lines carry no component padding, so the divider provides the symmetric
 	// gap itself. RecentBody wraps source lines at width - 2 and prefixes one
 	// leading space, so the stroke uses that budget; the streaming block gets

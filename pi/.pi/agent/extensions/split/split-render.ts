@@ -163,7 +163,7 @@ export class RecentBody {
 
 /**
  * The split's structural line color: Monokai Pro Spectrum's own selection
- * gray #525053 on its #222222 background (user decision 2026-10-24: the
+ * comment gray #69676c on its #222222 background (user decision 2026-10-24: the
  * split's line colors sit inside the Ghostty theme, not pi's, and the
  * previous pi `dark` scheme stays for everything else). One tone for every
  * structural line: panel header fills, block dividers, thinking block
@@ -173,7 +173,7 @@ export class RecentBody {
  * directly — Ghostty is truecolor, and the tone is pinned to this terminal
  * theme by design.
  */
-const LINE_TONE_RGB = "82;80;83"; // #525053, Monokai Pro Spectrum selection
+const LINE_TONE_RGB = "105;103;108"; // #69676c, Monokai Pro Spectrum comment
 
 // ─── compact header ─────────────────────────────────────────────────────────
 
@@ -211,7 +211,7 @@ export class CompactHeader implements Component {
 
 /**
  * One structural hairline: a full-width ─ row in the split line tone
- * (Monokai Pro Spectrum #525053; see LINE_TONE_RGB at the top). This is the
+ * (Monokai Pro Spectrum #69676c; see LINE_TONE_RGB at the top). This is the
  * one line function every structural line in the split goes through.
  */
 export function blockRuleRow(width: number): string {

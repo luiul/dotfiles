@@ -197,7 +197,6 @@ if command -v coppice >/dev/null 2>&1; then znap eval coppice 'command coppice s
 # zoxide must be the last thing initialized
 znap eval zoxide 'zoxide init --cmd cd zsh'
 
-alias claude-mem='bun "/Users/luis.aceituno/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs"'
 
 fpath+=~/.zfunc
 # zsh-autocomplete runs compinit itself (async), so no compinit call is needed here.

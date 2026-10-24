@@ -10,6 +10,7 @@ tap "oven-sh/bun"
 tap "raine/workmux"
 tap "shaharia-lab/tap"
 tap "snowflakedb/snowflake-cli"
+tap "stablyai/orca"
 tap "terraform-linters/tap"
 tap "xo/xo", trusted: { formulae: ["usql"] }
 # Clone of cat(1) with syntax highlighting and Git integration
@@ -146,6 +147,8 @@ cask "keycastr"
 cask "meetingbar"
 # Knowledge base that works on top of a local folder of plain text Markdown files
 cask "obsidian"
+# IDE for orchestrating AI coding agents across terminals and worktrees
+cask "stablyai/orca/orca", trusted: true
 # Open-source application manager and system cleaner
 cask "puremac"
 # Quick Look generator for Markdown files

@@ -54,6 +54,36 @@ interface CompactionConfig {
 	reserveTokens: number;
 }
 
+// pi-blackhole's status segment keys its meters with single letters (bh O/P/X).
+// This footer labels values in plain words, so relabel them. ANSI-aware: only
+// an exact standalone run whose next visible text starts a meter bar (▕) is
+// relabelled, plus the leading "bh" prefix; anything else renders unchanged,
+// so a format change upstream degrades to the original string.
+const METER_LABELS: Record<string, string> = {
+	bh: "blackhole",
+	O: "obs", // transcript tokens since the last observer run
+	P: "pool", // observation-pool fill
+	X: "ctx", // context fill toward the compaction trigger
+};
+const relabelMeterLetters = (s: string): string => {
+	// split keeps escape sequences as odd-indexed parts: [text, esc, text, ...]
+	const parts = s.split(/(\x1b\[[0-9;]*m)/);
+	let firstTextSeen = false;
+	for (let i = 0; i < parts.length; i += 2) {
+		const label = METER_LABELS[parts[i] ?? ""];
+		if (parts[i] === "bh" && !firstTextSeen && parts[i].length > 0) {
+			parts[i] = label;
+			firstTextSeen = true;
+			continue;
+		}
+		if ((parts[i] ?? "").length > 0) firstTextSeen = true;
+		if (label === undefined) continue;
+		const next = parts.slice(i + 2).find((p, j) => j % 2 === 0 && p.length > 0);
+		if (next !== undefined && next.startsWith("▕")) parts[i] = label;
+	}
+	return parts.join("");
+};
+
 // Read compaction settings (project overrides global; falls back to pi defaults).
 // The extension context does not expose settings, so we read the files directly.
 const readCompactionConfig = (cwd: string): CompactionConfig => {
@@ -336,19 +366,19 @@ export default function (pi: ExtensionAPI) {
 					}
 					// one-modern restyle: money is neutral, not success green.
 					parts2.push(theme.fg("muted", `$${cost.toFixed(3)}`));
-					// Extension status segments (e.g. pi-blackhole's O/P/X pipeline meters):
-					// the footer is the one surface that renders in every TUI mode, so
-					// extension state stays visible where transient notifications do not
-					// (fullscreen mode drops extension ui.notify output entirely).
-					const statuses =
-						typeof footerData?.getExtensionStatuses === "function"
-							? footerData.getExtensionStatuses()
-							: undefined;
-					if (statuses) {
-						for (const s of statuses.values()) {
-							if (s) parts2.push(s);
-						}
+				// Extension status segments (e.g. pi-blackhole's pipeline meters):
+				// the footer is the one surface that renders in every TUI mode, so
+				// extension state stays visible where transient notifications do not
+				// (fullscreen mode drops extension ui.notify output entirely).
+				const statuses =
+					typeof footerData?.getExtensionStatuses === "function"
+						? footerData.getExtensionStatuses()
+						: undefined;
+				if (statuses) {
+					for (const s of statuses.values()) {
+						if (s) parts2.push(relabelMeterLetters(s));
 					}
+				}
 					const l2 = parts2.join("  ");
 
 					let r2: string;

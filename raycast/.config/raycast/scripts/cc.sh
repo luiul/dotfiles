@@ -7,15 +7,25 @@
 # @raycast.packageName Command Center
 # @raycast.description Focus the Ghostty window pinned as command center, or open and claim a new one.
 
-# Focus (or open and claim) the Ghostty command-center window: the window
-# whose focused tab carries the locked title below (cmd+shift+c / cmd+shift+x
-# in Ghostty lock and clear a tab title; the lock overrides all shell title
+# Focus (or open and claim) the Ghostty command-center window: the tab
+# carrying the locked title below (cmd+shift+c / cmd+shift+x in Ghostty
+# lock and clear a tab title; the lock overrides all shell title
 # changes).
 #
 # One osascript run, all through Ghostty's OWN AppleScript dictionary: macOS
 # culls the AX tree of backgrounded apps (luiul/dashkit#9), so a System
 # Events window listing can miss the cc window and open a duplicate. Only
 # the is-it-running check touches System Events.
+#
+# The match runs over TAB titles, not window names. A window's name is only
+# its FOCUSED tab's title, and the cc window routinely holds several tabs:
+# the moment another tab of the cc window is focused, the window name stops
+# being the cc title, a window-name match finds nothing, and the open path
+# fires a duplicate even though the cc tab is right there. Enumerating
+# `every tab of every window` sees background tabs too, and goto_tab:N makes
+# the cc tab the focused one again. (Verified against Ghostty 1.3.x:
+# `terminal 1 of w` resolves to tab 1's terminal even with multiple tabs,
+# and `perform action "goto_tab:N"` on it switches tabs.)
 #
 # The open-only-if-missing rule is the whole point: the search re-checks a
 # few times before concluding "missing", because opening a window is the one
@@ -29,8 +39,13 @@
 # until it is frontmost, so the default window appears only after that
 # activate. That default window (at $HOME) is the one to claim; opening
 # another would duplicate it.
+#
+# Every invocation appends one line to ~/.cache/cc.log (result + when), so
+# any "opened a duplicate" report can be checked against what the script
+# actually saw instead of guessing.
 
 TITLE="🎛 cc"
+LOG="$HOME/.cache/cc.log"
 
 result=$(osascript - "$TITLE" "$HOME" <<'APPLESCRIPT'
 on run argv
@@ -50,18 +65,42 @@ on run argv
 			end repeat
 			if (count of windows) is 0 then return "error"
 			set w to front window
+			perform action ("set_tab_title:" & ccTitle) on terminal 1 of w
 		else
+			set w to missing value
+			set tabIndex to 0
 			repeat 4 times
-				set matches to (every window whose name is ccTitle)
-				if (count of matches) is greater than 0 then
-					activate window (item 1 of matches)
-					return "focused"
-				end if
+				repeat with cand in windows
+					set i to 0
+					repeat with t in (every tab of cand)
+						set i to i + 1
+						if (name of t) is ccTitle then
+							set w to cand
+							set tabIndex to i
+							exit repeat
+						end if
+					end repeat
+					if w is not missing value then exit repeat
+				end repeat
+				if w is not missing value then exit repeat
 				delay 0.25
 			end repeat
+			if w is not missing value then
+				-- goto_tab unconditionally: a no-op when the cc tab is already
+				-- focused, required when it is a background tab (its index says
+				-- nothing about which tab is focused)
+				perform action ("goto_tab:" & tabIndex) on terminal 1 of w
+				activate window w
+				repeat 8 times
+					if (name of w) is ccTitle then exit repeat
+					delay 0.1
+				end repeat
+				if (name of w) is ccTitle then return "focused"
+				return "error"
+			end if
 			set w to new window with configuration {initial working directory:homeDir}
+			perform action ("set_tab_title:" & ccTitle) on terminal 1 of w
 		end if
-		perform action ("set_tab_title:" & ccTitle) on terminal 1 of w
 		activate window w
 		if (name of w) is not ccTitle then return "error"
 		return "opened"
@@ -69,6 +108,8 @@ on run argv
 end run
 APPLESCRIPT
 )
+
+echo "$(date '+%F %T') $result" >> "$LOG"
 
 case "$result" in
   focused|opened)

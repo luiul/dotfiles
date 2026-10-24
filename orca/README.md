@@ -5,7 +5,7 @@ Stably's Orca (https://onorca.dev), installed as a Homebrew cask (`stablyai/orca
 ## Paths
 
 - `~/.orca` — worktrees and agent state (Orca-managed, native worktree lifecycle)
-- `~/Library/Application Support/orca/` — Electron userData: settings (`orca-data.json`), daemon config + API token (`config.json`, secret, never stow or surface)
+- `~/Library/Application Support/orca/profiles/local-default/profile-state.db` — live SQLite settings store (domain `settings`); `orca-data.json` only survives as a legacy export/migration artifact. Settings have no write CLI; drive the Settings UI via `orca computer` commands (Accessibility + Screenshots permission for the "Orca Computer Use" helper required once)
 - `~/Library/Caches/com.stablyai.orca*` — caches
 
 ## Worktree ownership

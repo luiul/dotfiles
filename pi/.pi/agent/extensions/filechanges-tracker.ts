@@ -54,11 +54,9 @@
  *
  * Consumers:
  * - filechanges.ts: the above-editor Panel and the /filechanges* commands.
- *   Subscribes for widget refreshes; hides the Panel while a consumer sets
- *   setWidgetSuppressed(true) (the split-view File Changes panel does that
- *   so nothing is shown twice).
- * - split-files.ts: the split-view File Changes panel (own rendering, same
- *   tracker state).
+ *   Subscribes for widget refreshes. Another consumer can hide the Panel
+ *   with setWidgetSuppressed(true), so nothing is shown twice.
+ *   No current consumer sets it; the split-view panel is retired.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -120,8 +118,8 @@ export type Mode = "round" | "all";
 
 /**
  * Semantic theme-key per Kind, shared by every renderer of tracker state
- * (the filechanges.ts Panel/List and the split extension's File Changes
- * panel). Color does the scannability job glyphs would, so the words stay
+ * (the filechanges.ts Panel/List). Color does the scannability job glyphs
+ * would, so the words stay
  * plain: created = success, modified = warning, deleted = error.
  */
 export const KIND_COLORS: Record<Kind, string> = {
@@ -165,9 +163,9 @@ function repoStateFromXY(xy: string | undefined, tracked: boolean): RepoState | 
 
 /**
  * One file whose current content differs from its Original. Public shape of
- * a tracked Change, as the Panel, the List, and split-panels render it.
+ * a tracked Change, as the Panel and the List render it.
  * `absolutePath` is an alias of `absPath` (same value) kept for consumers
- * that read that name (split-files.ts); the persisted entry and the tracker
+ * that read that name; the persisted entry and the tracker
  * internals keep using `absPath`, so the session-log format is unchanged.
  */
 export interface FileChange {
@@ -489,7 +487,7 @@ function sessionKeyOf(ctx: ExtensionContext): unknown {
 	return sm ?? ctx;
 }
 
-/** The tracker contract for consumers (filechanges.ts widget/commands, split-files.ts panel). */
+/** The tracker contract for consumers (filechanges.ts widget and commands). */
 export interface FileChangesTracker {
 	/** Changes in one scope, most recently touched first. Defaults to the current Mode. */
 	getChanges(mode?: Mode): FileChange[];
@@ -510,7 +508,7 @@ export interface FileChangesTracker {
 	/**
 	 * When true, filechanges.ts keeps tracking but stops rendering the
 	 * above-editor widget (and clears it via ctx.ui.setWidget with
-	 * undefined), so another consumer (split-files.ts) can own presentation
+	 * undefined), so another consumer can own presentation
 	 * without anything being shown twice. Default false.
 	 */
 	setWidgetSuppressed(suppressed: boolean): void;
@@ -518,7 +516,7 @@ export interface FileChangesTracker {
 	/**
 	 * Recompute every Change's Repo state (one git status + ls-files per
 	 * repo); true when any state changed. A manual refresh point for
-	 * /filechanges and the split panel. Uses the ctx of the most recent
+	 * /filechanges. Uses the ctx of the most recent
 	 * event when none is passed.
 	 */
 	refreshRepoStates(ctx?: ExtensionContext): Promise<boolean>;
@@ -598,7 +596,7 @@ function createTracker(pi: ExtensionAPI): FileChangesTracker {
 	const fileRepoRootCache = new Map<string, string | null>();
 
 	// Consumer plumbing: every state change fires the subscribers (the
-	// filechanges.ts widget refresh, the split panel's cache bump). A broken
+	// filechanges.ts widget refresh). A broken
 	// subscriber must never break tracking, so errors are swallowed.
 	const subscribers = new Set<() => void>();
 	let widgetSuppressed = false;
@@ -1148,7 +1146,7 @@ function createTracker(pi: ExtensionAPI): FileChangesTracker {
 
 /**
  * This module is a shared utility imported by filechanges.ts (and, through
- * it, by nothing else directly except split-files.ts). pi auto-discovers
+ * it, by nothing else directly). pi auto-discovers
  * every *.ts file in this directory as an extension and requires a default
  * factory export, so expose a no-op one here. The named exports above are
  * what the other extensions actually use; the factory must not create a

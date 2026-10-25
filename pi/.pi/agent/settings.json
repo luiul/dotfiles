@@ -64,5 +64,6 @@
   "extensions": [
     "-builtin:mcp"
   ],
-  "tuiMode": "fullscreen"
+  "tuiMode": "fullscreen",
+  "hideThinkingBlock": true
 }

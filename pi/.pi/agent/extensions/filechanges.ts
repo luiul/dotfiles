@@ -33,11 +33,9 @@
  *   = error, the only state red is spent on). The same scheme renders in
  *   the Panel and the List. The no-UI fallback (console.log) stays plain.
  *
- * A second consumer (split-files.ts, the split-view File Changes panel)
- * renders the same tracker in its own panel and suppresses this above-editor
- * widget via tracker.setWidgetSuppressed(true): tracking keeps working, this
- * Panel hides (cleared via ctx.ui.setWidget with undefined), nothing is
- * shown twice.
+ * The tracker also exposes setWidgetSuppressed for another presentation.
+ * That consumer can call tracker.setWidgetSuppressed(true) to hide this
+ * Panel. Tracking keeps working, and nothing is shown twice.
  *
  * Commands:
  * - `/filechanges` prints the Mode's scope into the transcript (up to 30
@@ -76,7 +74,7 @@ function countsText(t: FileChange): string {
 
 /**
  * Kind and Repo-state color keys live in filechanges-tracker.ts (KIND_COLORS,
- * REPO_STATE_COLORS, exported there so the split panel renders identical
+ * REPO_STATE_COLORS, exported there so every consumer renders identical
  * hues): color does the scannability job glyphs would, so the words stay
  * plain, and the state axis stays quiet metadata so it cannot clash with
  * the kind hues on the same row (staged = accent, committed = dim,
@@ -175,7 +173,7 @@ export default function (pi: ExtensionAPI) {
 	/**
 	 * Paint the Panel from the tracker's current state. Called on every
 	 * tracker state change (subscribe) and from the commands with their own
-	 * ctx. While the tracker is widget-suppressed (the split panel owns
+	 * ctx. While the tracker is widget-suppressed (a consumer owns
 	 * presentation), the Panel is cleared and not rendered.
 	 */
 	function refreshWidget(ctx?: ExtensionContext) {

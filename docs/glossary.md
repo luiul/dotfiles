@@ -26,29 +26,15 @@ A linked git working tree checked out alongside the main repo. In this setup, wo
 
 Source: `pi/.pi/agent/AGENTS.md`, Worktrees section.
 
-## split panels
+## compact tool calls
 
-The right column panels of the pi split extension: Thinking, Tools, and File Changes. The left column holds the full transcript or a response-only view. File Changes is the biggest panel by design (45% of the right column rows by default). File Changes reads the shared `filechanges-tracker.ts` state, so the panel and the filechanges widget always show the same rows.
+The `zen` extension's compact view of tool calls in pi's transcript. Successful and failed calls stay visible as one line with a status suffix. Click or `ctrl+o` expands tool output. Zen uses the public `pi.registerToolRenderer` API and delegates to native renderers when expanded or turned off. Thinking uses pi's native `hideThinkingBlock` setting. This view replaces the retired split extension and zen v1's transcript filter.
 
-The full split domain vocabulary lives in `docs/split-vocabulary.md` (canonical after review); use its terms verbatim when writing about the split extension.
-
-Source: `pi/.pi/agent/extensions/README.md`, the `split.ts` section, and `docs/split-vocabulary.md`.
-
-## layer
-
-In the pi TUI, a layout layer is a wrap builder: it receives the inner root component and returns a wrapped root. `split/split-layout.ts` owns pi's single fullscreen layout-root slot and composes `baseRoot → layer1 → layer2 → …` from its ordered set of active layers. Extensions register as layers so they never fight over the root, and `/reload` unwraps stale compositions.
-
-Source: `pi/.pi/agent/extensions/split/split-layout.ts` (header comment) and `pi/.pi/agent/extensions/README.md`.
-
-## transcript filter
-
-The `zen` extension's filter for bare pi's transcript: one toggle hides successful tool calls and collapses thinking blocks to pi's native dim `Thinking...` label, leaving prompts, answers, bash `!` blocks, and failed tool calls visible (errors are signal). Toggling off restores the byte-exact native transcript, because zen never replaces pi's renderers: it flips the same visibility fields pi's own toggles use (`setHideThinkingBlock` on assistant components, `hideComponent` on tool components). Hidden rows never paint, so noise-heavy turns cost no more than bare pi (measured, within noise), and the transcript keeps full width, so pi keeps its painter fast path.
-
-Source: `pi/.pi/agent/extensions/zen.ts` and https://github.com/luiul/dotfiles/issues/67.
+Source: `pi/.pi/agent/extensions/zen.ts`, `pi/.pi/agent/extensions/README.md`, and https://github.com/luiul/dotfiles/issues/67.
 
 ## zen toggle
 
-The switch for the transcript filter: `/zen [on|off]` or `ctrl+alt+t`. The state persists in `~/.pi/agent/zen.json` (default on); `--zen` and `--no-zen` force it for one session without persisting. While the filter is on, transcript search cannot find hidden rows; toggle off to inspect. Native `ctrl+t` (thinking only) keeps working independently.
+The switch for compact tool calls: `/zen [on|off]` or `ctrl+alt+t`. The state persists in `~/.pi/agent/zen.json` (default on). `--zen` and `--no-zen` force it for one session without saving. The toggle changes existing tool blocks as well as new ones. Native `ctrl+t` controls thinking independently.
 
 Source: `pi/.pi/agent/extensions/zen.ts`.
 

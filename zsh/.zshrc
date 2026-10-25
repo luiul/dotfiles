@@ -1,4 +1,4 @@
-zsh_config_dir="$HOME/.zsh_config"
+zsh_config_dir="${ZSH_CONFIG_DIR:-$HOME/.zsh_config}"
 
 # Orphan guard: interactive shells with no tty and no -c command can never show a
 # prompt, but zle spins in a busy loop forever without one (41 such login shells,
@@ -6,7 +6,7 @@ zsh_config_dir="$HOME/.zsh_config"
 # and exit. Skipped for tty shells (zero cost on the normal path); shells with
 # a -c command (zsh -ic 'cmd', used by tools) pass through.
 if [[ -o interactive && ! -t 0 && ! -t 1 ]]; then
-	if ! ps -o command= -p $$ | grep -qE -- '(^| )-[a-zA-Z]*c'; then
+	if (( ! ${+ZSH_EXECUTION_STRING} )); then
 		mkdir -p "$HOME/.cache"
 		{
 			print -r -- "$(date '+%Y-%m-%d %H:%M:%S') orphan zsh pid=$$ ppid=$PPID"
@@ -207,5 +207,37 @@ if (( ! $+functions[.autocomplete__compinit] )); then
 fi
 export PATH="/Users/luis.aceituno/projects/hellofresh/global-ops/scripts:$PATH"  # global-ops: usql wrapper
 
-# Mole CLI (mo) tab completion
-if output="$(mole completion zsh 2>/dev/null)"; then eval "$output"; fi
+# Cache Mole completion output. The resolved path and mtime invalidate Znap's
+# command header after an executable update, without spawning another process.
+if (( $+commands[mole] )); then
+  () {
+    local executable=${commands[mole]:A}
+    local -a mtime=()
+    zmodload zsh/stat
+    zstat -A mtime +mtime -- "$executable" 2>/dev/null
+    local -i had_compdef=$+functions[compdef]
+    # Mole's output calls compdef directly. Skip that call if compinit is not
+    # ready, then bind both names below when the first prompt can do so.
+    (( had_compdef )) || compdef() { :; }
+    {
+      znap eval mole "command ${(q)executable} completion zsh 2>/dev/null # ${mtime[1]:-0}"
+    } always {
+      (( had_compdef )) || unfunction compdef
+    }
+  }
+  if (( $+functions[_mole] )); then
+    if (( $+functions[compdef] )); then
+      compdef _mole mole mo
+    else
+      _mole_compdef_once() {
+        if (( $+functions[compdef] )); then
+          compdef _mole mole mo
+          add-zsh-hook -d precmd _mole_compdef_once
+          unfunction _mole_compdef_once
+        fi
+      }
+      autoload -Uz add-zsh-hook
+      add-zsh-hook precmd _mole_compdef_once
+    fi
+  fi
+fi

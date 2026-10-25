@@ -23,8 +23,9 @@ _my_title_repo_info() {
 			read -r g < $dir/.git
 			g=${g#gitdir:}
 			g=${g## }
+			[[ $g == /* ]] || g="$dir/$g"
 			[[ -n $g && -d $g ]] || return 1
-			gitdir=$g
+			gitdir=${g:A}
 			_my_title_root=$dir
 		fi
 		if [[ -n $gitdir ]]; then
@@ -57,6 +58,8 @@ _my_title_render() {
 			title=$root
 		fi
 	fi
+	# Terminal controls in paths, branches, or commands must not inject OSC codes.
+	title=${title//[[:cntrl:]]/}
 	printf '\e]0;%s\a' "$title"
 }
 

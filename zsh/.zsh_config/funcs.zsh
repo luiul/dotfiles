@@ -49,6 +49,13 @@ upgrade-tools() {
 	# defined globally for the rest of the shell session (Ctrl+C would then
 	# stay silently swallowed everywhere, not just inside this function).
 	{
+		# A deleted cwd (removed worktree, rmdir'd dir) makes brew/uv/npm die
+		# on startup with "getcwd: cannot access parent directories" / ENOENT
+		# process.cwd, because every tool stats its working directory first.
+		# Jump to $HOME before anything runs; cd to an absolute path works even
+		# when the current directory is gone.
+		[[ -d $PWD ]] || cd -q -- "$HOME"
+
 		# TRAPINT returning 0 swallows Ctrl+C so only the current step dies and
 		# the next step runs. Use Ctrl+\ (SIGQUIT) to abort the whole function.
 		TRAPINT() { return 0; }
@@ -139,6 +146,18 @@ zmodload -F zsh/files b:zf_rm 2>/dev/null
 # saved session in the new instance. Config keys must come before `-e`, because
 # `-e` consumes all remaining arguments. The `zsh -ic` wrapper loads .zshrc
 # first so pi inherits the same env as a normal terminal (direnv, hooks).
+#
+# Input drain: the window is blank for several seconds (zsh boot, then pi's
+# own extension/TUI boot), and pi's TUI SUBMITS whatever keystrokes were
+# buffered in the pty during that time the moment it comes up. Keys the user
+# types into the invisible window (probe keys, or keystrokes that land here
+# because `activate` moved focus right as they were typing elsewhere) used
+# to reach the agent as a submitted prompt, e.g. a stray "pi". So the wrapper
+# echoes "starting pi..." immediately (the window is visibly alive), switches
+# the pty to non-canonical no-echo, and drains input: exec pi only after a
+# 0.2s silence probe followed by 1s of quiet. Keys typed before the TUI is
+# up are discarded instead of submitted; pasting a prompt during boot is
+# also discarded, wait for the TUI before typing or pasting.
 # No --title: the title pipeline (title.zsh hook, then the session-title pi
 # extension) owns the window title, and mycelium matches windows by that
 # title grammar.
@@ -155,7 +174,7 @@ piw() {
 on run argv
 	tell application "Ghostty"
 		activate
-		new window with configuration {initial working directory:(item 1 of argv), command:"/bin/zsh -ic 'exec pi'"}
+		new window with configuration {initial working directory:(item 1 of argv), command:"/bin/zsh -ic 'echo starting pi...; stty -icanon -echo min 0 time 0 2>/dev/null; while read -k1 -t 0.2 _; do while read -k1 -t 1 _; do :; done; done; exec pi'"}
 	end tell
 end run
 APPLESCRIPT
@@ -165,7 +184,7 @@ APPLESCRIPT
 			fi
 		else
 			open -a Ghostty.app --args --window-save-state=never \
-				--working-directory="$PWD" -e /bin/zsh -ic 'exec pi'
+				--working-directory="$PWD" -e /bin/zsh -ic 'echo starting pi...; stty -icanon -echo min 0 time 0 2>/dev/null; while read -k1 -t 0.2 _; do while read -k1 -t 1 _; do :; done; done; exec pi'
 		fi
 	else
 		[[ -n "$err" ]] && print -r -- "$err" >&2

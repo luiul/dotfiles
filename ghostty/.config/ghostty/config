@@ -1,7 +1,5 @@
 # Font settings
 font-family = JetBrainsMono Nerd Font Mono
-# Weight 300 (Light), matches VS Code editor/terminal font weight
-font-style = Light
 font-feature = -calt
 font-feature = -liga
 font-feature = -dlig

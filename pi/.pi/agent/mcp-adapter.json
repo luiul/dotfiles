@@ -1,7 +1,9 @@
 {
   "settings": {
     "toolPrefix": "server",
-    "idleTimeout": 10
+    "idleTimeout": 10,
+    "showStatusIcon": false,
+    "mcpFooterStatus": "compact"
   },
   "mcpServers": {
     "kb": {

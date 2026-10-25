@@ -109,6 +109,7 @@ import {
 	startLiveBash,
 	syncBranchEntries,
 } from "./split-response.ts";
+import { initStatusMirror, pollStatusLines, resetStatusMirror } from "./split-status.ts";
 import { StickyPromptBar, findTranscriptScrollView } from "./split-sticky.ts";
 import { createFilesPanel, disposeFilesPanel, initFilesPanel, setFilesSuppressed } from "./split-files.ts";
 import {
@@ -517,6 +518,11 @@ export default function (pi: ExtensionAPI) {
 						// event — the O(1) getLeafId compare is the whole cost
 						// when nothing moved.
 						if (syncBranchEntries(ctx)) requestRender();
+						// Status mirror: extension ui.notify output and pi's own
+						// transient statuses are chat-container ThemedText lines,
+						// invisible in response-only mode (the transcript stays
+						// detached). Mirror new ones into the doc (split-status.ts).
+						if (pollStatusLines()) requestRender();
 						return [];
 					},
 				};
@@ -607,6 +613,10 @@ export default function (pi: ExtensionAPI) {
 		// suppression decision below needs it. Creates it if filechanges.ts
 		// has not loaded yet (exactly-once event wiring lives in the tracker).
 		initFilesPanel(pi, ctx);
+		// Status mirror wiring (split-status.ts): the chat container is read
+		// through the base root, and mirroring runs only while response-only
+		// mode owns the left column.
+		initStatusMirror(() => getBaseRoot(), () => trimResponse);
 		applyConfigFlags(cfg);
 		// Arm the startup composition BEFORE reconstruct — the widget factory
 		// runs synchronously inside it (first point where the root exists).
@@ -767,6 +777,7 @@ export default function (pi: ExtensionAPI) {
 		stickyBar?.dispose();
 		stickyBar = null;
 		resetResponseState();
+		resetStatusMirror();
 		setFilesSuppressed(false);
 		disposeFilesPanel();
 		setPanelRenderHook(null);

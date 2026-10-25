@@ -25,6 +25,14 @@
  *   - `custom` extension entries → skipped: extension-internal data whose
  *     owning view already presents it (e.g. the filechanges tracker feeds the
  *     File Changes panel); no display renderer is reachable from here.
+ *   - transient status lines     → doc-bottom dim rows, mirrored per frame from
+ *     (extension ui.notify       the detached chat container (split-status.ts).
+ *     output and pi's own       They are UI-only ThemedText lines, never
+ *     showStatus/warnings,     session entries, so the branch-built doc could
+ *     e.g. "Right column on",  not show them; the whole class was invisible
+ *     "Forked to new session")  while the split owned the screen. Mirrored as
+ *                                component instances, so pi's back-to-back
+ *                                replacement propagates to the doc row.
  *   - update notices (pi's   → doc block at the doc TOP (UpdateNoticeBlock,
  *     "Update Available",        split-updates.ts) + Tools panel event row +
  *     "Package Updates", and     persistent footer status. pi renders these

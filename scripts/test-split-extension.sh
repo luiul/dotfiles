@@ -230,13 +230,24 @@ else
 	ok "sticky bar pins the LATEST turn's prompt, not an old turn"
 fi
 tmux send-keys -t "$SESSION" -l "$(printf '\033[5~')"   # PageUp: into seed turn one
-sleep 2
-TOP=$(top_rows)
-if echo "$TOP" | grep -q "▌" && echo "$TOP" | grep -q "seed prompt one"; then
-	ok "pinned prompt walks turn by turn when scrolling"
-else
-	bad "pinned prompt walks turn by turn when scrolling"
-fi
+# Bounded presses: the doc bottom grows during the run — split mirrors
+# transient status lines (split-status.ts) below the seeded content, so the
+# PageUp landing spot sits lower than a bare-seed run and the walk to turn
+# one may need a second press. The pinned property under test is the WALK
+# (scrolling back steps the pin turn by turn, never skipping): reaching
+# "seed prompt one" through presses, without any other prompt pinned in
+# between, is the assertion.
+PIN_WALK=bad:not-seen
+for _pw in 1 2 3; do
+	sleep 2
+	TOP=$(top_rows)
+	if echo "$TOP" | grep -q "seed prompt one"; then
+		if echo "$TOP" | grep -q "▌"; then PIN_WALK=ok; else PIN_WALK=bad:no-bar; fi
+		break
+	fi
+	tmux send-keys -t "$SESSION" -l "$(printf '\033[5~')"
+done
+if [ "$PIN_WALK" = "ok" ]; then ok "pinned prompt walks turn by turn when scrolling"; else bad "pinned prompt walks turn by turn when scrolling ($PIN_WALK)"; fi
 tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5H')"   # ctrl+home: to the top
 sleep 2
 TOP=$(top_rows)
@@ -261,6 +272,12 @@ if echo "$CAP" | grep -q "▌"; then
 else
 	ok "sticky off removes the pinned bar"
 fi
+# 3.5b transient status mirror (split-status.ts): the /split-toggle-sticky off
+# feedback is a chat-container ThemedText — in response-only mode only the
+# mirror can show it. Its doc row must be visible at the follow-end position;
+# this pins the mechanism the other notify checks ("right column on",
+# "split off") now depend on.
+check_contains "status mirror shows command feedback in the doc" "Sticky prompt off"
 tmux send-keys -t "$SESSION" "/split-toggle-sticky on" Enter
 sleep 2
 

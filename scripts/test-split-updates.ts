@@ -20,6 +20,15 @@
 //   for 1.4.0, is too big for the panel or the doc — user decision
 //   2026-10-24). The fake fixture includes it first and the footer status
 //   leads with "updated to X.Y.Z".
+// - The on-demand /split-changelog pieces: parseVersionEntry extracts one
+//   version's entry between ## [ headers (exact prefix match, null when
+//   absent), stripChangelogMarkdown flattens links/bold/italic/### to plain
+//   text, buildOndemandChangelogNotice carries the changelog:ondemand id
+//   prefix + atEnd (doc bottom) + the 120-line cap + no footer status part
+//   (unknown id), locateChangelogFile resolves the installed CHANGELOG.md
+//   by walking up from the package entry (import.meta.resolve works under
+//   bun), and appendUpdateNoticesToDoc lands atEnd blocks at the doc BOTTOM
+//   while startup notices stay at the top.
 // - UpdateNoticeBlock renders pi's block shape (blank, warning stroke, bold
 //   title, wrapped body with one leading pad column, warning stroke), never
 //   exceeds the width budget, and renders nothing until a theme resolves.
@@ -29,7 +38,7 @@
 //
 // Run: bun scripts/test-split-updates.ts
 import { initTheme, VERSION } from "@earendil-works/pi-coding-agent";
-import { Container } from "@earendil-works/pi-tui";
+import { Container, type Component } from "@earendil-works/pi-tui";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
 // UpdateNoticeBlock renders through a theme; a bare bun run must install one
@@ -43,6 +52,8 @@ const {
 	buildPackageUpdatesNotice,
 	buildSkillConflictsNotice,
 	buildChangelogNotice,
+	buildOndemandChangelogNotice,
+	locateChangelogFile,
 	noticeBodyText,
 	noticesStatusText,
 	fakeUpdateNotices,
@@ -53,6 +64,9 @@ const {
 	PACKAGE_UPDATES_ID,
 	SKILL_CONFLICTS_ID,
 	CHANGELOG_WHATSNEW_ID,
+	ONDEMAND_CHANGELOG_PREFIX,
+	parseVersionEntry,
+	stripChangelogMarkdown,
 	UpdateNoticeBlock,
 } = await import("../pi/.pi/agent/extensions/split/split-updates.ts");
 const {
@@ -224,6 +238,81 @@ check(
 	changelogText.includes("Updated to v1.4.0. Full changelog: https://pi.dev/changelog"),
 );
 
+// ─── on-demand changelog (/split-changelog) ───────────────────────────────────
+
+const changelogFixture = `# Changelog
+
+## [1.4.0] - 2026-10-21
+
+### New Features
+
+- **Image input**: [classifier docs](docs/models.md#use-classifier-models). See [Codemode](docs/codemode.md#models).
+
+### Fixed
+
+- Fixed a *bug* in the *italic* line.
+
+## [1.3.0] - 2026-09-01
+
+### Old
+
+- older entry line
+`;
+const located = locateChangelogFile();
+check(
+	"locateChangelogFile finds the installed CHANGELOG.md (import.meta.resolve works under bun)",
+	typeof located === "string" && located.endsWith("CHANGELOG.md"),
+);
+const entry14 = parseVersionEntry(changelogFixture, "1.4.0");
+check(
+	"ondemand parse: returns the entry between version headers",
+	entry14 !== null &&
+		entry14.includes("### New Features") &&
+		entry14.includes("Fixed a *bug*") &&
+		!entry14.includes("older entry line"),
+);
+check("ondemand parse: exact header prefix match only", parseVersionEntry(changelogFixture, "1.4") === null);
+check("ondemand parse: missing version is null", parseVersionEntry(changelogFixture, "9.9.9") === null);
+const stripped14 = stripChangelogMarkdown(entry14!);
+check(
+	"ondemand strip: links keep labels, drop urls",
+	stripped14.includes("classifier docs") && !stripped14.includes("(docs/models.md"),
+);
+check("ondemand strip: bold markers drop", stripped14.includes("Image input:") && !stripped14.includes("**"));
+check(
+	"ondemand strip: italic markers drop",
+	stripped14.includes("Fixed a bug in the italic line"),
+);
+check(
+	"ondemand strip: section headers flatten",
+	stripped14.split("\n").some((l) => l.trim() === "New Features"),
+);
+const ondemand = buildOndemandChangelogNotice("1.4.0", entry14!);
+check(
+	"ondemand notice: id carries the prefix",
+	ondemand.id === `${ONDEMAND_CHANGELOG_PREFIX}:1.4.0` && ONDEMAND_CHANGELOG_PREFIX === "changelog:ondemand",
+);
+check("ondemand notice: atEnd (doc bottom)", ondemand.atEnd === true);
+check("ondemand notice: title names the version", ondemand.title === "Changelog (1.4.0)");
+const ondemandText = noticeBodyText(ondemand);
+check(
+	"ondemand notice: pointer line first",
+	ondemandText.startsWith("Changelog entry for v1.4.0. Older entries: https://pi.dev/changelog"),
+);
+check(
+	"ondemand notice: entry lines included, stripped",
+	ondemandText.includes("Image input:") && !ondemandText.includes("**"),
+);
+check(
+	"ondemand notice: no footer status part (unknown id)",
+	noticesStatusText([ondemand]) === undefined,
+);
+const capped = buildOndemandChangelogNotice("1.4.0", Array.from({ length: 300 }, (_, i) => `line ${i}`).join("\n"));
+check(
+	"ondemand notice: capped at 120 entry lines",
+	capped.body.length <= 121,
+);
+
 // ─── footer status text ──────────────────────────────────────────────────────
 
 check("status: undefined when empty", noticesStatusText([]) === undefined);
@@ -297,6 +386,32 @@ check(
 	!(getResponseDoc().children as any[]).some((c) => c instanceof UpdateNoticeBlock),
 );
 check("state: getActiveNotices reflects set/reset", getActiveNotices().length === 0);
+
+// atEnd notices (the on-demand /split-changelog block) land at the doc
+// BOTTOM, startup notices stay at the top: a filler child proves the ends.
+resetResponseState();
+const filler = new (class implements Component {
+	render(_width: number) {
+		return ["filler"];
+	}
+	invalidate() {}
+	dispose() {}
+})();
+setUpdateNotices([piNotice, ondemand]);
+const docEnd = getResponseDoc();
+docEnd.addChild(filler);
+appendUpdateNoticesToDoc();
+appendUpdateNoticesToDoc(); // idempotent, same as the top path
+const kids = docEnd.children as any[];
+check(
+	"doc: top notices at the top, atEnd notices at the bottom (filler between)",
+	kids.length === 3 &&
+		kids[0] instanceof UpdateNoticeBlock &&
+		kids[0].noticeId === "update:pi" &&
+		kids[1] === filler &&
+		kids[2] instanceof UpdateNoticeBlock &&
+		kids[2].noticeId === ondemand.id,
+);
 
 // ─── teardown ───────────────────────────────────────────────────────────────
 

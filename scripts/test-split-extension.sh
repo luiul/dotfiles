@@ -27,6 +27,10 @@
 #      bash in the response doc (trim mode), skill + branch summary as Tool
 #      Usage event rows; a LIVE !echo and !!echo land in the doc too
 #      (user_bash + the per-frame leaf walk, no extension events involved)
+#   5.6 /split-changelog (2026-10-24 review): pi's /changelog output is
+#      transcript-only, so response-only mode would show nothing when the
+#      user asks for the changelog — the command appends the running version's
+#      full entry as a doc-bottom block (visible at the follow-end position)
 #   5.7 /split-toggle-right: hide the whole right column at once, re-show restores
 #      the exact panel set, and the above-editor filechanges widget stays hidden
 #      while the hidden set includes the files panel
@@ -352,6 +356,33 @@ print("bad:no-divider-between-answers-and-continuation")
 done
 if [ "${PLACEMENT%%:*}" = "ok" ]; then ok "block divider between consecutive response blocks"; else bad "block divider placement ($PLACEMENT)"; fi
 tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5F')"   # ctrl+end: back to the tail
+sleep 2
+# 5.6 /split-changelog: back to the tail FIRST (the divider loop left the
+# view mid-doc), then run the command — the doc-bottom block it appends shows
+# its TAIL first (native parity: pi's own /changelog appends at the transcript
+# end too), so page up to reach the block's title and pointer line. Six
+# bounded attempts: at this test's 45% left width the real changelog lines
+# WRAP, so the block is ~130 rendered rows tall and its top is ~4 pages up.
+# Entry text itself varies with the installed pi version, so assert on the
+# title/pointer only.
+tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5F')"   # ctrl+end: back to the tail
+sleep 2
+tmux send-keys -t "$SESSION" "/split-changelog" Enter
+sleep 2
+CHLOG="bad:not-seen"
+for _c in 1 2 3 4 5 6; do
+	capture
+	if echo "$CAP" | grep -qE "Changelog \\(|Older entries:"; then
+		CHLOG="ok"
+		break
+	fi
+	tmux send-keys -t "$SESSION" PPage
+	sleep 2
+done
+if [ "$CHLOG" = "ok" ]; then ok "on-demand changelog block visible (/split-changelog)"; else bad "on-demand changelog block visible (/split-changelog) ($CHLOG)"; fi
+capture
+check_contains "on-demand changelog block links older entries" "Older entries:"
+tmux send-keys -t "$SESSION" -l "$(printf '\033[1;5F')"   # ctrl+end: follow the end again for the bash step
 sleep 2
 tmux send-keys -t "$SESSION" "!echo split-e2e-live-bash" Enter
 sleep 3

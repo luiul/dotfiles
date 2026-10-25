@@ -386,7 +386,9 @@ export function responseDocEnd(ctx: ExtensionContext): void {
  * (split.ts), so existing notice blocks are removed first — a rebuild wipes
  * doc children, but a live append onto an already-notified doc must not
  * duplicate. Container exposes no insert API, so top insertion goes through
- * the public children array; invalidate() drops its layout cache.
+ * the public children array; invalidate() drops its layout cache. Notices
+ * with atEnd (the on-demand /split-changelog block) append at the doc BOTTOM
+ * instead, so the follow-end view shows them the moment they land.
  */
 export function appendUpdateNoticesToDoc(): void {
 	for (const child of [...responseDoc.children]) {
@@ -394,9 +396,14 @@ export function appendUpdateNoticesToDoc(): void {
 	}
 	const notices = getActiveNotices();
 	if (notices.length === 0) return;
-	responseDoc.children.unshift(
-		...notices.map((n) => new UpdateNoticeBlock(() => responseTheme, n)),
-	);
+	const top = notices
+		.filter((n) => !n.atEnd)
+		.map((n) => new UpdateNoticeBlock(() => responseTheme, n));
+	const end = notices
+		.filter((n) => n.atEnd)
+		.map((n) => new UpdateNoticeBlock(() => responseTheme, n));
+	if (top.length > 0) responseDoc.children.unshift(...top);
+	if (end.length > 0) responseDoc.children.push(...end);
 	responseDoc.invalidate();
 }
 

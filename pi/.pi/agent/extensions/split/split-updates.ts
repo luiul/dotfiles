@@ -44,6 +44,15 @@
  * write), so the pre-update value is captured at MODULE IMPORT below — the
  * one moment it is readable. Read-only; pi owns the setting.
  *
+ * /split-changelog (index.ts) is the response-only mirror for pi's
+ * transcript-only /changelog OUTPUT: on demand it appends the running
+ * version's FULL entry as a doc-bottom block (atEnd) via the same
+ * activeNotices state, so it survives rebuilds; its id prefix is unknown to
+ * the panel-row and footer-status surfaces, so it gets neither. Older
+ * entries stay at the permanent URL and in the installed CHANGELOG.md
+ * (located by walking up from the package entry, since pi exports no
+ * changelog path helper).
+ *
  * Data comes through pi's PUBLIC API, so results match pi's own checks:
  *   - pi version: the same https://pi.dev/api/latest-version endpoint,
  *     same env guards (PI_OFFLINE, PI_SKIP_VERSION_CHECK), current version
@@ -60,8 +69,9 @@
  * This module is a shared utility imported by split.ts.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	DefaultPackageManager,
 	SettingsManager,
@@ -84,6 +94,9 @@ export interface UpdateNotice {
 	title: string;
 	/** One entry per logical line; each line is styled segments. */
 	body: NoticeSegment[][];
+	/** Append at the doc BOTTOM instead of the top (on-demand blocks, so the
+	 * follow-end view shows them the moment they land). Startup notices omit it. */
+	atEnd?: boolean;
 }
 
 export const PI_UPDATE_ID = "update:pi";
@@ -381,6 +394,115 @@ export function buildChangelogNotice(
 			],
 		],
 	};
+}
+
+// ─── on-demand changelog (/split-changelog, pi's /changelog output) ─────────
+
+/** Id prefix for on-demand changelog blocks (unknown to the panel row and
+ * footer status surfaces, so they never get either). */
+export const ONDEMAND_CHANGELOG_PREFIX = "changelog:ondemand";
+
+/** Cap for the on-demand block: one version entry is ~60 lines; a runaway
+ * file must never flood the doc. */
+const ONDEMAND_MAX_LINES = 120;
+
+/**
+ * The installed CHANGELOG.md, or null. pi's own getChangelogPath is not
+ * exported, so walk up from the resolved package entry (the exports map
+ * blocks ./package.json, but the package root is the first package.json
+ * above dist/) — the same findNodePackageDir idea pi itself uses.
+ */
+export function locateChangelogFile(): string | null {
+	try {
+		const entryPath = fileURLToPath(
+			import.meta.resolve("@earendil-works/pi-coding-agent"),
+		);
+		let dir = dirname(entryPath);
+		while (dir !== dirname(dir)) {
+			if (existsSync(join(dir, "package.json"))) break;
+			dir = dirname(dir);
+		}
+		const changelog = join(dir, "CHANGELOG.md");
+		return existsSync(changelog) ? changelog : null;
+	} catch {
+		return null;
+	}
+}
+
+/** The CHANGELOG.md entry for one version (text between `## [version]` and
+ * the next `## [` header), trailing blanks trimmed; null when absent. */
+export function parseVersionEntry(changelogText: string, version: string): string | null {
+	const lines = changelogText.split(/\r?\n/);
+	const header = `## [${version}]`;
+	const start = lines.findIndex((l) => l.startsWith(header));
+	if (start < 0) return null;
+	const out: string[] = [];
+	for (let i = start + 1; i < lines.length; i++) {
+		if (/^## \[/.test(lines[i])) break;
+		out.push(lines[i]);
+	}
+	while (out.length > 0 && !out[out.length - 1].trim()) out.pop();
+	return out.length > 0 ? out.join("\n") : null;
+}
+
+/** Markdown to plain readable text for the block body: links keep their
+ * label, bold/italic markers drop, ### section headers flatten. */
+export function stripChangelogMarkdown(text: string): string {
+	return text
+		.split(/\r?\n/)
+		.map((l) =>
+			l
+				.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+				.replace(/\*\*([^*]+)\*\*/g, "$1")
+				.replace(/\*([^*]+)\*/g, "$1")
+				.replace(/^###\s+/, "")
+				.trimEnd(),
+		)
+		.join("\n");
+}
+
+/**
+ * The on-demand changelog block for /split-changelog (the response-only
+ * mirror of pi's transcript-only /changelog output, condensed to the
+ * CURRENT version's entry — all 290+ entries would flood the doc; older
+ * entries stay at the permanent URL and in the file). atEnd, so the
+ * follow-end doc shows it the moment the command runs. Rebuild-safe: like
+ * the startup notices it rides activeNotices, but its id prefix is unknown
+ * to the panel row and footer status surfaces, so it gets neither.
+ */
+export function buildOndemandChangelogNotice(
+	version: string,
+	entryText: string,
+): UpdateNotice {
+	const lines = stripChangelogMarkdown(entryText)
+		.split("\n")
+		.filter((l) => l.trim())
+		.slice(0, ONDEMAND_MAX_LINES)
+		.map((l) => [["text", l] as NoticeSegment] as NoticeSegment[]);
+	return {
+		id: `${ONDEMAND_CHANGELOG_PREFIX}:${version}`,
+		title: `Changelog (${version})`,
+		atEnd: true,
+		body: [
+			[
+				["muted", `Changelog entry for v${version}. Older entries: `] as NoticeSegment,
+				["accent", CHANGELOG_URL] as NoticeSegment,
+			],
+			...lines,
+		],
+	};
+}
+
+/** Locate + read + parse the running version's entry in one (null on any
+ * miss: file gone, version absent, offline irrelevant — the file is local). */
+export function readCurrentVersionEntry(): string | null {
+	const file = locateChangelogFile();
+	if (!file) return null;
+	try {
+		return parseVersionEntry(readFileSync(file, "utf8"), VERSION);
+	} catch {
+		return null;
+	}
 }
 
 // ─── collection + footer status ───────────────────────────────────────────────

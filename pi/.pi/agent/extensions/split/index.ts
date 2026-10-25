@@ -46,7 +46,10 @@
  *   detects the update from settings.lastChangelogVersion captured at module
  *   import — pi consumes the marker during init(), before session_start.
  *   Session start only; --split-fake-updates forces
- *   fixture notices for tests.
+ *   fixture notices for tests. /split-changelog appends the running
+ *   version's full changelog entry as a doc-bottom block on demand (pi's
+ *   /changelog output is transcript-only, so response-only mode would
+ *   otherwise show nothing when the user asks for it).
  * - Toggles are session-local; only /split-save writes ~/.pi/agent/split.json
  *   as startup defaults for NEW windows. --no-split starts bare.
  *
@@ -59,6 +62,7 @@
  */
 
 import {
+	VERSION,
 	type ExtensionAPI,
 	type ExtensionContext,
 	type Theme,
@@ -108,11 +112,15 @@ import {
 import { StickyPromptBar, findTranscriptScrollView } from "./split-sticky.ts";
 import { createFilesPanel, disposeFilesPanel, initFilesPanel, setFilesSuppressed } from "./split-files.ts";
 import {
+	CHANGELOG_URL,
+	ONDEMAND_CHANGELOG_PREFIX,
+	buildOndemandChangelogNotice,
 	collectStartupNotices,
 	fakeUpdateNotices,
 	getActiveNotices,
 	noticeBodyText,
 	noticesStatusText,
+	readCurrentVersionEntry,
 	resetUpdateNotices,
 	setUpdateNotices,
 } from "./split-updates.ts";
@@ -1087,6 +1095,38 @@ export default function (pi: ExtensionAPI) {
 			} catch {
 				/* ignore */
 			}
+		},
+	});
+
+	pi.registerCommand("split-changelog", {
+		description:
+			"Append the running version's full changelog entry to the response view (pi's /changelog output is transcript-only)",
+		handler: async (_args, ctx) => {
+			if (!requireFullscreen(ctx)) return;
+			// pi's own /changelog prints into the native transcript, which is not
+			// rendered while response-only is ON — the exact information-loss
+			// class this extension exists to close. With response-only OFF the
+			// native command already works, so just point at it.
+			if (!trimResponse) {
+				ctx.ui.notify(
+					"Response-only view is off: use pi's own /changelog, it prints into the transcript",
+					"info",
+				);
+				return;
+			}
+			const entry = readCurrentVersionEntry();
+			if (!entry) {
+				ctx.ui.notify(`Changelog entry not found. Full changelog: ${CHANGELOG_URL}`, "info");
+				return;
+			}
+			// Replace any previous on-demand block (id prefix dedupe); the doc
+			// follows its end, so the atEnd block is visible immediately.
+			setUpdateNotices([
+				...getActiveNotices().filter((n) => !n.id.startsWith(ONDEMAND_CHANGELOG_PREFIX)),
+				buildOndemandChangelogNotice(VERSION, entry),
+			]);
+			appendUpdateNoticesToDoc();
+			requestRender();
 		},
 	});
 

@@ -124,9 +124,10 @@ Work in two modes: planning and execution. Pick the mode from the request.
 ## Background Processes
 
 - Every background or detached process must have a bound: a timeout, a bounded count, or an explicit shutdown step. Never leave a loop, watcher, or server running unattended.
-- tmux sessions created by agents get a name starting with `ag-` (e.g. `ag-canopy-smoke`) and are always killed at the end of the task with `tmux kill-session -t <name>`. The `reap-strays` watchdog kills `ag-` sessions older than 6 hours as a backstop.
+- tmux sessions created by agents get a name starting with `ag-` (e.g. `ag-canopy-smoke`) and are always killed at the end of the task with `tmux kill-session -t <name>`. Register an explicit task deadline and owner with `reap-strays --register-tmux` (see `~/dotfiles/macos/README.md`). The watchdog only removes expired, detached, unshared sessions whose registered owner has exited. Session age alone is not permission to kill active work.
 - Bulk `pi --mode json -p` loops (e.g. smoke tests) run with `--no-extensions` when they do not need ctx tools: each extension-enabled run pays a ~10s context-mode bridge spawn (SentinelOne image-load tax) and widens the bridge-leak window.
-- `ctx_execute` with `background: true` is only for servers and long-running tasks that are explicitly stopped afterwards; never for fire-and-forget work.
+- `ctx_execute` with `background: true` is only for servers and long-running tasks that are explicitly stopped afterwards; never for fire-and-forget work. Supply an explicit positive timeout for background execution. Foreground ctx execution defaults to 120 seconds; set a longer explicit timeout for builds that need it.
+- The version-checked context-mode resource patch handles cancellation, startup failure, and child cleanup. After a direct package reinstall, run `pi-resources-patch`, then `/reload` when idle. The resource guard blocks ctx tools if the patch is missing or changed. See `~/dotfiles/docs/pi-resource-safety.md`.
 - Before reporting a task done, verify what was spawned is gone: `strays` (dry-run audit) shows orphaned processes, stale `ag-` sessions, gitstatusd orphans, and context-mode bridges with dead parents. The launchd agent `com.luisaceituno.reap-strays` reaps those every 15 min and logs to `~/.cache/strays.log`.
 
 ## Large Files

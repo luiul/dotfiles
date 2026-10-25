@@ -7,6 +7,7 @@
 	<key>ProgramArguments</key>
 	<array>
 		<string>/Users/luis.aceituno/.local/bin/reap-strays</string>
+		<string>--apply</string>
 	</array>
 	<key>StartInterval</key>
 	<integer>900</integer>

@@ -3,7 +3,7 @@
   "private": true,
   "dependencies": {
     "@tintinweb/pi-subagents": "^0.22.0",
-    "context-mode": "^1.0.169",
+    "context-mode": "1.0.169",
     "pi-blackhole": "^0.5.16",
     "pi-hermes-memory": "^0.9.11",
     "pi-mcp-adapter": "^6.0.0",

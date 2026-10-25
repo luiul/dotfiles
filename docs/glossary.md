@@ -38,6 +38,18 @@ The switch for compact tool calls: `/zen [on|off]` or `ctrl+alt+t`. The state pe
 
 Source: `pi/.pi/agent/extensions/zen.ts`.
 
+## orphan process
+
+A process whose original owner has exited. Parent PID 1 alone does not prove abandonment, because launchd jobs and managed services can have that parent. The watchdog checks the executable, user, start time, and expected role before signaling it.
+
+Source: `macos/.local/bin/reap-strays.mjs` and `docs/pi-resource-safety.md`.
+
+## resource budget
+
+A limit on an agent's work or a tool's execution time. Pi's agent limits apply per session. An execution timeout bounds foreground work. Background work also needs an owner and an explicit shutdown step.
+
+Source: `pi/.pi/agent/subagents.json`, `pi/.pi/agent/extensions/resource-budget.ts`, and `docs/pi-resource-safety.md`.
+
 ## harvest
 
 The local Business Impact database for Jira tickets and GitHub PRs: DuckDB + Apache Iceberg stored under `~/.harvest/` (repo: `~/projects/personal/harvest`, CLI: `harvest`). Harvest is the source of truth for all six impact fields; the Jira ticket and the GitHub PR are projections. Jira and GitHub are the sources of truth for lifecycle, which `harvest sync` ingests.

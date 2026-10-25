@@ -1,5 +1,17 @@
 # Pi extensions
 
+## Background resource guard
+
+`resource-budget.ts` supplies a 120-second default for ctx execution tools and rejects background execution without an explicit timeout. It checks the version-pinned context-mode lifecycle patch before allowing ctx tools. A missing or changed patch blocks those tools and points to `pi-resources-patch`. Other tools remain available.
+
+The patch handles cancellation, failed startup, and child process groups. Cancelling a ctx call can also fail sibling calls on the same helper. See [resource safety](../../../../docs/pi-resource-safety.md) for budgets, update recovery, and verification.
+
+```sh
+bun scripts/test-resource-budget.ts
+bun scripts/test-pi-resource-config.ts
+node scripts/test-context-mode-resources.mjs
+```
+
 ## System notifications
 
 `notifications.ts` sends macOS notifications through the `claude-notifier` binary when pi settles and waits for input, after a manual `/compact`, or when a run exceeds the long-run threshold (default 600s, `PI_LONG_RUN_SECONDS`, `/notify-timeout`). `/notifications` toggles them live.
@@ -115,6 +127,26 @@ scripts/bench-zen-startup.sh startup bare zen1 # startup wall clock, forced Zen 
 ```
 
 The E2E asserts: compact start (success one line with suffix, failure one line with error text, native thinking label), native `ctrl+o` expand and collapse, `/zen` off restoring the native transcript, `/zen` on again, `/reload` keeping compact mode, and a line-for-line parity diff between a `--no-zen` capture and a bare-pi capture of the same seeded session. Design and decision history: https://github.com/luiul/dotfiles/issues/67.
+
+## Enhanced status bar
+
+`status-bar.ts` replaces the footer with project and git state, model and thinking level, token usage, cost, and compaction-aware context. Narrow terminals show one compact line. `/statusbar` toggles it.
+
+- Runs only when `ctx.mode === "tui" && ctx.hasUI`. SDK sessions without terminal UI, RPC, JSON, and print sessions have no git polling, footer timers, or compaction settings reads.
+- Git refreshes at startup, on branch changes, and every 4s while enabled. One refresh timer also requests rendering. Git commands keep the 2s timeout. Concurrent refresh requests share one subprocess slot and coalesce into one pending refresh.
+- Disable, repeated startup, and shutdown clear all footer timers and branch listeners. Results from an old session or toggle cannot update the current footer. A git command already running can finish within its existing timeout.
+- The 1s working timer runs only during an enabled TUI turn. Enabling mid-turn restores the timer with the original turn start time. Settlement stops it.
+- Footer text, colors, width handling, and extension status segments stay unchanged.
+
+Verification from the repository root:
+
+```sh
+bun scripts/test-status-bar-resources.ts
+# Optional before/after measurement and rendering comparison using an original source backup:
+bun scripts/test-status-bar-resources.ts --baseline /tmp/path/to/status-bar.ts
+```
+
+The mock harness covers mode guards, toggles, active turns, repeated startup, shutdown, branch changes, git timeouts, subprocess overlap, and stale results. It uses fixed virtual time and starts no Pi sessions. With a baseline source, it also reports 12s SDK and RPC subprocess counts and checks exact footer rendering at narrow and wide widths. Real isolated TUI and headless checks must run separately.
 
 ## Bedrock pricing overrides
 

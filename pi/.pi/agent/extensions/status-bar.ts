@@ -123,6 +123,14 @@ export default function (pi: ExtensionAPI) {
 	let compaction: CompactionConfig = { enabled: true, reserveTokens: DEFAULT_RESERVE_TOKENS };
 	let timer: ReturnType<typeof setInterval> | undefined;
 	let enabled = true;
+	let activeContext: ExtensionContext | undefined;
+	let generation = 0;
+	let gitBusy = false;
+	let pendingGit: { ctx: ExtensionContext; generation: number } | undefined;
+	let disposeFooter: (() => void) | undefined;
+	const isTerminal = (ctx: ExtensionContext) => ctx.mode === "tui" && ctx.hasUI;
+	const isCurrent = (ctx: ExtensionContext, epoch: number) =>
+		enabled && activeContext === ctx && generation === epoch && isTerminal(ctx);
 	// Turn timer state. turnTick only exists while a turn runs; footerTui is the
 	// live footer's tui handle so that tick (started in the event handlers, outside
 	// the footer factory) can request renders.
@@ -177,7 +185,16 @@ export default function (pi: ExtensionAPI) {
 		return { input, output, cache, cost, lastHitRate };
 	};
 
-	const refreshGit = async (ctx: ExtensionContext) => {
+	const refreshGit = async (ctx: ExtensionContext, epoch: number) => {
+		if (!isCurrent(ctx, epoch)) return;
+		// Branch changes and timer ticks share one subprocess slot. A new session
+		// can queue its refresh while the old command finishes its bounded timeout.
+		if (gitBusy) {
+			pendingGit = { ctx, generation: epoch };
+			return;
+		}
+		gitBusy = true;
+		let next: GitState = { dirty: 0, ahead: 0, behind: 0 };
 		try {
 			const { stdout } = await execFileAsync("git", ["status", "--porcelain=2", "--branch"], {
 				cwd: ctx.cwd,
@@ -198,24 +215,40 @@ export default function (pi: ExtensionAPI) {
 					dirty++;
 				}
 			}
-			git = { dirty, ahead, behind };
+			next = { dirty, ahead, behind };
 		} catch {
-			git = { dirty: 0, ahead: 0, behind: 0 };
+			// A missing repository or a timeout clears the current git counts.
+		} finally {
+			gitBusy = false;
+			if (isCurrent(ctx, epoch)) {
+				git = next;
+				footerTui?.requestRender();
+			}
+			const pending = pendingGit;
+			pendingGit = undefined;
+			if (pending) void refreshGit(pending.ctx, pending.generation);
 		}
 	};
 
-	const applyFooter = (ctx: ExtensionContext) => {
-		if (!enabled) {
-			ctx.ui.setFooter(undefined);
-			return;
-		}
+	const applyFooter = (ctx: ExtensionContext, epoch: number) => {
+		if (!isCurrent(ctx, epoch)) return;
 
 		ctx.ui.setFooter((tui, theme, footerData) => {
 			const unsub = footerData.onBranchChange(() => {
-				void refreshGit(ctx).then(() => tui.requestRender());
+				void refreshGit(ctx, epoch);
 			});
-			// Re-render whenever git state refreshes on the timer.
-			const tick = setInterval(() => tui.requestRender(), GIT_POLL_MS);
+			let disposed = false;
+			const dispose = () => {
+				if (disposed) return;
+				disposed = true;
+				unsub();
+				if (disposeFooter === dispose) {
+					disposeFooter = undefined;
+					if (footerTui === tui) footerTui = undefined;
+				}
+			};
+			disposeFooter?.();
+			disposeFooter = dispose;
 			footerTui = tui;
 
 			const join = (left: string, right: string, width: number): string => {
@@ -286,11 +319,7 @@ export default function (pi: ExtensionAPI) {
 			};
 
 			return {
-				dispose: () => {
-					unsub();
-					clearInterval(tick);
-					if (footerTui === tui) footerTui = undefined;
-				},
+				dispose,
 				invalidate() {},
 				render(width: number): string[] {
 					const sm = ctx.sessionManager;
@@ -415,58 +444,83 @@ export default function (pi: ExtensionAPI) {
 		});
 	};
 
+	const stopFooter = () => {
+		// Invalidate completions before releasing the footer or replacing its context.
+		generation++;
+		activeContext = undefined;
+		pendingGit = undefined;
+		if (timer !== undefined) clearInterval(timer);
+		timer = undefined;
+		if (turnTick !== undefined) clearInterval(turnTick);
+		turnTick = undefined;
+		disposeFooter?.();
+		footerTui = undefined;
+	};
+
+	const startTurnTick = () => {
+		const ctx = activeContext;
+		const epoch = generation;
+		if (!ctx || !isCurrent(ctx, epoch) || turnStartedAt == null) return;
+		if (turnTick !== undefined) clearInterval(turnTick);
+		turnTick = setInterval(() => {
+			if (isCurrent(ctx, epoch)) footerTui?.requestRender();
+		}, 1000);
+		turnTick.unref?.();
+		footerTui?.requestRender();
+	};
+
+	const startFooter = (ctx: ExtensionContext) => {
+		stopFooter();
+		if (!enabled || !isTerminal(ctx)) return;
+		activeContext = ctx;
+		const epoch = generation;
+		compaction = readCompactionConfig(ctx.cwd);
+		applyFooter(ctx, epoch);
+		void refreshGit(ctx, epoch);
+		// One git timer also requests rendering after the refresh completes.
+		timer = setInterval(() => void refreshGit(ctx, epoch), GIT_POLL_MS);
+		timer.unref?.();
+		startTurnTick();
+	};
+
 	pi.on("session_start", async (_event, ctx) => {
 		// A new/resumed/forked session never starts mid-turn.
 		turnStartedAt = null;
-		if (turnTick) {
-			clearInterval(turnTick);
-			turnTick = undefined;
-		}
-		compaction = readCompactionConfig(ctx.cwd);
-		void refreshGit(ctx);
-		timer = setInterval(() => {
-			void refreshGit(ctx);
-		}, GIT_POLL_MS);
-		timer.unref?.();
-		applyFooter(ctx);
+		git = { dirty: 0, ahead: 0, behind: 0 };
+		startFooter(ctx);
 	});
 
 	pi.registerCommand("statusbar", {
 		description: "Toggle the enhanced status bar on/off",
 		handler: async (_args, ctx) => {
+			if (!isTerminal(ctx)) return;
 			enabled = !enabled;
-			applyFooter(ctx);
+			if (enabled) startFooter(ctx);
+			else {
+				stopFooter();
+				ctx.ui.setFooter(undefined);
+			}
 			ctx.ui.notify(enabled ? "Enhanced status bar enabled" : "Default footer restored", "info");
 		},
 	});
 
-	pi.on("before_agent_start", async () => {
-		if (!enabled) return;
+	pi.on("before_agent_start", async (_event, ctx) => {
+		if (!isTerminal(ctx)) return;
+		// Remember a disabled turn's start so enabling mid-turn shows its real age.
 		turnStartedAt = Date.now();
-		if (turnTick) clearInterval(turnTick);
-		turnTick = setInterval(() => footerTui?.requestRender(), 1000);
-		turnTick.unref?.();
-		footerTui?.requestRender();
+		startTurnTick();
 	});
 
-	pi.on("agent_settled", async () => {
+	pi.on("agent_settled", async (_event, ctx) => {
+		if (!isTerminal(ctx)) return;
 		turnStartedAt = null;
-		if (turnTick) {
-			clearInterval(turnTick);
-			turnTick = undefined;
-		}
+		if (turnTick !== undefined) clearInterval(turnTick);
+		turnTick = undefined;
 		footerTui?.requestRender();
 	});
 
 	pi.on("session_shutdown", async () => {
-		if (timer) {
-			clearInterval(timer);
-			timer = undefined;
-		}
-		if (turnTick) {
-			clearInterval(turnTick);
-			turnTick = undefined;
-		}
+		stopFooter();
 		turnStartedAt = null;
 	});
 }

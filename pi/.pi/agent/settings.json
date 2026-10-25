@@ -57,7 +57,7 @@
     "npm:@tintinweb/pi-subagents",
     "npm:pi-web-access",
     "npm:pi-mcp-adapter",
-    "npm:context-mode",
+    "npm:context-mode@1.0.169",
     "npm:pi-hermes-memory",
     "npm:pi-blackhole"
   ],

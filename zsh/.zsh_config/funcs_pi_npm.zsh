@@ -35,7 +35,14 @@ pi-extensions-audit-fix() {
 	emulate -L zsh
 	_pi_npm_dir_check || return 1
 	print -P "%F{blue}==>%f npm audit fix in $PI_NPM_DIR"
-	(cd "$PI_NPM_DIR" && npm audit fix "$@")
+	(cd "$PI_NPM_DIR" && npm audit fix "$@") || return
+	pi-resources-patch
+}
+
+# Reapply the version-checked resource patch after a package reinstall.
+pi-resources-patch() {
+	emulate -L zsh
+	command node "$HOME/dotfiles/scripts/patch-context-mode.mjs" --apply --package-dir "$PI_NPM_DIR/node_modules/context-mode"
 }
 
 # Update pi's extensions, then immediately audit-fix the result -- the
@@ -45,6 +52,6 @@ pi-extensions-audit-fix() {
 pi-extensions-upgrade() {
 	emulate -L zsh
 	command -v pi &>/dev/null || { print -P "%F{red}✗%f pi not found"; return 1 }
-	pi update --extensions
+	pi update --extensions || return
 	pi-extensions-audit-fix
 }

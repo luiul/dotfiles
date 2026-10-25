@@ -1,3 +1,7 @@
 {
-  "workflowsEnabled": false
+  "workflowsEnabled": false,
+  "maxConcurrent": 3,
+  "maxConcurrentForeground": 2,
+  "defaultMaxTurns": 60,
+  "graceTurns": 3
 }

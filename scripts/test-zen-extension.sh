@@ -29,7 +29,7 @@
 
 set -u
 EXT="$(cd "$(dirname "$0")/.." && pwd)/pi/.pi/agent/extensions/zen.ts"
-SESSION="zen-e2e-$$"
+SESSION="ag-zen-e2e-$$"
 DIR=$(mktemp -d "${HOME}/.zen-e2e-XXXXXX")   # NOT under /tmp: the tracker
                                                # hard-excludes temp dirs
 SESSDIR="$HOME/.pi/agent/sessions/--Users-luis-aceituno-.zen-e2e-$$--"
@@ -53,12 +53,12 @@ send() { tmux send-keys -t "$SESSION" "$1" Enter; }
 
 cleanup() {
 	tmux kill-session -t "$SESSION" 2>/dev/null
-	rm -rf "$DIR" "$SESSDIR"
 	if [ "$HAD_CONFIG" = 1 ]; then
 		mv "$BACKUP" "$CONFIG" 2>/dev/null
 	else
 		rm -f "$CONFIG"
 	fi
+	rm -rf "$DIR" "$SESSDIR"
 }
 trap cleanup EXIT
 
@@ -66,7 +66,7 @@ trap cleanup EXIT
 if [ -f "$CONFIG" ]; then HAD_CONFIG=1; cp "$CONFIG" "$BACKUP"; fi
 
 # ─── seed ─────────────────────────────────────────────────────────────────────
-python3 - "$SEED" "$DIR" <<'PYEOF'
+uv run --no-project python - "$SEED" "$DIR" <<'PYEOF'
 import json, sys
 p, cwd = sys.argv[1], sys.argv[2]
 ts = lambda i: f"2026-10-26T00:00:{i:02d}.000Z"
@@ -108,7 +108,7 @@ strip_volatile() {
 say "zen v2 extension E2E (session $SESSION, dir $DIR)"
 
 # ─── 1 + 2: clean start, compact by default ────────────────────────────────
-start_pi "-e $EXT"
+start_pi "-e $EXT --zen"
 if tmux list-sessions 2>/dev/null | grep -q "$SESSION"; then ok "session alive"; else bad "session alive"; fi
 check_not_contains "no startup errors" 'Extension.*(error|failed|cannot)|TypeError|ReferenceError'
 check_contains "successful call visible as one line (\$ ls -la)" '$ ls -la'

@@ -37,13 +37,13 @@ REPEATS="${REPEATS:-7}"
 SESSION="ag-zen-bench-$$"
 DIR=$(mktemp -d "${HOME}/.zen-bench-XXXXXX")   # NOT under /tmp: pi's session
                                                # dir naming derives from cwd
-now_ms() { python3 -c 'import time; print(int(time.time()*1000))'; }
+now_ms() { uv run --no-project python -c 'import time; print(int(time.time()*1000))'; }
 
 variant_args() {
 	case "$1" in
 	bare) echo "--no-extensions" ;;
 	zen1) echo "--no-extensions -e $EXT --zen" ;;
-	zen2) echo "--no-extensions -e $EXT" ;;
+	zen2) echo "--no-extensions -e $EXT --zen" ;;
 	*) echo "unknown variant: $1" >&2; return 1 ;;
 	esac
 }
@@ -54,7 +54,7 @@ seed_file() {
 	local sessdir="$HOME/.pi/agent/sessions/--Users-luis-aceituno-$(basename "$DIR")--"
 	mkdir -p "$sessdir"
 	local seed="$sessdir/2026-10-26T00-00-00-000Z_aaaaaaaa-0000-4000-8000-000000000001.jsonl"
-	python3 - "$seed" "$DIR" <<'PYEOF'
+	uv run --no-project python - "$seed" "$DIR" <<'PYEOF'
 import json, sys
 p, cwd = sys.argv[1], sys.argv[2]
 ts = lambda i: f"2026-10-26T00:00:{i:02d}.000Z"
@@ -160,7 +160,7 @@ done
 
 # ─── report ───────────────────────────────────────────────────────────────────
 stats() { # $1 = results file
-	python3 - "$1" <<'PYEOF'
+	uv run --no-project python - "$1" <<'PYEOF'
 import statistics, sys
 raw = open(sys.argv[1]).read().splitlines()
 vals = sorted(int(l.split()[0]) for l in raw if l.strip() and not l.startswith("TIMEOUT"))

@@ -65,11 +65,12 @@
  * back to its built-in rendering (the block shows native detail). Zen
  * never throws into pi's render path.
  *
- * Overhead: the wrappers run once per updateDisplay pass (per tool event)
- * and do strictly less work than the native previews when collapsed (no
- * output styling, no VisualLinePreview, no highlight-cache rebuild). The
- * decorator adds one function call per painted line. Baselines and
- * targets: luiul/dotfiles#67 (bench harness: scripts/bench-zen-*.ts/sh).
+ * Overhead: completed reads reuse native call formatting; suffix decorators
+ * and empty results are reused. Partial results still delegate to native,
+ * including one final cleanup pass. Unknown expanded output uses one framed
+ * Text like Pi's fallback; registered generic tools keep native fallback slots.
+ * Benchmark actual components with scripts/bench-zen-renderers.ts, including
+ * shared state and deferred invalidation.
  *
  * Scope: interactive fullscreen TUI. In other modes renderers are never
  * invoked, so the extension is inert by construction.
@@ -81,7 +82,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import * as path from "node:path";
-import { Container, Text } from "@earendil-works/pi-tui";
+import {
+	Container, Text, getCapabilities, getImageDimensions, getKeybindings, imageFallback,
+	stripTerminalSequences, visibleWidth as terminalWidth,
+} from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 // ─── config ──────────────────────────────────────────────────────────────────
@@ -248,6 +252,8 @@ export function compactCallText(toolName: string, args: any, theme: any): string
 const STATE_KEY = "zen";
 const CALL_KEY = "zenCall";
 const INFO_KEY = "zenInfo";
+const RESULT_KEY = "zenResult";
+const EMPTY_RESULT = { render: (_width: number): string[] => [], invalidate() {} };
 
 /** The renderer state object pi shares between call and result renderers. */
 function stateOf(ctx: any): Record<string, any> {
@@ -255,9 +261,28 @@ function stateOf(ctx: any): Record<string, any> {
 	return typeof state === "object" && state !== null ? state : {};
 }
 
-/** A zero-row component for collapsed results. */
-function emptyResult(): Container {
-	return new Container();
+/** Store final status once and request its first suffix repaint. */
+function storeFinalInfo(result: any, ctx: any, state: any): void {
+	if (state.zenContent === result.content && state.zenError === ctx.isError &&
+		state.zenDuration === ctx.durationMs && state[INFO_KEY]) return;
+	state.zenContent = result.content;
+	state.zenError = ctx.isError;
+	state.zenDuration = ctx.durationMs;
+	const info = infoFromResult(result, ctx);
+	if (!infoChanged(state[INFO_KEY], info)) return;
+	state[INFO_KEY] = info;
+	setTimeout(() => {
+		try {
+			ctx.invalidate?.();
+		} catch {
+			/* block may be gone */
+		}
+	}, 0);
+}
+
+/** A shared zero-row component for collapsed results. */
+function emptyResult(): typeof EMPTY_RESULT {
+	return EMPTY_RESULT;
 }
 
 /** Plain text result output, the fail-open fallback for native throws. */
@@ -276,17 +301,20 @@ function plainTextResult(result: any, theme: any): Container {
  * appended to the first painted line. handleMouse delegates to the
  * wrapped component so native click regions keep working.
  */
-function decoratedCall(comp: any, suffixFn: () => string): any {
+function decoratedCall(): any {
 	return {
+		comp: undefined as any,
+		suffix: "",
+		suffixWidth: 0,
 		render(width: number): string[] {
-			const suffix = suffixFn();
+			const { comp, suffix, suffixWidth } = this;
 			if (!suffix) return comp.render(width);
 			// Render the native line narrower so the suffix fits inside the
 			// width pi asked for: native renderers pad their lines to the
 			// width given, so appending after a full-width render would push
 			// the suffix past the visible edge (measured: clipped by the
 			// pane before this fix).
-			const budget = Math.max(1, width - visibleWidth(suffix));
+			const budget = Math.max(1, width - suffixWidth);
 			const lines = comp.render(budget);
 			if (lines.length === 0) return lines;
 			return [lines[0] + suffix, ...lines.slice(1)];
@@ -295,13 +323,13 @@ function decoratedCall(comp: any, suffixFn: () => string): any {
 			// pi-tui requires invalidate on every component (MouseRegion
 			// and theme changes call it).
 			try {
-				comp.invalidate?.();
+				this.comp.invalidate?.();
 			} catch {
 				/* fail-open */
 			}
 		},
 		handleMouse(event: any) {
-			return comp.handleMouse?.(event);
+			return this.comp.handleMouse?.(event);
 		},
 	};
 }
@@ -361,12 +389,22 @@ const isCompactResult = (options: { expanded?: boolean }) => filterOn && !(optio
 
 /** Wrap a tool's native renderers with zen's compact behavior. */
 function wrapNative(toolName: string, native: { renderCall?: any; renderResult?: any }): any {
+	const oneLine = NATIVE_ONE_LINE_TOOLS.has(toolName);
+	const nativeResult = (result: any, options: any, theme: any, ctx: any, state: any) => {
+		const component = safeNative(native.renderResult, result, options, theme, {
+			...ctx,
+			lastComponent: state[RESULT_KEY],
+		}) ?? plainTextResult(result, theme);
+		state[RESULT_KEY] = component;
+		return component;
+	};
 	return {
+		...native,
 		renderCall(args: any, theme: any, ctx: any) {
 			rememberInvalidate(ctx);
 			const state = stateOf(ctx);
-			const oneLine = NATIVE_ONE_LINE_TOOLS.has(toolName);
 			if (!isCompact(ctx) && oneLine) {
+				state.zenReadCall = undefined;
 				// Off or expanded: plain native call line. Native throws fall
 				// back to a minimal title line (fail-open), never undefined:
 				// pi's updateDisplay would addChild(undefined).
@@ -392,11 +430,30 @@ function wrapNative(toolName: string, native: { renderCall?: any; renderResult?:
 				// native component is kept and fed back as lastComponent so
 				// its internal reuse (bash timer, path handling) works. A
 				// throw falls back to a minimal title line (fail-open).
-				const comp =
+				const cached = state.zenReadCall;
+				const colors = toolName === "read" ? theme.colors : undefined;
+				// Read args are complete before caching. Key on their values,
+				// since streaming parsers can reuse and mutate an args object.
+				const readKey = toolName === "read" ? JSON.stringify([
+					args?.file_path, args?.path, args?.offset, args?.limit, ctx.cwd,
+				]) : undefined;
+				const reuseRead = toolName === "read" && ctx.argsComplete && colors && cached &&
+					cached.key === readKey && cached.colors === colors;
+				const comp = reuseRead ? state[CALL_KEY] :
 					safeNative(native.renderCall, args, theme, { ...ctx, lastComponent: state[CALL_KEY] }) ??
 					new Text(theme.fg("toolTitle", theme.bold(toolName)), 0, 0);
+				if (toolName === "read" && ctx.argsComplete && colors) {
+					state.zenReadCall = { key: readKey, colors };
+				}
 				state[CALL_KEY] = comp;
-				return decoratedCall(comp, () => suffixFor(state[INFO_KEY], theme));
+				const decorator = state[STATE_KEY] ??= decoratedCall();
+				decorator.comp = comp;
+				const suffix = suffixFor(state[INFO_KEY], theme);
+				if (decorator.suffix !== suffix) {
+					decorator.suffix = suffix;
+					decorator.suffixWidth = terminalWidth(suffix);
+				}
+				return decorator;
 			}
 			// Compact, multi-line native call (write, edit): zen's own line.
 			state[CALL_KEY] ??= new Text("", 0, 0);
@@ -405,16 +462,19 @@ function wrapNative(toolName: string, native: { renderCall?: any; renderResult?:
 			return text;
 		},
 		renderResult(result: any, options: { expanded: boolean; isPartial: boolean }, theme: any, ctx: any) {
-			rememberInvalidate(ctx);
 			const state = stateOf(ctx);
 			if (!isCompactResult(options) || options.isPartial) {
 				// Off, expanded, or still running: native result rendering.
 				// A throw falls back to plain text (fail-open), never
 				// undefined: pi's updateDisplay would addChild(undefined).
-				return (
-					safeNative(native.renderResult, result, options, theme, ctx) ??
-					plainTextResult(result, theme)
-				);
+				state.zenPartialResult = options.isPartial;
+				return nativeResult(result, options, theme, ctx, state);
+			}
+			if (state.zenPartialResult) {
+				// Let the native final pass release resources started by a partial
+				// render. Keep its result slot separate from our empty component.
+				nativeResult(result, options, theme, ctx, state);
+				state.zenPartialResult = false;
 			}
 			// Compact, final result: one line. Success shows nothing below
 			// the call line; failure puts its first line on the call line
@@ -422,67 +482,103 @@ function wrapNative(toolName: string, native: { renderCall?: any; renderResult?:
 			// lets renderCall repaint with the suffix (no synchronous
 			// re-entry into updateDisplay; terminates because the second
 			// pass stores identical info).
-			const info = infoFromResult(result, ctx);
-			if (infoChanged(state[INFO_KEY], info)) {
-				state[INFO_KEY] = info;
-				setTimeout(() => {
-					try {
-						ctx.invalidate?.();
-					} catch {
-						/* block may be gone */
-					}
-				}, 0);
-			}
+			storeFinalInfo(result, ctx, state);
 			return emptyResult();
 		},
 	};
 }
 
-/**
- * Generic renderers for tools without native renderer functions (MCP tools,
- * not-yet-connected servers, unknown tools): bold name plus condensed args,
- * one line; full text output when expanded.
- */
-function genericRenderers(toolName: string): any {
+/** Match native fallback output sanitization and image labels. */
+function genericOutput(result: any, showImages: boolean): string {
+	const content = result.content ?? [];
+	let output = content.filter((c: any) => c.type === "text")
+		.map((c: any) => stripTerminalSequences((c.text || "").replace(/\u009b[0-?]*[ -/]*[@-~]/g, "")).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uFFF9-\uFFFB]/g, "").replace(/\r/g, ""))
+		.join("\n");
+	if (!getCapabilities().images || !showImages) {
+		for (const block of content) {
+			if (block.type !== "image") continue;
+			const dims = block.data && block.mimeType ? getImageDimensions(block.data, block.mimeType) : undefined;
+			const fallback = imageFallback(block.mimeType ?? "image/unknown", dims ?? undefined);
+			output += (output ? "\n" : "") + fallback;
+		}
+	}
+	return output;
+}
+
+function registeredCallText(toolName: string, args: any, theme: any, expanded: boolean): string {
+	const header = theme.fg("toolTitle", theme.bold(toolName));
+	if (args == null) return header;
+	const entries = typeof args === "object" && !Array.isArray(args) ? Object.entries(args) : [["args", args]];
+	if (!entries.length) return header;
+	if (expanded) {
+		const lines = entries.map(([key, value]) => {
+			const text = typeof value === "string" ? value : JSON.stringify(value, null, 2) ?? String(value);
+			return `  ${key}: ${text.replace(/\t/g, "   ").replace(/\r/g, "").split("\n").join("\n    ")}`;
+		});
+		return `${header}\n${theme.fg("muted", lines.join("\n"))}`;
+	}
+	const pairs = entries.map(([key, value]) => `${key}=${JSON.stringify(value) ?? String(value)}`).join(" ");
+	return `${header} ${theme.fg("muted", pairs.length > 100 ? pairs.slice(0, 97) + "..." : pairs)}`;
+}
+
+/** Registered tools use native fallback slots; unknown tools use one Text. */
+function genericRenderers(toolName: string, registered: boolean): any {
+	const background = (theme: any, ctx: any) => (line: string) =>
+		theme.bg(ctx.isPartial ? "toolPendingBg" : ctx.isError ? "toolErrorBg" : "toolSuccessBg", line);
 	return {
+		renderShell: registered ? "default" : "self",
 		renderCall(args: any, theme: any, ctx: any) {
 			rememberInvalidate(ctx);
 			const state = stateOf(ctx);
+			const text = state[CALL_KEY] ??= new Text("", registered ? 0 : ctx.outputPad ?? 1, registered ? 0 : 1);
+			if (!registered) {
+				text.setPaddingX(ctx.outputPad ?? 1);
+				text.setCustomBgFn(background(theme, ctx));
+			}
 			if (!isCompact(ctx)) {
-				// Expanded: the full argument dump like pi's fallback.
-				state[CALL_KEY] ??= new Text("", 0, 0);
-				const text = state[CALL_KEY];
-				text.setText(theme.fg("toolTitle", theme.bold(toolName)) + "\n" + (JSON.stringify(args, null, 2) ?? ""));
+				if (registered) {
+					text.setText(registeredCallText(toolName, args, theme, ctx.expanded));
+					return text;
+				}
+				// Pi's fallback renders args and output in one Text. Use the same
+				// layout, instead of wrapping and padding two separate components.
+				const argsText = JSON.stringify(args, null, 2);
+				state.zenGenericHeader = theme.fg("toolTitle", theme.bold(toolName)) +
+					(argsText ? `\n\n${argsText}` : "");
+				text.setText(state.zenGenericHeader);
 				return text;
 			}
-			state[CALL_KEY] ??= new Text("", 0, 0);
-			const text = state[CALL_KEY];
 			text.setText(compactCallText(toolName, args, theme) + suffixFor(state[INFO_KEY], theme));
 			return text;
 		},
 		renderResult(result: any, options: { expanded: boolean; isPartial: boolean }, theme: any, ctx: any) {
-			rememberInvalidate(ctx);
 			const state = stateOf(ctx);
 			if (!isCompactResult(options)) {
-				const output = result.content
-					?.filter((c: any) => c.type === "text")
-					.map((c: any) => c.text || "")
-					.join("\n");
-				if (!output) return emptyResult();
-				return new Text(theme.fg("toolOutput", output), 0, 0);
+				const output = genericOutput(result, ctx.showImages);
+				if (registered) {
+					const lines = output ? output.split("\n") : [];
+					const shown = options.expanded ? lines : lines.slice(0, 10);
+					let body = shown.map((line: string) => theme.fg("toolOutput", line)).join("\n");
+					const remaining = lines.length - shown.length;
+					if (remaining > 0) {
+						const keys = getKeybindings().getKeys("app.tools.expand").join("/")
+							.replace(/alt/g, process.platform === "darwin" ? "option" : "alt");
+						body += theme.fg("muted", `\n... (${remaining} more lines,`) + " " +
+							theme.fg("dim", keys) + theme.fg("muted", " to expand") + theme.fg("muted", ")");
+					}
+					const text = state[RESULT_KEY] ??= new Text("", 0, 0);
+					text.setText(body);
+					return text;
+				}
+				// renderCall and renderResult share state. Updating the call Text
+				// here avoids a second wrapping pass and a deferred repaint.
+				const text = state[CALL_KEY] ??= new Text("", ctx.outputPad ?? 1, 1);
+				text.setCustomBgFn(background(theme, ctx));
+				text.setText((state.zenGenericHeader ?? "") + (output ? `\n${output}` : ""));
+				return emptyResult();
 			}
 			if (options.isPartial) return emptyResult();
-			const info = infoFromResult(result, ctx);
-			if (infoChanged(state[INFO_KEY], info)) {
-				state[INFO_KEY] = info;
-				setTimeout(() => {
-					try {
-						ctx.invalidate?.();
-					} catch {
-						/* block may be gone */
-					}
-				}, 0);
-			}
+			storeFinalInfo(result, ctx, state);
 			return emptyResult();
 		},
 	};
@@ -506,7 +602,7 @@ export function makeResolver(getFilter: () => boolean): (toolName: string, next:
 			// Definition with a result renderer only: wrap what exists.
 			return wrapNative(toolName, native);
 		}
-		return genericRenderers(toolName);
+		return genericRenderers(toolName, native !== undefined);
 	};
 }
 

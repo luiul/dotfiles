@@ -96,7 +96,10 @@ Key behaviors:
 - Thinking is fully native: the `hideThinkingBlock` setting collapses it, `ctrl+t` peeks per message. Zen v1's thinking code is gone.
 - Toggling: `/zen off` returns `next()` unchanged for new blocks and delegates through the wrappers for existing ones, so the off state is byte-exact native (E2E-verified by a line-for-line parity diff against bare pi). `/zen on` refreshes existing blocks through a registry of per-block `invalidate` closures (public `context.invalidate`), cleared on `session_start`, `session_tree`, and `compaction`.
 - Fail-open: every native delegation is wrapped; if a pi upgrade changes a renderer's shape, pi's own `updateDisplay` catch falls back to its built-in rendering. Never returns `undefined` into pi's `addChild`.
-- Overhead: collapsed renderers do strictly less work than the native previews they replace (measured 8x to 176x cheaper on noisy fixtures, every block 1 row; expanded within 5% of native; startup delta about 37ms; seeded session within noise of bare pi). Numbers and protocol: https://github.com/luiul/dotfiles/issues/67.
+- Streaming cleanup: after a partial native result, Zen runs the final native result renderer once before hiding its output. This lets the renderer stop its timer without Zen reading private timer fields. The native result component stays separate from the compact empty result.
+- Completed reads reuse native call formatting when path, range, working directory, and theme colors are unchanged. Argument and theme changes rebuild the call. The suffix decorator and empty result are reused.
+- Generic output keeps two native fallback shapes: registered tools use call and result slots; unknown tools use one framed `Text`. Expanded and toggle-off views are checked against both native shapes, including terminal escape cleanup and image labels.
+- Performance checks use actual Pi components, shared renderer state, deferred invalidation, and the same Node runtime as Pi. In seven rotated trials, completed reads took 4.28 µs versus 11.69 µs for bare Pi. Expanded unknown output took 26.06 µs versus 25.10 µs; registered generic output took 69.96 µs versus 69.11 µs. Real TUI startup and streaming remained comparable, with run variation. Three idle checks showed no terminal writes after streaming tools finished. Measurements: https://github.com/luiul/dotfiles/issues/75, https://github.com/luiul/dotfiles/issues/76, and https://github.com/luiul/dotfiles/issues/77.
 - Scope: interactive TUI. In other modes the renderers are never invoked, so the extension is inert by construction. Transcript search finds all blocks (nothing is hidden).
 
 Commands and keys: `/zen [on|off]`, shortcut `ctrl+alt+t` (`ctrl+shift+t` is taken by `app.session.tree`). The state persists in `~/.pi/agent/zen.json` (default on); `--zen` / `--no-zen` force it for one session without persisting.
@@ -104,10 +107,11 @@ Commands and keys: `/zen [on|off]`, shortcut `ctrl+alt+t` (`ctrl+shift+t` is tak
 Verification from the repository root:
 
 ```sh
-bun scripts/test-zen-extension.ts   # 73 checks: config, formatting, resolver, wrappers, registry
-scripts/test-zen-extension.sh       # real pi E2E in tmux (seeded, no LLM; ZEN_E2E_LIVE=1 adds one live turn)
-bun scripts/bench-zen-renderers.ts  # micro-benchmark: zen vs native renderers
-scripts/bench-zen-startup.sh       # startup and seeded-session wall clock
+bun scripts/test-zen-extension.ts  # 76 checks with fake native renderers
+bun scripts/test-zen-components.ts # 29 checks with real Pi components
+scripts/test-zen-extension.sh      # real Pi E2E in tmux, seeded with no LLM
+node scripts/bench-zen-renderers.ts 2000 7 # actual components, rotated trials
+scripts/bench-zen-startup.sh startup bare zen1 # startup wall clock, forced Zen on
 ```
 
 The E2E asserts: compact start (success one line with suffix, failure one line with error text, native thinking label), native `ctrl+o` expand and collapse, `/zen` off restoring the native transcript, `/zen` on again, `/reload` keeping compact mode, and a line-for-line parity diff between a `--no-zen` capture and a bare-pi capture of the same seeded session. Design and decision history: https://github.com/luiul/dotfiles/issues/67.

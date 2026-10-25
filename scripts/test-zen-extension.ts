@@ -320,8 +320,9 @@ const mkCtx = (extra: Record<string, unknown> = {}) => ({
 	const g = makeResolver(() => true)("mcp__kb__search", () => undefined);
 	const ctx = mkCtx();
 	const call = g.renderCall({ query: "find docs" }, theme, ctx);
-	const line = stripAnsi((call?.render?.(80) ?? [""])[0]);
-	check("generic compact call one line", (call?.render?.(80) ?? []).length === 1 && line.includes("find docs"), line);
+	const lines = (call?.render?.(80) ?? []).filter((line: string) => stripAnsi(line).trim());
+	const line = stripAnsi(lines[0] ?? "");
+	check("generic compact call one content line", lines.length === 1 && line.includes("find docs"), line);
 	const res = g.renderResult(
 		{ content: [{ type: "text", text: "result text" }] },
 		{ expanded: false, isPartial: false },
@@ -329,13 +330,46 @@ const mkCtx = (extra: Record<string, unknown> = {}) => ({
 		mkCtx(),
 	);
 	check("generic collapsed result zero rows", (res?.render?.(80) ?? []).length === 0);
+	const expandedCtx = mkCtx({ expanded: true });
+	const expandedCall = g.renderCall({ query: "find docs" }, theme, expandedCtx);
 	const expanded = g.renderResult(
 		{ content: [{ type: "text", text: "result text" }] },
 		{ expanded: true, isPartial: false },
 		theme,
-		mkCtx(),
+		expandedCtx,
 	);
-	check("generic expanded result has output", stripAnsi((expanded?.render?.(80) ?? []).join("\n")).includes("result text"));
+	check("generic expanded result shares call Text", (expanded?.render?.(80) ?? []).length === 0 &&
+		stripAnsi(expandedCall.render(80).join("\n")).includes("result text"));
+}
+
+console.log("native final result cleanup");
+{
+	let partialComponent: unknown;
+	let finalCalls = 0;
+	let reusedPartial = false;
+	const cleanupNative = {
+		renderCall: native.renderCall,
+		renderResult(_result: any, options: any, _theme: any, ctx: any) {
+			if (options.isPartial) {
+				partialComponent = { render: () => ["partial"], invalidate() {} };
+				return partialComponent;
+			}
+			finalCalls++;
+			reusedPartial = ctx.lastComponent === partialComponent;
+			return partialComponent;
+		},
+	};
+	const w = makeResolver(() => true)("bash", () => cleanupNative);
+	const ctx = mkCtx();
+	w.renderCall({ command: "stream" }, theme, ctx);
+	w.renderResult({ content: [{ type: "text", text: "partial" }] }, { expanded: false, isPartial: true }, theme, ctx);
+	const result = { content: [{ type: "text", text: "done" }] };
+	const final = w.renderResult(result, { expanded: false, isPartial: false }, theme, { ...ctx, durationMs: 500 });
+	w.renderResult(result, { expanded: false, isPartial: false }, theme, { ...ctx, durationMs: 500, lastComponent: final });
+	check("native final cleanup runs exactly once", finalCalls === 1);
+	check("native final cleanup reuses partial component", reusedPartial);
+	check("cleanup result stays hidden", final.render(80).length === 0);
+	await sleep(10);
 }
 
 // ─── registry + lifecycle handlers ───────────────────────────────────────────

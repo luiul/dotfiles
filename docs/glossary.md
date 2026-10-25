@@ -40,6 +40,18 @@ In the pi TUI, a layout layer is a wrap builder: it receives the inner root comp
 
 Source: `pi/.pi/agent/extensions/split/split-layout.ts` (header comment) and `pi/.pi/agent/extensions/README.md`.
 
+## transcript filter
+
+The `zen` extension's filter for bare pi's transcript: one toggle hides successful tool calls and collapses thinking blocks to pi's native dim `Thinking...` label, leaving prompts, answers, bash `!` blocks, and failed tool calls visible (errors are signal). Toggling off restores the byte-exact native transcript, because zen never replaces pi's renderers: it flips the same visibility fields pi's own toggles use (`setHideThinkingBlock` on assistant components, `hideComponent` on tool components). Hidden rows never paint, so noise-heavy turns cost no more than bare pi (measured, within noise), and the transcript keeps full width, so pi keeps its painter fast path.
+
+Source: `pi/.pi/agent/extensions/zen.ts` and https://github.com/luiul/dotfiles/issues/67.
+
+## zen toggle
+
+The switch for the transcript filter: `/zen [on|off]` or `ctrl+alt+t`. The state persists in `~/.pi/agent/zen.json` (default on); `--zen` and `--no-zen` force it for one session without persisting. While the filter is on, transcript search cannot find hidden rows; toggle off to inspect. Native `ctrl+t` (thinking only) keeps working independently.
+
+Source: `pi/.pi/agent/extensions/zen.ts`.
+
 ## harvest
 
 The local Business Impact database for Jira tickets and GitHub PRs: DuckDB + Apache Iceberg stored under `~/.harvest/` (repo: `~/projects/personal/harvest`, CLI: `harvest`). Harvest is the source of truth for all six impact fields; the Jira ticket and the GitHub PR are projections. Jira and GitHub are the sources of truth for lifecycle, which `harvest sync` ingests.

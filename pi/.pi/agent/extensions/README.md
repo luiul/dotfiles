@@ -84,6 +84,29 @@ bun scripts/test-filechanges-extension.ts
 
 The script drives the real extension with a stubbed ExtensionAPI against a real temp git repo: accumulation across prompts, revert detection, bash-driven changes, bash changes outside the cwd repo via path sniffing (other repos, non-repo dirs, `cd` + relative redirects), the 8-row cap, Clear semantics, reload-restore with HEAD re-capture, Round/All mode toggling (command and `/filechanges` view args), malformed-entry handling, Repo state annotation (unstaged -> staged -> committed across real `git add`/`git commit` bash calls, untracked for created files, no word for non-repo files, refresh-point timing, restore recompute), and semantic colors plus header totals (via a recording theme). A live check additionally runs `pi --no-extensions -e ~/.pi/agent/extensions/filechanges.ts --thinking off -p '<prompt that creates a file>'` and confirms a `filechanges:session-set` custom entry lands in the session jsonl. The script needs the pi-coding-agent package resolvable; a gitignored `node_modules` symlink to the global install covers that.
 
+## Transcript filter (`zen.ts`)
+
+`zen.ts` filters the noise out of bare pi's transcript: one toggle hides successful tool calls and collapses thinking to pi's own dim `Thinking...` label (click to expand still works). Failed tool calls stay visible, because errors are signal. Toggling off restores the byte-exact native transcript.
+
+Key behaviors:
+
+- Zero-overhead design: no layout change (the transcript keeps full width, so pi keeps its painter fast path), a widget that only captures the TUI handle and renders nothing, and hidden rows that never paint, so noisy turns cost LESS than bare pi (measured, issue #67). Event walks are idempotent and mostly no-ops; steady state during streaming is zero walks per delta.
+- Native-first mechanics: zen never replaces pi's renderers. It flips the same fields pi's own toggles use: `AssistantMessageComponent.setHideThinkingBlock` (what `ctrl+t` uses) and `ToolExecutionComponent.hideComponent` (pi's render returns zero rows for a hidden block). A `registerToolRenderer` design was prototyped and rejected: toggle-off could not restore the native shell fidelity, and `isError` does not reach `renderResult`.
+- Event wiring is forced by pi internals (verified 2026-10-26): `updateDisplay` resets `hideComponent` on every tool update, so zen re-applies on `tool_execution_start/update/end`; branch switches, compaction, `/reload`, and resume rebuild the transcript, so zen re-applies on `session_tree`, `compaction`, and `session_start`; new assistant components are built with the settings' thinking flag, so zen re-applies on `message_start/update` until the component is marked.
+- Fail-open: every internals reach-in is duck-typed and wrapped. If a pi upgrade changes component shapes, filtering silently stops (content stays visible) and never crashes; the E2E trips loudly so the drift is noticed.
+- Scope: fullscreen TUI only (`tuiMode: fullscreen`); other modes are dormant. Transcript search cannot find rows hidden while filtered (toggle off to inspect). Native `ctrl+t` (thinking only) keeps working; if both are used, zen wins for new messages on the next event walk.
+
+Commands and keys: `/zen [on|off]`, shortcut `ctrl+alt+t` (`ctrl+shift+t` is taken by `app.session.tree`). The state persists in `~/.pi/agent/zen.json` (default on); `--zen` / `--no-zen` force it for one session without persisting.
+
+Verification from the repository root:
+
+```sh
+bun scripts/test-zen-extension.ts   # config strict typing, walk, error rule
+scripts/test-zen-extension.sh       # real pi E2E in tmux (one tiny LLM call)
+```
+
+The E2E asserts: filtered start (no tool ink, native thinking label, failed call visible), `/zen` off restoring the native transcript, `/zen` on again, a line-for-line parity diff between a `--no-zen` capture and a bare-pi capture of the same seeded session, `/reload` keeping the filter, and one live tool turn staying hidden. Design and decision history: https://github.com/luiul/dotfiles/issues/67.
+
 ## Split view
 
 `split/` is our own split layout, built after trying [Hugo-W/pi-split-view](https://github.com/Hugo-W/pi-split-view) (uninstalled once this replaced it). One adjustable vertical split: the left column is the full transcript (or a response-only view), the right column stacks Thinking, Tools, and File Changes. The File Changes panel is the biggest by design (45% of the right column rows by default) because it is the most useful section.

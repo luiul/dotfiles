@@ -12,12 +12,6 @@
       "lifecycle": "lazy",
       "directTools": false
     },
-    "drawio": {
-      "type": "http",
-      "url": "https://mcp.draw.io/mcp",
-      "lifecycle": "lazy",
-      "directTools": false
-    },
     "playwright": {
       "command": "npx",
       "args": [

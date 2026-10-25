@@ -114,12 +114,21 @@ upgrade-tools() {
 	}
 }
 
+# cod: change directory with the configured cd, then open VS Code.
+# With no arguments, skip cd and its hooks and open the current directory.
+cod() {
+	if (( $# )); then
+		cd "$@" || return
+	fi
+	command code .
+}
+
 # Loaded once, imports only zf_rm (not a global rm override) so temp-file
 # cleanup in piw() below doesn't fork an external rm process.
 zmodload -F zsh/files b:zf_rm 2>/dev/null
 
 # piw: open a new Ghostty window running pi, wherever `cd <args>` lands.
-# cod() replacement for agentic workflows (pi in a terminal, no VS Code).
+# Terminal alternative to cod (pi instead of VS Code).
 #
 # `cd "$@"` (no `--`, current shell) goes through the zoxide-backed `cd`
 # wrapper, so `piw dot` resolves like `cd dot` does and the dir change

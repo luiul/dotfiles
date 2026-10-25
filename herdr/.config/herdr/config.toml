@@ -1,0 +1,21 @@
+onboarding = false
+
+# Worktree shortcuts use wt through the Worktrunk plugin, not native Git creation.
+# Ctrl+B, then Shift+G opens the switch/create picker.
+# Ctrl+B, then Shift+D opens the removal picker, with wt's safety checks.
+[keys]
+new_worktree = ""
+open_worktree = ""
+remove_worktree = ""
+
+[[keys.command]]
+key = "prefix+shift+g"
+type = "plugin_action"
+command = "worktrunk.open"
+description = "Create or open worktree with wt"
+
+[[keys.command]]
+key = "prefix+shift+d"
+type = "plugin_action"
+command = "worktrunk.remove"
+description = "Remove worktree with wt"

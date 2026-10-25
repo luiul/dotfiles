@@ -168,11 +168,11 @@
     // resource model. With autorefresh off, file events never trigger git status, the
     // model goes stale, and the button disappears until a window reload.
     "git.autorefresh": true,
-    // Load-bearing, not cosmetic: dashkit's mycelium (canopy, understory) and coppice match
-    // VS Code windows by parsing this title. Contract: the opened folder's full path before
-    // the first " — " (${separator}), branch after it and never matched. ${rootPath}
-    // tilde-collapses ("~/dotfiles — main"). Change the template and window switching breaks.
-    // Needs a Code restart: the symlinked settings file is not watched (microsoft/vscode#24739).
+    // Coppice's read-only deletion warnings identify manually opened VS Code windows
+    // by this title. Contract: the folder's full path precedes ${separator}; the branch
+    // follows it and is never matched. ${rootPath} shortens HOME to ~.
+    // Keep this template so deletion warnings can identify the worktree correctly.
+    // A Code restart may be needed for symlinked settings (microsoft/vscode#24739).
     "window.title": "${rootPath}${separator}${activeRepositoryBranchName}",
     // === GitHub Settings ===
     "githubPullRequests.remotes": [

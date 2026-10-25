@@ -109,8 +109,10 @@ Work in two modes: planning and execution. Pick the mode from the request.
 
 - Worktree lifecycle is owned by [worktrunk](https://worktrunk.dev) (`wt`), configured in `~/dotfiles/worktrunk/.config/worktrunk/config.toml`.
 - To create or switch a worktree as an agent: `WORKTRUNK_AGENT=1 wt switch --create <branch> --no-cd --yes --format json`
-- The env var skips only the VS Code window. All setup hooks still run (venv symlink, copy-ignored, known-repos registry, AGENTS.md links), so the worktree stays a normal registered worktree visible in `cop list` and understory.
-- `cop new` does not open a VS Code window by default (pass `--open`/`-o` to open one), so it is safe for agents too. Never use raw `git worktree add` (skips hooks and registry).
+- Worktree creation does not open an editor. All setup hooks still run (venv symlink, copy-ignored, known-repos registry, AGENTS.md links), so the worktree remains visible in `cop list` and understory. `WORKTRUNK_AGENT=1` remains in agent invocations for compatibility, not as an editor gate.
+- `cop new` is safe for agents too. Never use raw `git worktree add` (skips hooks and registry). Luis opens VS Code manually with Cmd+E inside pi when he needs an editor.
+- Canopy and understory only open or reuse Ghostty windows through the existing window-title matcher.
+- Herdr uses the Worktrunk plugin for worktree creation and removal. Native `herdr worktree create/remove` and sidebar context-menu creation bypass wt hooks. Inside Herdr, wt's post-switch hook opens linked checkouts in the calling session without changing focus. Close a worktree workspace before removing its checkout through coppice or wt; external removal does not close it automatically.
 - For repos managed by wt, never create worktrees through Orca (`orca worktree create` or New Workspace in the UI): Orca-native worktrees bypass every wt hook, land off wt's path template, and `cop` flags them as mismatched (`cop relocate` moves them, `cop clean` can sweep them). Orca watches and runs agents in wt-created worktrees; wt creates and removes them.
 
 ## Model Choice

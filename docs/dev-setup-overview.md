@@ -86,8 +86,10 @@ Why centralized at all (vs sibling-of-repo, the worktrunk default, or nested-ins
 
 1. `venv` — symlink `.venv` from the main repo (shared across all worktrees of that repo; venvs can't be copied, only shared or rebuilt)
 2. `copy` — `wt step copy-ignored --force`: reflinks every other gitignored file (dbt_packages/, .env, local config overrides) from the main repo, instant via copy-on-write
-3. `vscode` — opens a new VS Code window at the worktree
-4. `registry` — appends the repo path to `~/.cache/wt/known-repos`, deduped (this is what lets `wtx clean`/`wtx list`/`wtx remove` — see below — discover repos from anywhere)
+3. `registry`: appends the repo path to `~/.cache/wt/known-repos`, with duplicates removed. Coppice and understory use this to discover repos from anywhere.
+4. `agents-md`: links the main checkout's inherited AGENTS.md and CLAUDE.md files into the worktree owner directory.
+
+Worktree creation does not open VS Code. Cmd+E inside pi opens the session's working directory when you need an editor. Canopy and understory open or reuse Ghostty windows through title matching.
 
 ### Global pre-remove hooks (fire when a worktree is *removed*)
 
@@ -124,7 +126,6 @@ sequenceDiagram
   WtxNew->>wt: wt switch --create branch
   wt->>Hooks: run post-start
   Hooks->>Hooks: venv symlink, copy-ignored
-  Hooks->>Hooks: code -n (open VS Code)
   Hooks->>Hooks: append to known-repos registry
   wt-->>You: worktree ready
 

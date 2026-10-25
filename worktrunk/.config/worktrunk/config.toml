@@ -9,8 +9,8 @@
 # the repository root. For a linked worktree it follows the worktree's `.git` pointer and
 # `commondir` back to the main checkout, so all linked worktrees share the main repo bucket
 # regardless of where the worktree lives on disk. Outside Git, it falls back to basename(cwd),
-# so the repo-as-leaf layout keeps that fallback consistent too. VS Code's title bar (below)
-# carries the branch distinction, since the folder name no longer does.
+# so the repo-as-leaf layout keeps that fallback consistent too. Ghostty window titles
+# carry the branch distinction, since the folder name no longer does.
 # `owner` comes from the repo's remote URL (github.com/<owner>/<repo>), so it is UNDEFINED
 # for remote-less repos and the template fails to expand there. `default('local')` buckets
 # those under ~/worktrees/local/ instead (today only ~/projects/hellofresh/research and
@@ -57,28 +57,14 @@ git fetch origin "{{ default_branch }}:{{ default_branch }}" || true
 [step.copy-ignored]
 exclude = [".venv/", ".DS_Store"]
 
-# Symlink .venv (shared, handled separately), copy other gitignored files (.vscode/settings.json,
-# .env, etc.) via reflink, open the new worktree in VS Code (opt-out per invocation, see the
-# vscode hook below), and register the repo so `coppice list`
-# (or `coppice remove`) can find its worktrees later from anywhere.
+# Symlink .venv, copy other gitignored files (.env, local settings, etc.) via reflink,
+# and register the repo so coppice and understory can find its worktrees from anywhere.
+# Worktree creation never opens an editor. Use Cmd+E inside pi when you need VS Code.
 # The venv link is guarded on the target existing: repos without a venv (e.g. research) would
 # otherwise get a dangling symlink, since ln -sfn never checks.
 [post-start]
 venv = '[ -d "{{ repo_path }}/.venv" ] && ln -sfn {{ repo_path }}/.venv {{ worktree_path }}/.venv || true'
 copy = "wt step copy-ignored --force"
-# Opening a window is opt-out for `wt` itself and opt-in for `coppice`: a plain human
-# `wt switch` still opens one, while `cop new` passes WORKTRUNK_NO_OPEN=1 (hooks inherit
-# the parent environment) so it does not steal focus, and drops it on `cop new --open` to
-# open one. Agent mode (https://github.com/luiul/dotfiles/issues/23) stays as is: when
-# WORKTRUNK_AGENT=1 is in wt's environment, skip only the VS Code window, venv, copy,
-# registry, and agents-md still run, so the worktree is fully set up and registered.
-# Supported headless invocations for pi and other agents:
-#   WORKTRUNK_AGENT=1 wt switch --create <branch> --no-cd --yes --format json
-#   cop new <path> --branch <branch> --yes
-# Never raw `git worktree add` (skips all hooks, including the known-repos registration that
-# `cop list` and understory depend on).
-# The `[ -n ... ] ||` guards short-circuit to exit 0 when skipping, so wt logs no failure.
-vscode = '[ -n "$WORKTRUNK_AGENT" ] || [ -n "$WORKTRUNK_NO_OPEN" ] || code -n {{ worktree_path }}'
 registry = "mkdir -p ~/.cache/wt && echo '{{ repo_path }}' >> ~/.cache/wt/known-repos && sort -u -o ~/.cache/wt/known-repos ~/.cache/wt/known-repos"
 # pi/Claude discover AGENTS.md/CLAUDE.md by walking up from cwd to the filesystem root,
 # concatenating every match along the way. From the main checkout ({{ repo_path }}, e.g.
@@ -113,6 +99,12 @@ for name in AGENTS.md CLAUDE.md; do
   [ -n "$found" ] && ln -sf "$found" "$owner_dir/$name"
 done
 '''
+# Both new and existing checkouts opened by wt or coppice appear in the calling
+# Herdr session, without moving focus. No server is started outside Herdr.
+# A stale server cannot block switching. Failures are reported in the hook log.
+[post-switch]
+herdr = 'if [ "$HERDR_ENV" = 1 ] && [ -n "$HERDR_SOCKET_PATH" ]; then herdr-wt-open {{ repo_path }} {{ worktree_path }} || true; fi'
+
 # Refuse to remove protected branches. pre-* hooks abort on non-zero exit.
 [pre-remove]
 protect = '''

@@ -1,0 +1,6 @@
+# Native worktree workspaces keep each checkout grouped under its repo in the sidebar.
+open_mode = "workspace"
+picker_placement = "split"
+slugify_new_branches = false
+show_remote_branches = false
+hold_on_success = false

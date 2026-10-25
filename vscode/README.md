@@ -1,38 +1,16 @@
 # VS Code
 
-Stows `settings.json`, `keybindings.json`, and `extensions.json` (recommendations) into
-`~/Library/Application Support/Code/User/`, and the local WT Hop extension into
-`~/.vscode/extensions/` (see below).
+Stows `settings.json`, `keybindings.json`, and `extensions.json` (recommendations) into `~/Library/Application Support/Code/User/`.
+
+VS Code is a manual editor. Cmd+E inside pi opens that session's working directory. Worktree creation does not open an editor. Canopy and understory open or reuse Ghostty windows through title matching.
 
 Installed extensions are tracked in the Brewfile (`vscode "..."` entries). The pre-commit
 hook regenerates the Brewfile from the live system via `brew bundle dump --force`, so
 uninstalling an extension locally removes it from the Brewfile on the next commit.
 
-The `window.title` setting (`settings.json`) is load-bearing, not cosmetic: dashkit's
-mycelium (canopy, understory) and coppice identify windows by it. Parse contract: the
-opened folder's full path before the first ` — `, branch after it and never matched.
-See the setting's own comment for the details.
+The `window.title` setting remains important for coppice's read-only deletion warnings. It identifies manually opened folders by their full path before the first separator. The branch portion is never matched. Canopy and understory do not use VS Code for navigation.
 
-## WT Hop (local extension)
-
-`.vscode/extensions/local.wt-hop-0.2.0/` stows into `~/.vscode/extensions/`, so it loads
-like any marketplace extension but the source lives here. `wtHop.switch` (bound to
-`alt+cmd+h`) lists every repo from the worktrunk known-repos registry
-(`~/.cache/wt/known-repos`) plus all their git worktrees (via `git worktree list
---porcelain` per repo), adds the pick to the workspace, and lands in that folder's
-terminal. Workspace changes are append-only: index 0 never changes, so no window
-reload and no extension host restart. Terminal reuse follows jump-back-into-session
-semantics: an existing terminal named `repo:branch` (or with that cwd) is focused,
-otherwise a new one is created. One pi session per worktree, reused across hops.
-`wtHop.refresh` clears the 15s candidate cache after worktree churn. One exception to
-the no-reload rule: the first hop from an empty window (0 to 1 folder) enters a
-workspace and reloads, which is rare and harmless.
-
-Known Brewfile quirk: `code --list-extensions` reports `local.wt-hop`, so the
-pre-commit `brew bundle dump` writes `vscode "local.wt-hop"` into the Brewfile. On a
-fresh machine `brew bundle` tries to install it from the marketplace and fails
-(non-fatal); the stowed copy is the real install. Keep the entry or filter it in the
-hook later.
+The local WT Hop extension and its Alt+Cmd+H binding have been removed. Agent and worktree navigation no longer uses VS Code terminals.
 
 ## Draw.io Diagrams
 

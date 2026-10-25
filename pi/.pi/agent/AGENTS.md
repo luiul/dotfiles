@@ -111,6 +111,7 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - To create or switch a worktree as an agent: `WORKTRUNK_AGENT=1 wt switch --create <branch> --no-cd --yes --format json`
 - The env var skips only the VS Code window. All setup hooks still run (venv symlink, copy-ignored, known-repos registry, AGENTS.md links), so the worktree stays a normal registered worktree visible in `cop list` and understory.
 - `cop new` does not open a VS Code window by default (pass `--open`/`-o` to open one), so it is safe for agents too. Never use raw `git worktree add` (skips hooks and registry).
+- For repos managed by wt, never create worktrees through Orca (`orca worktree create` or New Workspace in the UI): Orca-native worktrees bypass every wt hook, land off wt's path template, and `cop` flags them as mismatched (`cop relocate` moves them, `cop clean` can sweep them). Orca watches and runs agents in wt-created worktrees; wt creates and removes them.
 
 ## Model Choice
 

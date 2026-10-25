@@ -10,7 +10,34 @@ Stably's Orca (https://onorca.dev), installed as a Homebrew cask (`stablyai/orca
 
 ## Worktree ownership
 
-Worktrees created by Orca live under `~/.orca` and are managed by Orca, deliberately bypassing worktrunk. Do not point Orca's native worktree flow at repos registered in worktrunk (`wt`) or add Orca-created worktrees to the worktrunk registry — two managers on one repo gets confusing. Test repos only.
+Creation and removal of worktrees are owned by worktrunk (`wt`) and coppice (`cop`), including for repos registered in Orca. Orca is the watching and agent layer: it auto-discovers wt-created worktrees of a registered repo and runs pi terminals in them. Verified with a live throwaway-repo test (2026-10-25): `cop list` flags an Orca-native worktree as mismatched, `cop relocate` would move it away from Orca's registry path, and `cop clean` can sweep it.
+
+- Never use Orca's native flow (`orca worktree create`, New Workspace in the UI) on repos registered in wt. Orca-native worktrees land under `~/orca/workspaces` (off wt's path template), skip every wt hook (venv symlink, copy-ignored, AGENTS.md links, registry, default-branch freshen), and become destructive interference for `cop relocate` and `cop clean`.
+- Remove worktrees through `wt remove` / `cop remove` only. Orca's delete on a wt-created worktree skips wt's protected-branch guard and the parent-dir prune hook.
+- Register a repo for watching with `orca repo add --path <main checkout>`, then `orca repo set --repo path:<main checkout> --external-worktree-visibility show`. The global default stays `hide`, so throwaway test repos stay out of the sidebar; per-repo `show` marks the wt-managed ones (dotfiles and canopy today).
+- Orca's own worktree flow remains fine for throwaway test repos that are never registered in wt.
+
+## Watch a repo from the terminal
+
+`orca-watch` (alias `owa`) registers the main checkout and shows its external worktrees. It does not create worktrees, launch agents, or change your directory. Orca must be running. The helper needs `git`, `orca`, and `jq`.
+
+```zsh
+# Pass a repo path from anywhere.
+owa ~/projects/personal/canopy
+orca-watch "/path/to/my repo"
+
+# Omit the path inside a repo, subdirectory, or linked worktree.
+owa
+
+# Relative paths work too.
+owa ../canopy
+```
+
+Both names complete directory paths with Tab. Linked worktrees resolve to the main checkout. Repeated calls keep the same repo registered and set its external worktree visibility to `show`. An invalid path or an Orca error stops the command without a success message. If registration succeeds but setting visibility fails, the repo stays registered. Run the command again after fixing the error.
+
+The function lives in `zsh/.zsh_config/funcs_orca.zsh`. Completion lives in `zsh/.zfunc/_orca-watch`. Run `zsh -f scripts/test-orca-watch.zsh` to check path handling and failure cases without changing your Orca registrations.
+
+Before deleting a disposable registered repo, close its terminal tabs with `orca terminal close --worktree path:<checkout> --all --json`. Removing its project setup can leave terminal tabs and resume records behind. If the repo is already gone, find the exact stale handle in `orca terminal list --json` and close only that tab with `orca terminal close --terminal <handle> --tab --json`.
 
 ## Per-repo worktree sharing
 

@@ -1,0 +1,3 @@
+#compdef orca-watch owa
+
+_arguments '1:repo directory:_files -/'

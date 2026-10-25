@@ -25,12 +25,16 @@ Without arguments, the command is read-only. `--dry-run` is also read-only. `str
 Each candidate must have the current user's UID and PPID 1. Matching uses the executable from `ps comm`, not words inside a command. The final check reads PID, UID, start time, executable, and classification again before each signal.
 
 - `gitstatusd` must use `~/.cache/gitstatus/gitstatusd-darwin-<architecture>` as its executable.
-- A context-mode bridge must use a known Node or Bun executable. Its first script argument must be the absolute `~/.pi/agent/npm/node_modules/context-mode/server.bundle.mjs` path. Other bundles do not match.
-- Zsh must use a known Zsh executable, have no tty, and be at least 600 seconds old. It must be interactive or a login shell. `-c`, script operands, stdin scripts, and ambiguous arguments do not match. Detached noninteractive scripts stay untouched.
+- A context-mode bridge must use a known Node or Bun executable. Its normalized full command must be that runtime followed by the exact absolute `~/.pi/agent/npm/node_modules/context-mode/server.bundle.mjs` path. Extra flags or arguments do not match. Paths with embedded spaces are ambiguous in `ps` output and stay untouched.
+- Zsh must use a known Zsh executable, have no tty, and be at least 600 seconds old. A simple option group must contain an explicit `i`, such as `-i` or `-il`. Login-only `/bin/zsh -l` and `-zsh` do not prove interactivity and stay untouched. `-c`, script operands, stdin flags, and ambiguous arguments do not match. Detached noninteractive stdin scripts stay untouched.
 
 The engine records PID, UID, start time, classification, and the time of a successful TERM. It sends KILL only after at least 900 seconds of grace. Failed TERM does not start grace. Successful KILL stays recorded until that process identity disappears. PID reuse starts a new TERM cycle, never an inherited KILL.
 
+Successful signal timestamps use the latest observed time before or after the signal. A backward clock step cannot record TERM before process start, or KILL before TERM plus grace. Grace checks still use the current clock, never a forward-clamped clock. Clock rollback can delay escalation, but cannot shorten recorded grace. Failed signals do not change successful TERM or KILL state.
+
 State is private JSON in `~/.cache/reap-strays/state.json`. Writes use a private temporary file, fsync, and atomic rename. A directory lock serializes apply runs. Its private `owner.json` records PID, UID, and start time. Recovery needs two process reads that prove the original owner is gone, plus unchanged lock identity and metadata. Reused PIDs do not preserve a dead owner's lock. Live, unreadable, or ambiguous owners prevent recovery.
+
+Handled owner-file open, write, or fsync failures remove only the new lock directory and this run's partial owner file. Cleanup checks device, inode, and owner content. Changed directories, replaced owner files, foreign contents, and concurrent files stay untouched. A retry can acquire the lock after the filesystem recovers.
 
 A short-lived `lock-recovery` directory serializes stale-lock recovery. A crash before owner metadata is saved, or during recovery, can leave an ambiguous lock. These locks fail closed and need manual recovery. Verify no apply or registration run is active before removing `lock/owner.json`, `lock`, or `lock-recovery` under `~/.cache/reap-strays/`. Never remove a lock just because it is old.
 
@@ -64,16 +68,20 @@ Missing marks, unreadable owners, active deadlines, shared windows, and attached
 
 New events use `~/.cache/reap-strays/events.log`. They contain metadata only, never process arguments. Files use mode 600 inside a mode 700 directory. Rotation keeps the current log and three backups, each at most 256 KiB. The report shows only safe fields from recent events. It does not print old `~/.cache/strays.log` or `~/.cache/zsh-orphan.log` entries.
 
-Run the isolated fixture tests and a live dry run:
+Run the isolated fixture tests and live integration:
 
 ```sh
 node scripts/test-reap-strays.mjs
+node scripts/test-reaper-live.mjs
 zsh -n macos/.local/bin/reap-strays zsh/.zsh_config/funcs_strays.zsh
 plutil -lint macos/Library/LaunchAgents/com.luisaceituno.reap-strays.plist
-~/.local/bin/reap-strays --dry-run --report
 ```
 
-The tests inject process reads, time, signals, files, and tmux calls. They never signal real processes or kill real sessions. BSD `ps` exposes start time only to the second. The last read narrows races but cannot remove the small interval between verification and a signal. Ambiguous input fails closed.
+Unit fixtures inject process reads, time, signals, files, and tmux calls. They cover login-only shells, ambiguous bundle paths, lock initialization failures, concurrent lock changes, backward clocks, failed signals, and PID reuse. They never signal real processes or kill real sessions.
+
+Live integration uses a private tmux socket and test-owned processes with a 30-second cleanup deadline. Real shell and Node command lines use synthetic orphan age and parent metadata, with spy signals only. Login-only shells still execute their stdin scripts. The tmux checks keep expired tasks with a live owner, then remove only the isolated session after its owner exits. Cleanup waits for test-owned children to exit. These checks do not change the installed watchdog.
+
+BSD `ps` exposes start time only to the second. The last read narrows races but cannot remove the small interval between verification and a signal. Ambiguous input fails closed. An unhandled crash or unreadable cleanup metadata can still leave a lock for manual recovery.
 
 ## `com.luisaceituno.awdl-disable` (LaunchDaemon, manual install)
 

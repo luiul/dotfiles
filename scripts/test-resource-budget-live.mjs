@@ -2,15 +2,23 @@
 // Real Pi RPC and nested tools with a local stream fixture. No network model call.
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync, symlinkSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const args = process.argv.slice(2);
-assert.ok(args.length === 0 || args.length === 1 && args[0] === '--context-mode', 'Unknown test argument');
-const realContext = args[0] === '--context-mode';
+let realContext=false;
+let packageDir=join(homedir(), '.pi/agent/npm/node_modules/context-mode');
+for(let i=0;i<args.length;i++){
+ if(args[i]==='--context-mode')realContext=true;
+ else if(args[i]==='--package-dir' && args[i+1])packageDir=resolve(args[++i]);
+ else throw new Error('Unknown test argument');
+}
 const dir = mkdtempSync(join(tmpdir(), 'resource-budget-live-'));
+const agentDir=join(dir,'agent');
+mkdirSync(join(agentDir,'npm/node_modules'),{recursive:true});
+symlinkSync(packageDir,join(agentDir,'npm/node_modules/context-mode'),'dir');
 const probe = join(dir, 'probe.ts');
 writeFileSync(probe, `import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 export default function(pi) {
@@ -44,10 +52,10 @@ export default function(pi) {
 }`);
 const pi = execFileSync('/usr/bin/which', ['pi'], { encoding: 'utf8' }).trim();
 const flags = ['--offline', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-context-files', '--no-session', '--no-approve', '-e', resolve('pi/.pi/agent/extensions/resource-budget.ts'), '-e', probe,
- ...(realContext ? ['-e', join(homedir(), '.pi/agent/npm/node_modules/context-mode/build/adapters/pi/extension.js')] : []),
+ ...(realContext ? ['-e', join(packageDir, 'build/adapters/pi/extension.js')] : []),
  '--provider', 'resource-fixture', '--model', 'resource-fixture', '--thinking', 'off', '--mode', 'rpc'];
 // This bounded test host owns its single bridge, even when a ctx executor launches the test.
-const child = spawn(pi, flags, { cwd: process.cwd(), env: { ...process.env, PI_OFFLINE: '1', CONTEXT_MODE_BRIDGE_DEPTH: '0' }, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
+const child = spawn(pi, flags, { cwd: process.cwd(), env: { ...process.env, PI_CODING_AGENT_DIR:agentDir, PI_CONFIG_DIR:agentDir, CONTEXT_MODE_PROJECT_DIR:dir, PI_OFFLINE: '1', CONTEXT_MODE_BRIDGE_DEPTH: '0' }, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
 let output = '', errors = '', buffer = '';
 const messages=[];
 child.stdout.on('data', c => {

@@ -128,8 +128,10 @@ export function processClass(p, config, now, orphanOnly = true) {
   if (orphanOnly && p.ppid !== 1) return null;
   if (p.comm === config.gitstatus) return 'gitstatusd';
   // ps args cannot preserve argv boundaries. Accept only simple, unambiguous argv here.
-  const argv = (p.args ?? '').trim().split(/\s+/);
-  if (config.runtimes.has(p.comm) && config.runtimes.has(argv[0]) && path.basename(p.comm) === path.basename(argv[0]) && argv[1] === config.bundle) return 'context-mode';
+  const command = (p.args ?? '').trim().replace(/\s+/g, ' ');
+  const argv = command.split(' ');
+  if (config.runtimes.has(p.comm) && config.runtimes.has(argv[0]) && path.basename(p.comm) === path.basename(argv[0]) &&
+      !/\s/.test(config.bundle) && command === `${argv[0]} ${config.bundle}`) return 'context-mode';
   const comm = p.comm.startsWith('-') ? p.comm.slice(1) : p.comm;
   if (!config.shells.has(comm) || !['??', '?', '-'].includes(p.tty) || now - p.start < 600) return null;
   const loginName = argv[0]?.startsWith('-');
@@ -137,7 +139,8 @@ export function processClass(p, config, now, orphanOnly = true) {
   if (argv0 !== 'zsh' && !config.shells.has(argv0)) return null;
   // Never accept -c, script operands, stdin scripts, or complex option syntax.
   if (argv.slice(1).some(a => !/^-[dfil]+$/.test(a))) return null;
-  if (!loginName && !argv.slice(1).some(a => /[il]/.test(a))) return null;
+  // Login alone does not prove interactivity: it can still run a script from stdin.
+  if (!argv.slice(1).some(a => a.includes('i'))) return null;
   return 'zsh';
 }
 
@@ -281,12 +284,38 @@ export function acquireLock(files, config, ps = createPs(), selfPid = process.pi
     catch (error) { if (error.code === 'EEXIST') return null; throw error; }
   }
   const stat = files.lstatSync(lock);
+  function ownsDirectory() {
+    const current = files.lstatSync(lock);
+    return current.dev === stat.dev && current.ino === stat.ino;
+  }
   let fd;
+  let ownerStat;
   try {
-    fd = files.openSync(ownerFile, 'wx', 0o600);
-    files.writeFileSync(fd, ownerText);
-    files.fsyncSync(fd);
-  } finally { if (fd !== undefined) files.closeSync(fd); }
+    try {
+      if (!ownsDirectory()) throw new Error('lock-changed');
+      fd = files.openSync(ownerFile, 'wx', 0o600);
+      ownerStat = files.fstatSync(fd);
+      files.writeFileSync(fd, ownerText);
+      files.fsyncSync(fd);
+    } finally { if (fd !== undefined) files.closeSync(fd); }
+  } catch (error) {
+    // Roll back only our new directory and our own (possibly partial) owner file.
+    // Changed inodes or foreign contents stay untouched and fail closed.
+    try {
+      if (ownsDirectory()) {
+        if (ownerStat) {
+          const current = safeFile(files, ownerFile, config.uid);
+          const text = files.readFileSync(ownerFile, 'utf8');
+          const confirmed = safeFile(files, ownerFile, config.uid);
+          if ([current, confirmed].some(s => s.dev !== ownerStat.dev || s.ino !== ownerStat.ino) ||
+              confirmed.size > Buffer.byteLength(ownerText) || !ownerText.startsWith(text) || !ownsDirectory()) throw new Error('lock-changed');
+          files.unlinkSync(ownerFile);
+        }
+        if (ownsDirectory()) files.rmdirSync(lock);
+      }
+    } catch { /* Preserve ambiguous or unreadable metadata, and the original failure. */ }
+    throw error;
+  }
   return () => {
     const held = inspect();
     if (held.stat.dev !== stat.dev || held.stat.ino !== stat.ino || held.text !== ownerText) throw new Error('lock-changed');
@@ -418,13 +447,18 @@ export function runReaper(options, dependencies = {}) {
       const sig = previous ? 'SIGKILL' : 'SIGTERM';
       let current;
       try { current = ps.get(p.pid); } catch { write(`Skipped changed/unreadable pid=${p.pid}`); continue; }
-      if (!sameIdentity(p, current) || current.comm !== p.comm || processClass(current, config, clock()) !== p.classification ||
-          (previous && clock() - previous.termAt < GRACE_SECONDS)) {
+      const verifiedAt = clock();
+      const signalAt = previous ? clock() : verifiedAt;
+      if (!sameIdentity(p, current) || current.comm !== p.comm || processClass(current, config, verifiedAt) !== p.classification ||
+          (previous && signalAt - previous.termAt < GRACE_SECONDS)) {
         write(`Skipped changed pid=${p.pid}`); continue;
       }
       let success = false;
       try { success = signal(p.pid, sig) === true; } catch { /* Failed TERM never authorizes KILL. */ }
-      const at = clock();
+      const observedAt = clock();
+      // A backward step after signaling must not shorten grace or corrupt state.
+      // Anchor successful timestamps to the latest pre/post signal observation.
+      const at = success ? Math.max(now, verifiedAt, signalAt, observedAt, p.start, previous ? previous.termAt + GRACE_SECONDS : p.start) : observedAt;
       if (!success) signalFailed++;
       if (success) {
         if (previous) previous.killAt = at;

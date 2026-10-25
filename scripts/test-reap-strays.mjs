@@ -90,18 +90,27 @@ try {
     f.rows = [f.proc({ comm: '/Applications/Ghostty.app/Contents/MacOS/ghostty', args })];
     f.run(); assert.deepEqual(f.signals, []);
   });
-  test('shell age, UID, actual executable, tty and unambiguous interactive/login flags', () => {
+  test('shell age, UID, actual executable, tty and explicit interactive flags', () => {
     const f = fixture();
-    for (const args of ['/bin/zsh -i', '/bin/zsh -l', '-zsh', '-/bin/zsh', '/bin/zsh -fil']) {
+    for (const args of ['/bin/zsh -i', '/bin/zsh -il', '-zsh -i', '-/bin/zsh -i', '/bin/zsh -fil', '/bin/zsh -d -f -l -i']) {
       assert.equal(processClass(f.proc({ args }), f.config, now), 'zsh', args);
     }
-    for (const args of ['/bin/zsh', '/bin/zsh task.zsh', '/bin/zsh -c sleep', '/bin/zsh -ic exec pi', '/bin/zsh -lc script', '/bin/zsh -i -c x', '/bin/zsh -il script.zsh', '/bin/zsh -f', '/bin/zsh -s', '/bin/zsh --login', '/bin/zsh -o interactive', '/bin/zsh -i --', 'other -i']) {
+    for (const args of ['/bin/zsh -l', '-zsh', '-/bin/zsh', '/bin/zsh -fl', '/bin/zsh', '/bin/zsh task.zsh', '/bin/zsh -c sleep', '/bin/zsh -ic exec pi', '/bin/zsh -lc script', '/bin/zsh -i -c x', '/bin/zsh -il script.zsh', '/bin/zsh -f', '/bin/zsh -s', '/bin/zsh --login', '/bin/zsh -o interactive', '/bin/zsh -i --', 'other -i']) {
       assert.equal(processClass(f.proc({ args }), f.config, now), null, args);
     }
     for (const extra of [{ uid: uid + 1 }, { ppid: 2 }, { tty: 'ttys000' }, { start: now - 599 }, { comm: '/tmp/zsh' }, { pid: 1 }, { start: now + 1 }]) {
       assert.equal(processClass(f.proc(extra), f.config, now), null);
     }
     assert.equal(processClass(f.proc({ start: now - 600 }), f.config, now), 'zsh');
+  });
+  test('login-only stdin shells stay untouched while explicit interactive shells match', () => {
+    const f = fixture();
+    f.rows = ['/bin/zsh -l', '-zsh', '-/bin/zsh', '/bin/zsh -dl', '/bin/zsh -il', '-zsh -i'].map((args, i) => f.proc({ pid: 3000 + i, args }));
+    f.run();
+    assert.deepEqual(f.signals, [[3004, 'SIGTERM'], [3005, 'SIGTERM']]);
+    assert.deepEqual(f.state().map(p => p.pid), [3004, 3005]);
+    f.time = now + GRACE_SECONDS; f.run();
+    assert.deepEqual(f.signals.slice(2), [[3004, 'SIGKILL'], [3005, 'SIGKILL']]);
   });
   test('gitstatus exact cache binary and bundle entrypoint only', () => {
     const f = fixture();
@@ -111,11 +120,26 @@ try {
     }
     const bridge = f.proc({ comm: 'node', args: `node ${f.config.bundle}` });
     assert.equal(processClass(bridge, f.config, now), 'context-mode');
-    for (const args of ['node /unrelated/server.bundle.mjs', `node /tmp/other.mjs ${f.config.bundle}`, `node -e ${f.config.bundle}`, `node ${f.config.bundle}.old`, `echo ${f.config.bundle}`]) {
+    for (const args of ['node /unrelated/server.bundle.mjs', `node /tmp/other.mjs ${f.config.bundle}`, `node -e ${f.config.bundle}`, `node ${f.config.bundle}.old`, `echo ${f.config.bundle}`,
+      `node ${f.config.bundle} backup.mjs`, `node ${f.config.bundle} --flag`, `node ${f.config.bundle} --`, `node ${f.config.bundle} -e code`]) {
       assert.equal(processClass({ ...bridge, args }, f.config, now), null, args);
     }
     assert.equal(processClass({ ...bridge, uid: uid + 1 }, f.config, now), null);
     assert.equal(processClass({ ...bridge, comm: '/tmp/node' }, f.config, now), null);
+  });
+  test('bridge full command matches only the runtime and exact bundle with no extra arguments', () => {
+    const f = fixture();
+    const valid = `node ${f.config.bundle}`;
+    assert.equal(processClass(f.proc({ comm: 'node', args: `  node\t${f.config.bundle}  ` }), f.config, now), 'context-mode');
+    assert.equal(processClass(f.proc({ comm: '/opt/homebrew/bin/node', args: `/opt/homebrew/bin/node ${f.config.bundle}` }), f.config, now), 'context-mode');
+    assert.equal(processClass(f.proc({ comm: 'bun', args: `bun ${f.config.bundle}` }), f.config, now), 'context-mode');
+    f.rows = [`${valid} backup.mjs`, `${valid} --flag`, `node "${f.config.bundle}"`, valid].map((args, i) => f.proc({ pid: 3000 + i, comm: 'node', args }));
+    f.run(); assert.deepEqual(f.signals, [[3003, 'SIGTERM']]);
+    const spaced = { ...f.config, bundle: `${f.config.bundle} backup.mjs` };
+    assert.equal(processClass(f.proc({ comm: 'node', args: `node ${spaced.bundle}` }), spaced, now), null);
+    const changed = fixture(); changed.rows = [changed.proc({ comm: 'node', args: `node ${changed.config.bundle}` })];
+    changed.lookup = () => ({ ...changed.rows[0], args: `${changed.rows[0].args} backup.mjs` });
+    changed.run(); assert.deepEqual(changed.signals, []);
   });
   test('TERM succeeds before grace; KILL waits 900 seconds and remains recorded', () => {
     const f = fixture(); f.rows = [f.proc()]; f.run();
@@ -132,6 +156,65 @@ try {
     assert.equal(fs.statSync(f.config.directory).mode & 0o777, 0o700);
     for (const name of ['state.json', 'events.log']) assert.equal(fs.statSync(path.join(f.config.directory, name)).mode & 0o777, 0o600);
     assert.equal(fs.existsSync(path.join(f.config.directory, 'lock')), false);
+  });
+  test('backward clock after TERM preserves valid state and conservative grace', () => {
+    const f = fixture(); f.rows = [f.proc({ start: now - 10, comm: f.config.gitstatus })];
+    const readings = [now, now + 100, now - 1000];
+    f.dependencies.clock = () => { assert.ok(readings.length); return readings.shift(); };
+    f.run(); assert.deepEqual(readings, []);
+    assert.equal(f.state()[0].termAt, now + 100);
+    assert.ok(f.state()[0].termAt >= f.rows[0].start);
+    f.dependencies.clock = () => now - 1000;
+    f.run(); assert.equal(f.signals.length, 1); // Persisted state still loads with a backward clock.
+    f.dependencies.clock = () => now + 100 + GRACE_SECONDS - 1;
+    f.run(); assert.equal(f.signals.length, 1);
+    f.dependencies.clock = () => now + 100 + GRACE_SECONDS;
+    f.run(); assert.deepEqual(f.signals.at(-1), [3000, 'SIGKILL']);
+  });
+  test('backward pre-signal clock keeps TERM at the latest earlier observation', () => {
+    const f = fixture(); f.rows = [f.proc()];
+    const readings = [now + 100, now, now - 2000];
+    f.dependencies.clock = () => { assert.ok(readings.length); return readings.shift(); };
+    f.run(); assert.deepEqual(readings, []);
+    assert.equal(f.state()[0].termAt, now + 100);
+    f.dependencies.clock = () => now + GRACE_SECONDS;
+    f.run(); assert.equal(f.signals.length, 1);
+  });
+  test('backward clock after KILL never writes a timestamp earlier than TERM plus grace', () => {
+    const f = fixture(); f.rows = [f.proc()]; f.run();
+    const readings = [now + GRACE_SECONDS, now + GRACE_SECONDS + 10, now + GRACE_SECONDS, now - 2000];
+    f.dependencies.clock = () => { assert.ok(readings.length); return readings.shift(); };
+    f.run(); assert.deepEqual(readings, []);
+    assert.equal(f.state()[0].killAt, now + GRACE_SECONDS + 10);
+    assert.ok(f.state()[0].killAt >= f.state()[0].termAt + GRACE_SECONDS);
+    f.dependencies.clock = () => now;
+    f.run(); assert.equal(f.signals.length, 2); // Valid state loads and completed KILL remains retained.
+    f.dependencies.clock = () => now + GRACE_SECONDS * 2;
+    f.run(); assert.equal(f.signals.length, 2);
+  });
+  test('backward clock at final KILL verification defers escalation and retries later', () => {
+    const f = fixture(); f.rows = [f.proc()]; f.run();
+    const readings = [now + GRACE_SECONDS, now + GRACE_SECONDS, now + GRACE_SECONDS - 1];
+    f.dependencies.clock = () => { assert.ok(readings.length); return readings.shift(); };
+    f.run(); assert.deepEqual(readings, []);
+    assert.equal(f.signals.length, 1); assert.equal(f.state()[0].killAt, null);
+    f.dependencies.clock = () => now + GRACE_SECONDS;
+    f.run(); assert.deepEqual(f.signals.at(-1), [3000, 'SIGKILL']);
+  });
+  test('failed TERM and KILL keep their semantics after backward clock events', () => {
+    for (const sig of ['SIGTERM', 'SIGKILL']) {
+      const f = fixture(); f.rows = [f.proc()];
+      if (sig === 'SIGKILL') f.run();
+      const earlier = sig === 'SIGKILL' ? now + GRACE_SECONDS : now;
+      const readings = [earlier, earlier, ...(sig === 'SIGKILL' ? [earlier] : []), now - 2000];
+      f.dependencies.clock = () => { assert.ok(readings.length); return readings.shift(); };
+      f.failSignal = true; f.run(); assert.deepEqual(readings, []);
+      assert.deepEqual(f.signals.at(-1), [3000, sig]);
+      if (sig === 'SIGTERM') assert.deepEqual(f.state(), []);
+      else { assert.equal(f.state()[0].termAt, now); assert.equal(f.state()[0].killAt, null); }
+      f.dependencies.clock = () => earlier; f.failSignal = false;
+      f.run(); assert.deepEqual(f.signals.at(-1), [3000, sig]);
+    }
   });
   test('TERM failure cannot escalate, KILL failure retries with original TERM', () => {
     const f = fixture(); f.rows = [f.proc()]; f.failSignal = true; f.run();
@@ -153,7 +236,7 @@ try {
     assert.equal(f.state()[0].termAt, now + 2000);
   });
   test('final reread rejects PID reuse, owner UID, parent and class changes', () => {
-    for (const extra of [{ start: now - 1000 }, { uid: uid + 1 }, { ppid: 2 }, { comm: '/Applications/Ghostty.app/Contents/MacOS/ghostty' }, { tty: 'ttys004' }, { args: '/bin/zsh -c sleep' }]) {
+    for (const extra of [{ start: now - 1000 }, { uid: uid + 1 }, { ppid: 2 }, { comm: '/Applications/Ghostty.app/Contents/MacOS/ghostty' }, { tty: 'ttys004' }, { args: '/bin/zsh -c sleep' }, { args: '/bin/zsh -l' }, { args: '-zsh' }]) {
       const f = fixture(); f.rows = [f.proc()]; f.lookup = () => f.proc(extra); f.run();
       assert.deepEqual(f.signals, []);
     }
@@ -204,6 +287,100 @@ try {
     release(); f.dependencies.ps.snapshot = () => { throw new Error('fixture ps failed'); };
     assert.equal(main(['--apply'], f.dependencies), 1);
     assert.equal(fs.existsSync(path.join(f.config.directory, 'lock')), false);
+  });
+  test('lock owner open, partial write and fsync failures clean up and allow a retry', () => {
+    for (const operation of ['openSync', 'writeFileSync', 'fsyncSync']) {
+      const f = fixture(); f.rows = [f.proc()];
+      const lock = path.join(f.config.directory, 'lock');
+      const ownerFile = path.join(lock, 'owner.json');
+      let ownerFd; let calls = 0;
+      f.dependencies.files = new Proxy(fs, { get(target, key) {
+        if (key === 'openSync') return (...args) => {
+          if (args[0] === ownerFile && operation === key) { calls++; throw new Error('fixture owner open failed'); }
+          const fd = target.openSync(...args); if (args[0] === ownerFile) ownerFd = fd; return fd;
+        };
+        if (key === operation) return (...args) => {
+          if (args[0] !== ownerFd) return target[key](...args);
+          calls++;
+          if (key === 'writeFileSync') target.writeFileSync(ownerFd, args[1].slice(0, 8));
+          throw new Error(`fixture ${key} failed`);
+        };
+        return target[key];
+      } });
+      assert.equal(main(['--apply'], f.dependencies), 1, operation);
+      assert.equal(calls, 1); assert.deepEqual(f.signals, []);
+      assert.equal(fs.existsSync(lock), false, operation);
+      assert.equal(fs.existsSync(ownerFile), false);
+      f.dependencies.files = fs;
+      assert.equal(main(['--apply'], f.dependencies), 0, operation);
+      assert.deepEqual(f.signals, [[3000, 'SIGTERM']]);
+      assert.equal(fs.existsSync(lock), false);
+    }
+  });
+  test('failed initialization preserves changed directories and concurrent owner files', () => {
+    for (const variant of ['directory-open', 'directory-write', 'directory-fsync', 'owner-open', 'owner-replaced', 'owner-overwritten', 'owner-during-read', 'extra-file']) {
+      const f = fixture(); f.rows = [f.proc()];
+      const lock = path.join(f.config.directory, 'lock');
+      const ownerFile = path.join(lock, 'owner.json');
+      const priorLock = path.join(f.config.directory, 'saved-lock');
+      const otherOwner = JSON.stringify({ pid: 7000, uid, start: now - 3000 }) + '\n';
+      let ownerFd; let failed = false; let replacement; let readChanged = false;
+      function fail() {
+        failed = true;
+        if (variant.startsWith('directory-')) {
+          fs.renameSync(lock, priorLock); fs.mkdirSync(lock, { mode: 0o700 });
+          fs.writeFileSync(ownerFile, otherOwner, { mode: 0o600 });
+        } else if (variant === 'owner-replaced') {
+          fs.renameSync(ownerFile, path.join(lock, 'saved-owner.json'));
+          fs.writeFileSync(ownerFile, otherOwner, { mode: 0o600 });
+        } else if (variant === 'extra-file') {
+          fs.writeFileSync(path.join(lock, 'concurrent'), 'preserve', { mode: 0o600 });
+        } else if (variant !== 'owner-during-read') fs.writeFileSync(ownerFile, otherOwner, { mode: 0o600 });
+        replacement = fs.lstatSync(lock);
+        throw new Error('fixture concurrent initialization failure');
+      }
+      f.dependencies.files = new Proxy(fs, { get(target, key) {
+        if (key === 'readFileSync' && variant === 'owner-during-read') return (...args) => {
+          const text = target.readFileSync(...args);
+          if (args[0] === ownerFile && failed && !readChanged) {
+            readChanged = true;
+            fs.renameSync(ownerFile, path.join(lock, 'saved-owner.json'));
+            fs.writeFileSync(ownerFile, otherOwner, { mode: 0o600 });
+          }
+          return text;
+        };
+        if (key === 'openSync') return (...args) => {
+          if (args[0] === ownerFile && ['directory-open', 'owner-open'].includes(variant)) fail();
+          const fd = target.openSync(...args); if (args[0] === ownerFile) ownerFd = fd; return fd;
+        };
+        if (key === 'writeFileSync' || key === 'fsyncSync') return (...args) => {
+          if (args[0] === ownerFd && !failed && ((key === 'writeFileSync' && variant === 'directory-write') ||
+              (key === 'fsyncSync' && !['directory-open', 'owner-open', 'directory-write'].includes(variant)))) fail();
+          return target[key](...args);
+        };
+        return target[key];
+      } });
+      assert.equal(main(['--apply'], f.dependencies), 1, variant);
+      assert.equal(failed, true); assert.deepEqual(f.signals, []);
+      assert.equal(fs.lstatSync(lock).ino, replacement.ino, variant);
+      if (variant === 'extra-file') {
+        assert.equal(fs.readFileSync(path.join(lock, 'concurrent'), 'utf8'), 'preserve');
+        assert.equal(fs.existsSync(ownerFile), false);
+      } else assert.equal(fs.readFileSync(ownerFile, 'utf8'), otherOwner, variant);
+    }
+  });
+  test('lock owner initialization failure after stale-lock recovery also allows retry', () => {
+    const f = fixture();
+    const lock = path.join(f.config.directory, 'lock'); const ownerFile = path.join(lock, 'owner.json');
+    fs.mkdirSync(lock, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(ownerFile, JSON.stringify({ pid: 7000, uid, start: now - 3000 }) + '\n', { mode: 0o600 });
+    const files = new Proxy(fs, { get(target, key) {
+      return key === 'fsyncSync' ? () => { throw new Error('fixture recovered lock fsync failed'); } : target[key];
+    } });
+    assert.throws(() => acquireLock(files, f.config, f.dependencies.lockPs, 8000));
+    assert.equal(fs.existsSync(lock), false);
+    assert.equal(fs.existsSync(path.join(f.config.directory, 'lock-recovery')), false);
+    const release = acquireLock(fs, f.config, f.dependencies.lockPs, 8000); assert.ok(release); release();
   });
   test('failed signals and tmux cleanup exit nonzero; a held lock returns 3', () => {
     const term = fixture(); term.rows = [term.proc()]; term.failSignal = true;

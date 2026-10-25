@@ -261,15 +261,78 @@ try{const result=await e.execute({language:'rust',code:'fn main(){}',timeout:300
     assert.ok(fs.existsSync(data('compiler.pid')), `compiler fixture never started: ${stdout}`);
     await gone('compiler.pid');
   });
-  await test('small timeout kills stubborn foreground group', async () => {
+  await test('successful Rust compilation retains its sandbox until execution finishes', async () => {
+    const e = new PolyglotExecutor({ projectRoot: temp, runtimes: { rust: true, shell: '/bin/sh' } });
+    executors.add(e);
+    const result = await e.execute({ language: 'rust', code: 'fn main(){println!("rust-resource-ok");}', timeout: 10000 });
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.equal(result.stdout.trim(), 'rust-resource-ok');
+    assert.equal(result.timedOut, false);
+    const failed = await e.execute({ language: 'rust', code: 'not valid rust', timeout: 10000 });
+    assert.notEqual(failed.exitCode, 0); assert.match(failed.stderr, /Compilation failed/);
+  });
+  await test('bounded timeout kills an observed stubborn foreground group', async () => {
     const e = makeExecutor();
-    const result = await e.execute({ language: 'shell', code: `trap '' TERM; echo $$ > '${data('stubborn.pid')}'; sleep 20`, timeout: 300 });
+    // macOS endpoint checks can delay exec beyond a few hundred milliseconds.
+    // Prove the fixture started before treating its absence as cleanup success.
+    const running = e.execute({ language: 'shell', code: `trap '' TERM; echo $$ > '${data('stubborn.pid')}'; sleep 20`, timeout: 3000 });
+    await until(() => fs.existsSync(data('stubborn.pid')));
+    const result = await running;
     assert.equal(result.timedOut, true); await gone('stubborn.pid');
   });
   await test('root exits while descendant holds pipes, deadline kills the surviving group', async () => {
     const e = makeExecutor();
-    const result = await e.execute({ language: 'shell', code: `sh -c 'trap "" TERM; echo $$ > "${data('descendant.pid')}"; sleep 20' &\nexit 0`, timeout: 400 });
+    const running = e.execute({ language: 'shell', code: `sh -c 'trap "" TERM; echo $$ > "${data('descendant.pid')}"; sleep 20' &\nexit 0`, timeout: 3000 });
+    await until(() => fs.existsSync(data('descendant.pid')));
+    const result = await running;
     assert.equal(result.timedOut, true); await gone('descendant.pid');
+  });
+  await test('descendant turnover stays owned through foreground timeout and background cleanup', async () => {
+    for (const background of [false, true]) {
+      const name = background ? 'turnover-bg' : 'turnover-fg';
+      const a = data(name + '-a.mjs'), b = data(name + '-b.mjs');
+      fs.writeFileSync(b, `import fs from 'node:fs';fs.writeFileSync(${JSON.stringify(data(name + '.pid'))},String(process.pid));setTimeout(()=>process.exit(0),12000);`);
+      fs.writeFileSync(a, `import {spawn} from 'node:child_process';setTimeout(()=>{spawn(${JSON.stringify(process.execPath)},[${JSON.stringify(b)}],{stdio:'inherit'});setTimeout(()=>process.exit(0),150);},600);`);
+      const e = makeExecutor();
+      const running = e.execute({ language: 'shell', code: `'${process.execPath}' '${a}' &\nexit 0`, timeout: 3500, background });
+      await until(() => fs.existsSync(data(name + '.pid')));
+      const pid = pidFile(name + '.pid');
+      try {
+        const result = await running;
+        assert.equal(result.timedOut, true);
+        if (background) { assert.equal(result.backgrounded, true); assert.equal(alive(pid), true); e.cleanupBackgrounded(true); }
+        await gone(name + '.pid');
+      } finally { if (alive(pid)) process.kill(pid, 'SIGKILL'); }
+    }
+  });
+  await test('group leader owns cleanup when executor exits without explicit shutdown', async () => {
+    const name = 'owner-exit';
+    const script = data(name + '.mjs');
+    fs.writeFileSync(script, `import {PolyglotExecutor} from ${JSON.stringify(pathToFileURL(path.join(copy,'build/executor.js')).href)};
+const e=new PolyglotExecutor({projectRoot:${JSON.stringify(temp)},runtimes:{shell:'/bin/sh'}});
+await e.execute({language:'shell',code:${JSON.stringify(`trap '' TERM; echo $$ > '${data(name + '.pid')}'; sleep 20`)},timeout:500,background:true});
+while(!(await import('node:fs')).existsSync(${JSON.stringify(data(name + '.pid'))}))await new Promise(r=>setTimeout(r,25));
+process.exit(0);`);
+    const c = launch(script); await once(c, 'close'); await gone(name + '.pid');
+  });
+  await test('group leader reclaims workload after hard owner death', async () => {
+    const script=data('hard-owner.mjs');
+    fs.writeFileSync(script, `import {PolyglotExecutor} from ${JSON.stringify(pathToFileURL(path.join(copy,'build/executor.js')).href)};
+const e=new PolyglotExecutor({projectRoot:${JSON.stringify(temp)},runtimes:{shell:'/bin/sh'}});
+await e.execute({language:'shell',code:${JSON.stringify(`trap '' TERM; echo $$ > '${data('hard-owner.pid')}'; sleep 20`)},timeout:500,background:true});
+setTimeout(()=>process.exit(0),20000);`);
+    const c=launch(script);
+    await until(()=>fs.existsSync(data('hard-owner.pid')));
+    c.kill('SIGKILL');await once(c,'close');await gone('hard-owner.pid');
+  });
+  await test('executor preserves stdin EOF, exit codes and reclaims redirected descendants', async () => {
+    const e = makeExecutor();
+    const eof = await e.execute({language:'shell',code:'if IFS= read -r x; then exit 9; else printf eof; fi',timeout:2000});
+    assert.equal(eof.exitCode,0); assert.equal(eof.stdout,'eof');
+    const fail = await e.execute({language:'shell',code:'printf err >&2; exit 7',timeout:2000});
+    assert.equal(fail.exitCode,7); assert.equal(fail.stderr,'err');
+    const result = await e.execute({ language:'shell', code:`sh -c 'echo $$ > "${data('redirected.pid')}"; sleep 20' >/dev/null 2>&1 &\nwhile [ ! -s '${data('redirected.pid')}' ]; do sleep .02; done\nexit 0`, timeout:3000 });
+    assert.equal(result.exitCode,0); await gone('redirected.pid');
   });
   await test('graceful cleanup includes foreground, escalates stubborn background and clears ownership', async () => {
     const e = makeExecutor();
@@ -277,9 +340,28 @@ try{const result=await e.execute({language:'rust',code:'fn main(){}',timeout:300
     await until(() => fs.existsSync(data('foreground.pid')));
     const background = await e.execute({ language: 'shell', code: `trap '' TERM; echo $$ > '${data('background.pid')}'; sleep 20`, timeout: 300, background: true });
     assert.equal(background.backgrounded, true);
+    await until(() => fs.existsSync(data('background.pid')));
     e.cleanupBackgrounded(); await foreground;
     await gone('foreground.pid'); await gone('background.pid');
     e.cleanupBackgrounded(true);
+  });
+  await test('graceful TERM reaches the workload rather than inheriting leader immunity', async () => {
+    const script=data('term-handler.mjs');
+    fs.writeFileSync(script,`import fs from 'node:fs';fs.writeFileSync(${JSON.stringify(data('term-handler.pid'))},String(process.pid));process.on('SIGTERM',()=>{fs.writeFileSync(${JSON.stringify(data('term-handler.seen'))},'term');process.exit(0);});setTimeout(()=>process.exit(0),15000);`);
+    const e=makeExecutor();
+    const running=e.execute({language:'javascript',code:fs.readFileSync(script,'utf8'),timeout:500,background:true});
+    await until(()=>fs.existsSync(data('term-handler.pid')));
+    await running;
+    e.cleanupBackgrounded();
+    await until(()=>fs.existsSync(data('term-handler.seen')));
+    assert.equal(fs.readFileSync(data('term-handler.seen'),'utf8'),'term');await gone('term-handler.pid');
+  });
+  await test('workload INT and QUIT handlers survive asynchronous launcher', async () => {
+    const e=makeExecutor();
+    for(const signal of ['INT','QUIT']){
+      const result=await e.execute({language:'shell',code:`trap 'printf handled' ${signal}; kill -${signal} $$; printf completed`,timeout:3000});
+      assert.equal(result.exitCode,0,result.stderr);assert.equal(result.stdout,'handledcompleted');
+    }
   });
   await test('process exit path directly kills owned execution groups', async () => {
     const script = data('exit-owner.mjs');
@@ -287,6 +369,7 @@ try{const result=await e.execute({language:'rust',code:'fn main(){}',timeout:300
 const e=new PolyglotExecutor({projectRoot:${JSON.stringify(temp)},runtimes:{shell:'/bin/sh'}});
 process.on('exit',()=>e.cleanupBackgrounded(true));
 await e.execute({language:'shell',code:${JSON.stringify(`trap '' TERM; echo $$ > '${data('exit.pid')}'; sleep 20`)},timeout:300,background:true});
+while(!(await import('node:fs')).existsSync(${JSON.stringify(data('exit.pid'))}))await new Promise(r=>setTimeout(r,25));
 process.exit(0);`);
     const c = launch(script); await once(c, 'close'); await gone('exit.pid');
   });
@@ -309,13 +392,25 @@ process.exit(0);`);
     const c = new MCPStdioClient(path.join(copy,'server.bundle.mjs'), { ...process.env, HOME: home, PI_CONFIG_DIR:path.join(home,'.pi'),
       CONTEXT_MODE_PROJECT_DIR:temp, CONTEXT_MODE_PLATFORM:'pi', CONTEXT_MODE_BRIDGE_IDLE_MS:'0' }, process.execPath);
     clients.add(c); c.start(); await c.initialize();
-    await c.callTool('ctx_execute', { language:'shell', code:`trap '' TERM; echo $$ > '${data('real-bg.pid')}'; sleep 20`, timeout:300, background:true });
+    const a=data('real-bg-a.mjs'),b=data('real-bg-b.mjs');
+    fs.writeFileSync(b,`import fs from 'node:fs';fs.writeFileSync(${JSON.stringify(data('real-bg.pid'))},String(process.pid));setTimeout(()=>process.exit(0),15000);`);
+    fs.writeFileSync(a,`import {spawn} from 'node:child_process';setTimeout(()=>{spawn(${JSON.stringify(process.execPath)},[${JSON.stringify(b)}],{stdio:'inherit'});setTimeout(()=>process.exit(0),150);},500);`);
+    await c.callTool('ctx_execute', { language:'shell', code:`'${process.execPath}' '${a}' &\nexit 0`, timeout:1500, background:true });
+    await until(()=>fs.existsSync(data('real-bg.pid')));
     const controller = new AbortController();
     const running = c.callTool('ctx_execute', { language:'shell', code:`trap '' TERM; echo $$ > '${data('real-fg.pid')}'; sleep 20`, timeout:10000 }, controller.signal);
     const outcome = Promise.allSettled([running]);
     await until(() => fs.existsSync(data('real-fg.pid')));
     controller.abort(); assert.equal((await outcome)[0].status, 'rejected');
     await gone('real-bg.pid'); await gone('real-fg.pid');
+  });
+  await test('real Pi host loads v2 guard and nested context tools from isolated package', async () => {
+    for(const extra of [[], ['--context-mode']]) {
+      const result=execFileSync(process.execPath,[path.resolve('scripts/test-resource-budget-live.mjs'),'--package-dir',copy,...extra],{
+        encoding:'utf8',timeout:65000,killSignal:'SIGKILL',maxBuffer:1000000,
+      });
+      assert.match(result,/PASS real Pi nested tool/);
+    }
   });
   await test('restore preserves exact originals, repeated restore is read-only', async () => {
     await patch({ mode:'restore', packageDir:copy, cacheDir:cache });

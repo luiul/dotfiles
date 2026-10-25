@@ -2,7 +2,7 @@
 
 ## Background resource guard
 
-`resource-budget.ts` supplies a 120-second default for ctx execution tools and rejects background execution without an explicit timeout. It checks the version-pinned context-mode lifecycle patch before allowing ctx tools. A missing or changed patch blocks those tools and points to `pi-resources-patch`. Other tools remain available.
+`resource-budget.ts` supplies a 120-second default for ctx execution tools and rejects background execution without an explicit timeout. It checks the version-pinned context-mode lifecycle patch before every ctx call. A missing or changed patch blocks those tools and points to `pi-resources-patch`. Other tools remain available.
 
 The patch handles cancellation, failed startup, and child process groups. Cancelling a ctx call can also fail sibling calls on the same helper. See [resource safety](../../../../docs/pi-resource-safety.md) for budgets, update recovery, and verification.
 
@@ -133,7 +133,7 @@ The E2E asserts: compact start (success one line with suffix, failure one line w
 `status-bar.ts` replaces the footer with project and git state, model and thinking level, token usage, cost, and compaction-aware context. Narrow terminals show one compact line. `/statusbar` toggles it.
 
 - Runs only when `ctx.mode === "tui" && ctx.hasUI`. SDK sessions without terminal UI, RPC, JSON, and print sessions have no git polling, footer timers, or compaction settings reads.
-- Git refreshes at startup, on branch changes, and every 4s while enabled. One refresh timer also requests rendering. Git commands keep the 2s timeout. Concurrent refresh requests share one subprocess slot and coalesce into one pending refresh.
+- Git refreshes at startup, on branch changes, and every 4s while enabled. One refresh timer also requests rendering. Git commands keep the 2s timeout and use KILL if a child ignores TERM. Concurrent refresh requests share one subprocess slot and coalesce into one pending refresh.
 - Disable, repeated startup, and shutdown clear all footer timers and branch listeners. Results from an old session or toggle cannot update the current footer. A git command already running can finish within its existing timeout.
 - The 1s working timer runs only during an enabled TUI turn. Enabling mid-turn restores the timer with the original turn start time. Settlement stops it.
 - Footer text, colors, width handling, and extension status segments stay unchanged.

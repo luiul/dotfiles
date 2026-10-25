@@ -56,6 +56,47 @@ function close(session: string) {
   spawnSync("tmux", ["kill-session", "-t", session]);
   sessions.delete(session);
 }
+function processes() {
+  return run("ps", ["-axo", "pid=,ppid=,pgid=,command="]).trim().split("\n").map((line) => {
+    const [pid, parent, group, ...args] = line.trim().split(/\s+/);
+    return { pid: Number(pid), parent: Number(parent), group: Number(group), command: args.join(" ") };
+  });
+}
+type Worker = { shell: number; pid: number; group: number };
+async function recordWorker(session: string, suffix: string, setup: string, monitor = "on"): Promise<Worker> {
+  const file = join(fixture, `${suffix}-worker`);
+  // command() runs preexec before evaluating its text. A capture there would
+  // read PID 0 after cancellation. Record from precmd, after the actual launch.
+  await command(session, `${setup}; add-zsh-hook -d precmd _prompt_test_record_worker; _prompt_test_record_worker() { (( _my_prompt_worker_pid > 0 )) && print -r -- "$$ $_my_prompt_worker_pid $_my_prompt_worker_group $options[monitor]" > ${quote(file)}; }; add-zsh-hook precmd _prompt_test_record_worker`);
+  for (let attempt = 0; attempt < 40 && !existsSync(file); attempt++) await wait(25);
+  if (!existsSync(file)) throw new Error(`Missing post-launch worker record: ${suffix}`);
+  const [shell, pid, owned, userMonitor] = readFileSync(file, "utf8").trim().split(/\s+/);
+  const shellPid = Number(shell), workerPid = Number(pid);
+  check(Number.isSafeInteger(shellPid) && shellPid > 0 && Number.isSafeInteger(workerPid) && workerPid > 0 && owned === "1", `${suffix}: post-launch record has a positive owned worker PID`);
+  const current = processes();
+  const owner = current.find((row) => row.pid === shellPid);
+  const leader = current.find((row) => row.pid === workerPid);
+  check(!!owner && !!leader && leader.parent === shellPid && leader.group === workerPid && leader.group > 0 && leader.group !== owner.group, `${suffix}: worker PID=${workerPid} PGID=${leader?.group} exists outside shell PGID=${owner?.group}`);
+  let hasDescendant = false;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    hasDescendant = processes().some((row) => row.group === workerPid && row.pid !== workerPid && /\bsleep 20\b/.test(row.command));
+    if (hasDescendant) break;
+    await wait(25);
+  }
+  check(hasDescendant, `${suffix}: recorded worker group contains a live sleep descendant before cancellation`);
+  check(userMonitor === monitor, `${suffix}: worker launch preserves monitor=${monitor}`);
+  return { shell: shellPid, pid: workerPid, group: leader!.group };
+}
+async function groupGone(worker: Worker, label: string, includeShell = false) {
+  // Reject invalid records before checking absence, never search for group 0.
+  if (worker.pid <= 0 || worker.group <= 0 || worker.shell <= 0) throw new Error("Invalid worker identity");
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const remaining = processes().filter((row) => row.group === worker.group || (includeShell && (row.pid === worker.shell || row.parent === worker.shell)));
+    if (!remaining.length) { check(true, label); return; }
+    if (attempt === 79) throw new Error(`${label}: remaining ${JSON.stringify(remaining)}`);
+    await wait(25);
+  }
+}
 
 try {
   for (const kind of ["plain", "filtered"]) {
@@ -124,43 +165,26 @@ try {
   const start = performance.now();
   capture = await command(slow, 'print -r -- INPUT_RESPONSIVE', 1200);
   check(capture.split("\n").includes("INPUT_RESPONSIVE") && performance.now() - start < 1000, "partial worker records cannot block keyboard input");
-  capture = await command(slow, 'print -r -- "WORKER_PID=$_my_prompt_worker_pid"');
-  const pidMatch = capture.match(/^WORKER_PID=(\d+)$/m);
-  if (!pidMatch) throw new Error("Missing worker pid");
-  await command(slow, `builtin cd '${plain}'`);
-  await wait(100);
-  const processes = spawnSync("ps", ["-axo", "pid=,pgid=,command="], { encoding: "utf8" }).stdout;
-  check(!processes.split("\n").some((line) => line.trim().split(/\s+/)[1] === pidMatch[1]), "changing directory kills the old worker group");
-  await command(slow, "_my_prompt_git_worker() { sleep 20; }; unset '_my_prompt_git_filters[$PWD]'");
+  // Without preexec cancellation, this checks chpwd itself, not merely the
+  // command used to read the PID or the command's next precmd refresh.
+  const directoryWorker = await recordWorker(slow, "directory", "add-zsh-hook -d preexec _my_prompt_preexec; _my_prompt_git_worker() { sleep 20; }; unset '_my_prompt_git_filters[$PWD]'");
+  await command(slow, `add-zsh-hook -d precmd _my_prompt_precmd; builtin cd ${quote(plain)}`);
+  await groupGone(directoryWorker, "changing directory kills the recorded old worker group without preexec or precmd cancellation");
+  await command(slow, "add-zsh-hook precmd _my_prompt_precmd; _my_prompt_git_worker() { sleep 20; }; unset '_my_prompt_git_filters[$PWD]'");
   await wait(6000);
   capture = screen(slow);
   check(capture.includes("git:?"), "slow workers stop at deadline and show unknown status");
   capture = await command(slow, 'print -r -- "DEADLINE_FD=$_my_prompt_fd DEADLINE_PID=$_my_prompt_worker_pid"');
   check(capture.includes("DEADLINE_FD=-1 DEADLINE_PID=0"), "worker deadline cleans up process and descriptor");
-  const beforeNoMonitor = join(fixture, "no-monitor-worker");
-  await command(slow, `unsetopt monitor; _my_prompt_git_worker() { sleep 20; }; unset '_my_prompt_git_filters[$PWD]'`);
-  await command(slow, `print -r -- "$_my_prompt_worker_pid" > '${beforeNoMonitor}'; print -r -- "USER_MONITOR=$options[monitor]"`);
-  check(screen(slow).includes("USER_MONITOR=off"), "worker launch preserves disabled job control");
-  const noMonitorGroup = readFileSync(beforeNoMonitor, "utf8").trim();
-  await command(slow, `builtin cd '${filtered}'`);
-  const noMonitorProcesses = spawnSync("ps", ["-axo", "pid=,pgid=,command="], { encoding: "utf8" }).stdout;
-  check(!noMonitorProcesses.split("\n").some((line) => line.trim().split(/\s+/)[1] === noMonitorGroup), "cancellation kills descendants when job control is disabled");
+  const noMonitorWorker = await recordWorker(slow, "no-monitor", "unsetopt monitor; _my_prompt_git_worker() { sleep 20; }; unset '_my_prompt_git_filters[$PWD]'", "off");
+  await command(slow, `add-zsh-hook -d precmd _my_prompt_precmd; builtin cd ${quote(filtered)}`);
+  await groupGone(noMonitorWorker, "cancellation kills the recorded worker group when job control is disabled");
   close(slow);
-  const shellPidFile = join(fixture, "shutdown-shell");
-  const shutdownPidFile = join(fixture, "shutdown-worker");
   const shutdown = await open(filtered, "shutdown");
-  await command(shutdown, `print -r -- $$ > '${shellPidFile}'; _my_prompt_git_worker() { sleep 20; }`);
-  await command(shutdown, `print -r -- "$_my_prompt_worker_pid" > '${shutdownPidFile}'`);
-  const group = readFileSync(shutdownPidFile, "utf8").trim();
-  const shell = readFileSync(shellPidFile, "utf8").trim();
+  const shutdownWorker = await recordWorker(shutdown, "shutdown", "add-zsh-hook -d preexec _my_prompt_preexec; _my_prompt_git_worker() { sleep 20; }; unset '_my_prompt_git_filters[$PWD]'");
   run("tmux", ["send-keys", "-t", shutdown, "-l", "exit"]);
   run("tmux", ["send-keys", "-t", shutdown, "Enter"]);
-  await wait(500);
-  const afterExit = spawnSync("ps", ["-axo", "pid=,ppid=,pgid=,command="], { encoding: "utf8" }).stdout;
-  check(!afterExit.split("\n").some((line) => {
-    const fields = line.trim().split(/\s+/);
-    return fields[0] === shell || fields[1] === shell || fields[2] === group;
-  }), "shell exit leaves no worker or direct child behind");
+  await groupGone(shutdownWorker, "shell exit leaves no recorded worker group or direct child behind", true);
   close(shutdown);
   const failing = await open(plain, "daemon-failure");
   await command(failing, "_my_prompt_daemon_failed; _my_prompt_daemon_retry=0; _my_prompt_daemon_attempts=0; gitstatus_start() { if [[ $1 == -a ]]; then local fd; exec {fd}< <(print -r -- ready); typeset -g _GITSTATUS_RESP_FD_MYPROMPT=$fd; return 0; fi; return 1; }; gitstatus_stop() { :; }");

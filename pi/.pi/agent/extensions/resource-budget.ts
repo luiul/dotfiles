@@ -14,7 +14,7 @@ export function verifyResourcePatch(packageDir: string): string | undefined {
 		const root = realpathSync(packageDir);
 		const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 		const manifest = JSON.parse(readFileSync(join(root, ".pi-resource-patch.json"), "utf8"));
-		if (pkg.version !== PATCH_VERSION || manifest.version !== PATCH_VERSION || manifest.revision !== "context-mode-resources-v1" || manifest.patchVersion !== 1) {
+		if (pkg.version !== PATCH_VERSION || manifest.version !== PATCH_VERSION || manifest.revision !== "context-mode-resources-v2" || manifest.patchVersion !== 1) {
 			return "context-mode resource patch version does not match";
 		}
 		const required = ["build/adapters/pi/mcp-bridge.js", "build/executor.js", "build/server.js", "build/lifecycle.js", "server.bundle.mjs"];
@@ -47,13 +47,7 @@ export function enforceExecutionBudget(name: string, input: Record<string, unkno
 export default function (pi: ExtensionAPI) {
 	const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
 	const packageDir = join(agentDir, "npm", "node_modules", "context-mode");
-	let patchError: string | undefined;
-	let verified = false;
-	const check = () => {
-		patchError = verifyResourcePatch(packageDir);
-		verified = true;
-		return patchError;
-	};
+	const check = () => verifyResourcePatch(packageDir);
 	pi.on("session_start", async (_event, ctx) => {
 		const error = check();
 		if (error) {
@@ -64,7 +58,9 @@ export default function (pi: ExtensionAPI) {
 	pi.on("before_agent_start", async () => { check(); });
 	pi.on("tool_call", async (event) => {
 		if (!event.toolName.startsWith("ctx_")) return;
-		if (!verified) check();
+		// A package update or bridge respawn can happen during a long run.
+		// Recheck bytes before every ctx call, not only at the run boundary.
+		const patchError = check();
 		if (patchError) return { block: true, reason: `${patchError}. Run pi-resources-patch, then /reload.` };
 		const error = enforceExecutionBudget(event.toolName, event.input as Record<string, unknown>);
 		if (error) return { block: true, reason: error };

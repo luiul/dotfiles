@@ -198,6 +198,8 @@ export default function (pi: ExtensionAPI) {
 		try {
 			const { stdout } = await execFileAsync("git", ["status", "--porcelain=2", "--branch"], {
 				cwd: ctx.cwd,
+				// execFile's default TERM can be ignored and leave this slot busy.
+				killSignal: "SIGKILL",
 				timeout: 2000,
 			});
 			let dirty = 0,

@@ -48,6 +48,7 @@ function harness(code: string) {
 	let gitOutput = "# branch.ab +2 -3\n1 .M file\n? new\n";
 	const execFile = (command: string, args: string[], options: any, callback: Function) => {
 		assert.equal(command, "git");
+		assert.equal(options.killSignal, "SIGKILL", "git timeout must reclaim a stubborn child");
 		running++;
 		maxRunning = Math.max(maxRunning, running);
 		let timeout: any;

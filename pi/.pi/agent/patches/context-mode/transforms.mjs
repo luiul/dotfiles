@@ -142,28 +142,25 @@ export function toolBudget(name, args = {}) {
 }
 export function executor(source) {
   source = replace(source, '{ env: { ...process.env, TMPDIR: undefined }, encoding: "utf-8" }', '{ env: { ...process.env, TMPDIR: undefined }, encoding: "utf-8", timeout: 2000, killSignal: "SIGKILL" }');
-  source = section(source, '/** Kill process tree', 'export class PolyglotExecutor {', `// Ownership is a ChildProcess handle until close, not a remembered PID.
-// After root exit, capture surviving group members and their start identities.
-// No delayed signal is sent based on a recycled group ID alone.
-function groupMembers(pid) {
-    if (isWin || !pid) return new Map();
-    try {
-        const rows = execFileSync("ps", ["-axo", "pid=,pgid=,lstart="], {
-            encoding: "utf-8", timeout: 2000, killSignal: "SIGKILL", stdio: ["ignore", "pipe", "ignore"]
-        });
-        const members = new Map();
-        for (const row of rows.trim().split("\\n")) {
-            const match = row.trim().match(/^(\\d+)\\s+(\\d+)\\s+(.+)$/);
-            if (match && Number(match[2]) === pid) members.set(Number(match[1]), match[3]);
-        }
-        return members;
-    } catch { return new Map(); }
-}
+  source = section(source, '/** Kill process tree', 'export class PolyglotExecutor {', `// A quiet shell pins the execution group until cleanup. It does not poll or
+// start a new runtime. Descendant turnover cannot recycle this live group ID.
+// Its stdin is a parent-owned control pipe, never the workload's stdin.
+// Parent death closes the pipe and the leader reclaims its own group.
+// A tiny exec shim resets the INT/QUIT dispositions ignored by a shell's
+// asynchronous child. Perl replaces itself, leaving no extra retained process.
+const GROUP_ANCHOR = [
+    '(',
+    ${JSON.stringify('  /usr/bin/perl -e \'$SIG{INT}="DEFAULT"; $SIG{QUIT}="DEFAULT"; exec {$ARGV[0]} @ARGV or die "exec: $!";\' -- "$@" < /dev/null 3>&-')},
+    '  status=$?',
+    '  printf "%s\\\\n" "$status" >&3',
+    ') &',
+    'trap "" TERM',
+    'exec 1>&- 2>&- 3>&-',
+    'IFS= read -r control',
+    'kill -KILL -- "-$$"',
+].join("\\n");
 function ownsGroup(proc) {
-    if (!proc.pid || proc._cmClosed) return false;
-    if (proc.exitCode === null && proc.signalCode === null) return true;
-    const current = groupMembers(proc.pid);
-    return [...(proc._cmMembers ?? [])].some(([pid, start]) => current.get(pid) === start);
+    return Boolean(proc.pid && !proc._cmClosed && proc.exitCode === null && proc.signalCode === null);
 }
 function killTree(proc, signal = "SIGKILL") {
     if (!ownsGroup(proc)) return;
@@ -202,15 +199,24 @@ function killTree(proc, signal = "SIGKILL") {
         const binPath = srcPath.replace(/\\.rs$/, "") + (isWin ? ".exe" : "");
         const start = Date.now();
         // Async compile shares execution ownership and a bounded overall budget.
-        const compiled = await this.#spawn(["rustc", srcPath, "-o", binPath], cwd, cwd, Math.min(timeout, 60_000));
+        const compiled = await this.#spawn(["rustc", srcPath, "-o", binPath], cwd, cwd, Math.min(timeout, 60_000), false, true);
         if (compiled.exitCode !== 0) return { ...compiled, stderr: "Compilation failed:\\n" + compiled.stderr };
         const remaining = timeout - (Date.now() - start);
         if (remaining <= 0) return { stdout: "", stderr: "Compilation exhausted execution budget", exitCode: 1, timedOut: true };
         return this.#spawn([binPath], cwd, cwd, remaining, background);
     }
 `);
+  source = replace(source, '    async #spawn(cmd, cwd, sandboxTmpDir, timeout, background = false) {', '    async #spawn(cmd, cwd, sandboxTmpDir, timeout, background = false, preserveSandbox = false) {');
+  source = replace(source, '                proc = spawn(spawnCmd, spawnArgs, { ...commonOpts, shell: false });', `                proc = isWin
+                    ? spawn(spawnCmd, spawnArgs, { ...commonOpts, shell: false })
+                    : spawn("/bin/sh", ["-c", GROUP_ANCHOR, "context-mode-execution", spawnCmd, ...spawnArgs], {
+                        ...commonOpts, shell: false, stdio: ["pipe", "pipe", "pipe", "pipe"]
+                    });`);
   source = replace(source, '            let timedOut = false;\n            let resolved = false;', `            this.#activeProcesses.add(proc);
-            proc.once("exit", () => { proc._cmMembers = groupMembers(proc.pid); });
+            // Ignore EPIPE after cleanup, but do not write workload input here.
+            proc.stdin?.on("error", () => {});
+            let workloadExit;
+            let statusBuffer = "";
             let timedOut = false;
             let resolved = false;
             let drainTimer;
@@ -220,7 +226,9 @@ function killTree(proc, signal = "SIGKILL") {
                 clearTimeout(proc._cmKillTimer);
                 this.#activeProcesses.delete(proc);
                 proc._cmClosed = true;
-                cleanupTmpDir(sandboxTmpDir);
+                proc.stdin?.destroy();
+                proc.stdio[3]?.destroy();
+                if (!preserveSandbox) cleanupTmpDir(sandboxTmpDir);
             };
             const stop = () => {
                 killTree(proc);
@@ -240,7 +248,25 @@ function killTree(proc, signal = "SIGKILL") {
                 proc.stdout?.destroy();
                 proc.stderr?.destroy();
                 dispose();`);
-  source = replace(source, '            proc.on("error", (err) => {\n                clearTimeout(timer);', '            proc._cmFinish = () => { timedOut = true; finish(1); };\n            proc.on("close", finish);\n            proc.on("error", (err) => {\n                dispose();');
+  source = replace(source, '            proc.on("error", (err) => {\n                clearTimeout(timer);', `            proc._cmFinish = () => { timedOut = true; finish(1); };
+            const completed = () => {
+                if (workloadExit !== undefined && proc.stdout.readableEnded && proc.stderr.readableEnded) finish(workloadExit);
+            };
+            proc.stdio[3]?.on("data", chunk => {
+                statusBuffer += chunk.toString();
+                if (statusBuffer.includes("\\n")) {
+                    const status = statusBuffer.trim();
+                    if (/^\\d{1,3}$/.test(status) && Number(status) <= 255) {
+                        workloadExit = Number(status);
+                        completed();
+                    } else stop();
+                }
+            });
+            proc.stdout.on("end", completed);
+            proc.stderr.on("end", completed);
+            proc.on("close", code => finish(workloadExit ?? code));
+            proc.on("error", (err) => {
+                dispose();`);
   source = replace(source, '                    timedOut,\n                });\n            });\n            proc._cmFinish', '                    timedOut,\n                });\n            };\n            proc._cmFinish');
   return source;
 }

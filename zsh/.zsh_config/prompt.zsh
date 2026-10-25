@@ -68,8 +68,23 @@ _my_prompt_repo_dirs() {
 # Compare small config contents with builtins, even for same-second edits.
 # Large configs always use Git. Included files retain the 30s probe TTL.
 _my_prompt_filter_fingerprint() {
-    local file="" content="" key="$PWD|"
+    local file="" content="" key="$PWD|" name=""
     _my_prompt_filter_cacheable=1
+    # Git sees exported overrides only. Encode names and values separately so
+    # export, change and unset all invalidate pending probes without an exec.
+    for name in ${(ok)parameters[(I)GIT_CONFIG*]}; do
+        [[ "$name" == GIT_CONFIG || "$name" == GIT_CONFIG_* ]] || continue
+        [[ ${(tP)name} == *-export* ]] || continue
+        content=${(P)name}
+        key+="env:${(q)name}:${(q)content}|"
+        # Arbitrary command-scope config can add includes or change status
+        # policy. Leave its parsing to background Git, not the input path.
+        if [[ "$name" == GIT_CONFIG_COUNT && "$content" != 0 ]] || \
+           [[ "$name" == GIT_CONFIG_PARAMETERS && -n "$content" ]] || \
+           [[ "$name" == GIT_CONFIG && -n "$content" ]]; then
+            _my_prompt_filter_cacheable=0
+        fi
+    done
     if _my_prompt_repo_dirs; then
         key+="$_my_prompt_repo_dir|$(<"$_my_prompt_repo_dir/HEAD")|"
     fi

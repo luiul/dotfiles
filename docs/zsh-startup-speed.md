@@ -53,6 +53,7 @@ The latest review removed repeated completion generation and kept Git work off t
 - Normal Git repos use asynchronous daemon queries. A pending query never blocks typing. Late results cannot overwrite the current directory or command generation.
 - The daemon starts only when a normal repo needs it. Its executable starts asynchronously. A pipe-readiness callback completes the handshake with a 50 ms bound and at most three attempts per shell. Home directories and filtered repos need no daemon.
 - Repos with clean or process filters use background Git. Filter decisions expire after 30 seconds. Content changes to local or global config invalidate them sooner, even if size and modification time stay unchanged. Pending daemon results recheck the original config snapshot before publishing. Config files above 64 KiB always use background Git.
+- The config snapshot also records exported Git config overrides with Zsh builtins. Exporting, changing, or unsetting `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n`, `GIT_CONFIG_VALUE_n`, `GIT_CONFIG_PARAMETERS`, or `GIT_CONFIG_NOSYSTEM` changes its identity immediately. Nonzero or invalid counts and nonempty inherited `git -c` parameters always use background Git. The input path does not parse those overrides or start Git.
 - Workers publish complete newline-delimited records. The callback uses nonblocking reads, so partial results cannot freeze input. Replaced workers and their process groups are cancelled. A five-second deadline marks unavailable status as `git:?`, not clean.
 - Completed worker and daemon timers are removed. Shell exit closes descriptors and stops background work.
 
@@ -93,7 +94,7 @@ zsh scripts/test-orca-watch.zsh
 git diff --check
 ```
 
-The live suite uses a private `ZDOTDIR` and this checkout's config through `ZSH_CONFIG_DIR`. It never uses another checkout's stowed prompt. Test sessions have registered owners and deadlines. The suite checks real login shells, Mole Tab completion, Git live completion, failure codes, duration, slow-worker typing, cancellation, deadlines, and shutdown cleanup. The fixture suite checks type changes, rename counts, conflicts, escaped labels, linked worktrees, window titles, stashes, cache invalidation, config races, and asynchronous query identity.
+The live suite uses a private `ZDOTDIR` and this checkout's config through `ZSH_CONFIG_DIR`. It never uses another checkout's stowed prompt. Test sessions have registered owners and deadlines. The suite checks real login shells, Mole Tab completion, Git live completion, failure codes, duration, slow-worker typing, cancellation, deadlines, and shutdown cleanup. Worker cancellation checks record the PID from a `precmd` hook after launch. Each check proves that the positive worker PID owns a process group separate from the shell, with a live descendant. Directory-change checks disable command and prompt cancellation hooks so only `chpwd` can remove that group. Exit checks disable command cancellation so they exercise `zshexit`. Disabled job control uses the same ownership checks. No cancellation check treats group zero as evidence. The fixture suite checks type changes, rename counts, conflicts, escaped labels, linked worktrees, window titles, stashes, cache invalidation, exported config overrides, config races, and asynchronous query identity.
 
 ## If something breaks
 

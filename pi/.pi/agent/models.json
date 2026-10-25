@@ -1,5 +1,33 @@
 {
   "providers": {
+    "google-vertex": {
+      "modelOverrides": {
+        "gemini-3.1-pro-preview": {
+          "inputLimits": {
+            "images": {
+              "resize": {
+                "maxWidth": 3400,
+                "maxHeight": 3400,
+                "maxBytes": 4718592,
+                "jpegQuality": 90
+              }
+            }
+          }
+        },
+        "gemini-3-flash-preview": {
+          "inputLimits": {
+            "images": {
+              "resize": {
+                "maxWidth": 3400,
+                "maxHeight": 3400,
+                "maxBytes": 4718592,
+                "jpegQuality": 90
+              }
+            }
+          }
+        }
+      }
+    },
     "amazon-bedrock": {
       "modelOverrides": {
         "amazon.nova-lite-v1:0": {
@@ -363,9 +391,20 @@
           }
         },
         "qwen.qwen3-vl-235b-a22b": {
+          "maxTokens": 8192,
+          "inputLimits": {
+            "images": {
+              "resize": {
+                "maxWidth": 3400,
+                "maxHeight": 3400,
+                "maxBytes": 4718592,
+                "jpegQuality": 90
+              }
+            }
+          },
           "cost": {
-            "input": 0.3,
-            "output": 1.5,
+            "input": 0.62,
+            "output": 3.12,
             "cacheRead": 0,
             "cacheWrite": 0
           }

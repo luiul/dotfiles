@@ -3,6 +3,9 @@
   "defaultModel": "zai-org/GLM-5.3",
   "enabledModels": [
     "Smart",
+    "google-vertex/gemini-3.1-pro-preview",
+    "google-vertex/gemini-3-flash-preview",
+    "amazon-bedrock/qwen.qwen3-vl-235b-a22b",
     "zai-org/GLM-5.3",
     "claude-sonnet-5-5",
     "Heavy",

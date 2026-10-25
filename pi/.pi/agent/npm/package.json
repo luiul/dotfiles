@@ -1,0 +1,25 @@
+{
+  "name": "pi-extensions",
+  "private": true,
+  "dependencies": {
+    "@tintinweb/pi-subagents": "^0.22.0",
+    "context-mode": "^1.0.169",
+    "pi-blackhole": "^0.5.16",
+    "pi-hermes-memory": "^0.9.11",
+    "pi-mcp-adapter": "^6.0.0",
+    "pi-web-access": "^0.44.0"
+  },
+  "overrides": {
+    "@modelcontextprotocol/client": "2.3.1",
+    "@modelcontextprotocol/core": "2.3.1",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "undici": "^8.12.3",
+    "context-mode": {
+      "zod": "^4.6.6"
+    }
+  },
+  "allowScripts": {
+    "better-sqlite3": true,
+    "context-mode": true
+  }
+}

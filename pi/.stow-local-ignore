@@ -5,6 +5,9 @@
 # Refresh the snapshots with:
 #   cp ~/.pi/agent/settings.json pi/.pi/agent/settings.json
 #   cp ~/.pi/agent/mcp-adapter.json pi/.pi/agent/mcp-adapter.json
+# npm/ holds a snapshot of the extensions install dir's package.json (npm
+# audit overrides); the live dir has node_modules and a lockfile, never stow it.
+npm
 settings.json
 mcp-adapter.json
 \.stow-local-ignore

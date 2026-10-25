@@ -2,6 +2,9 @@
 # package): repo root path, separator, git branch.
 # Example: "~/dotfiles • main". While a command runs: "npm test • ~/dotfiles • main".
 #
+# Also reports the working directory to the terminal via OSC 7 (startup
+# report; see the OSC 7 block at the bottom for why Ghostty needs it).
+#
 # Ghostty's own automatic title is disabled in the Ghostty config
 # (shell-integration-features = no-cursor,no-title), so this hook owns the title.
 # Works in any terminal that supports OSC 0 (Ghostty, Terminal.app, iTerm2, ...).
@@ -70,3 +73,25 @@ _my_title_preexec() {
 autoload -Uz add-zsh-hook
 add-zsh-hook precmd _my_title_precmd
 add-zsh-hook preexec _my_title_preexec
+
+# OSC 7 working directory report at shell startup.
+#
+# Ghostty tracks each window's working directory from OSC 7 reports
+# (kitty-shell-cwd format) and opens new windows, tabs, and splits (cmd+n,
+# cmd+t) in the focused window's last tracked directory. It seeds every
+# surface with the shell's initial directory, but only OSC 7 reports update
+# the tracked value afterwards. Ghostty's own shell integration defers all
+# hook registration to the first prompt: it only appends
+# _ghostty_deferred_init to precmd_functions. A `zsh -ic 'exec <tui>'` window
+# (piw, and any other tool wrapper) never shows a prompt, so it never reports:
+# its directory stays invisible to Ghostty's session view (AppleScript
+# `working directory`, session search) and the tracked value goes stale if the
+# shell cd's before exec'ing the TUI. Emit one report here so every window,
+# including TUI-only ones, is known to Ghostty from startup. Write to the
+# controlling terminal, never to stdout: tool wrappers capture stdout, and an
+# escape sequence in captured output would corrupt it. Only live directories
+# are reported: reporting a deleted directory makes Ghostty fall back to /
+# when opening new windows from this one (ghostty discussion #10448).
+if [[ $TERM_PROGRAM == ghostty && -n $TTY && -w $TTY && $PWD == /* && -d $PWD ]]; then
+	printf '\e]7;kitty-shell-cwd://%s%s\a' "$HOST" "$PWD" > $TTY
+fi

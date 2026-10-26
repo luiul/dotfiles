@@ -16,14 +16,14 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Ask clarifying questions before proposing anything. Keep going until goal, scope, and constraints are clear.
 - Ask in rounds: number the questions, add a recommended answer to each, then wait.
 - Present the plan before touching files: what changes, where, and the risks.
-- After approval, switch to execution. Do not re-ask what the plan already settled.
+- After approval, switch to execution. Do not re-ask what the plan already settled. Plan approval permits implementation, not staging, committing, or pushing.
 
 ### Execution
 
 - Default to acting over asking: make the reasonable call and proceed on judgment calls you're equipped to make.
 - Ask only when genuinely blocked: a decision only the user can make, input that can't be inferred, or an action that's destructive, hard to reverse, or visible to others (force-push, `rm -rf`, sending messages, posting publicly, etc.).
 - Don't ask "should I proceed?" or "want me to also do X?" when the answer is inferable from the request. Do it and report what changed.
-- Stay in scope. Judgment calls that serve the request are yours to make. Changes beyond the request belong in `Next steps`, not in the diff.
+- Stay in scope. Judgment calls that serve the request are yours to make. Changes beyond the request belong in a separate `Open ideas:` section, not in the diff.
 - Before implementing an approved task, if its acceptance criteria or scope are ambiguous, ask. Do not silently assume.
 - Standing rules elsewhere in this file still apply. The Commits gate, the task gate, and the Scratch Files triggers are not judgment calls.
 
@@ -35,13 +35,16 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Scope: chat replies, scratch files, docs, READMEs, tickets, commit messages. Code, identifiers, commands, and quoted text are exempt.
 - Do not hard-wrap prose in markdown files at a fixed column (no 80-char limit). Write flowing long lines: one bullet per line, one sentence or logical unit per line.
 - Always link to PRs and online resources. When you mention a PR, Jira ticket, Slack thread, doc, or any resource with a URL, include the full clickable URL (e.g. https://github.com/hellofresh/schema-registry/pull/4222), not just `schema-registry#4222` or `GLOA-338`.
-- In scratch files and Slack messages, write links in markdown format, [text](URL). Never put backticks inside the link text (the square brackets): they break the link. Keep backticks for code spans outside links, or drop them from the link text.
+- In scratch files and Markdown drafts for Slack, write links as [text](URL). Never put backticks inside link text. Keep backticks outside links. Native Slack posting, where permitted, uses Slack's own link format.
 
 ## Reporting Back
 
 - Start substantial replies with a `TLDR:` line at the top. One or two short sentences: the outcome, the answer, or what changed. Details go below.
-- End substantial replies with a `Next steps:` section: a short bullet list of open decisions, suggested follow-ups, and extras I noticed but did not do. Prefix out-of-scope ideas with `Open idea:` so they are easy to spot.
-- Add both when the reply reports completed work, research findings, or a plan. Skip both for short answers, questions back to me, and quick confirmations.
+- Use separate headings in substantial replies. `Next steps:` lists required in-scope actions and open decisions. `Open ideas:` lists optional out-of-scope suggestions. Never mix them or nest one inside the other. Omit empty sections.
+- Add the TLDR and applicable closing sections when reporting work, research findings, or a plan. Skip them for short answers, questions, and quick confirmations.
+- For implementation work, report review readiness, commit, remote publication, and live deployment separately. Passing tests means ready for review, not published. Name the source worktree and any preserved unrelated changes. Do not say the repo is clean unless you checked it.
+- Use the exact completion statement `Task complete. No required steps remain.` only when all required work is finished, including review, commit, publication, and requested deployment. Waiting for approval or being safe to close is not completion. While work remains, say `Task incomplete: <pending steps>` and `Worktree: keep, review/publication/deployment pending`.
+- Report closing safety separately from completion. Use `Agent: safe to close` when no task-owned background work remains and progress is saved in a named checkout or published commit. Use `Worktree: safe to remove through wt` only after a fresh removal check and ignored-file review. Saving files permits closing the agent, not deleting the checkout. Optional `Open ideas:` do not block completion.
 
 ## Verification
 
@@ -83,7 +86,8 @@ Work in two modes: planning and execution. Pick the mode from the request.
 
 - Do not stage or commit on your own. Leave changes as unstaged modifications in the working tree; the user reviews them with VS Code's "Open Changes" diff view, which works best on uncommitted changes. Run `git add` and `git commit` only after the user approves.
 - Commit only the files for the approved change. Review the full working tree first and leave unrelated or parallel edits out.
-- After approval, push per repo convention: dotfiles and other personal projects push straight to the repo's default branch, no pull request needed. The default branch can be named `main`, `master`, `live`, or anything else; find it with `git remote show origin` ("HEAD branch"). HelloFresh repos use feature branches and pull requests.
+- After explicit commit and publication approval, commit reviewed files in their source worktree. Personal projects publish to the remote default branch without a PR; temporary task branches are allowed. Use `repo-guard publish --approved --verify '<combined-tree checks>'` to serialize publication per repo without rewriting source commits. A conflict, changed source, failed check, or rejected push stops publication. Preserve the source and integration worktrees until resolved. HelloFresh repos use ticket branches and draft PRs, never this personal publisher.
+- The publication lock coordinates guard commands, not arbitrary Git commands or editors. Do not run parallel integration, push, or live refresh commands outside it. Do not run `cop sync` while affected workers or publication are active; even `--no-main` can change source worktrees. Other repos can publish concurrently. Never force-push to resolve a publication race.
 - Standing instructions that explicitly say to commit (e.g. the Pi Skills section) override the review gate for their scope.
 - Use conventional commits: `type: short description` (e.g. `fix: venv info display`, `feat: add terminal keybindings`). Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `style`, `perf`, `ci`, `test`.
 - No `Co-Authored-By` lines.
@@ -97,7 +101,9 @@ Work in two modes: planning and execution. Pick the mode from the request.
 
 ## Dotfiles
 
-- Dotfiles live at `~/dotfiles` (a git repo). Read from there directly when relevant; no symlink needed. Treat `~/dotfiles/.env` as real secrets and never surface its values unless asked.
+- Dotfiles live at `~/dotfiles`, the live Stow deployment checkout. Read from there directly. Treat `~/dotfiles/.env` as real secrets and never surface its values unless asked.
+- Parallel implementation belongs in separate wt-managed worktrees. Record each source HEAD, index state, and existing changes before editing. Never stage, stash, reset, or overwrite another agent's checkout.
+- Never use mixed or soft reset, direct checked-out ref changes, or index replacement as fast-forward shortcuts. Publication never updates the primary checkout. `repo-guard refresh --approved` performs a separate real fast-forward; dirt, hidden index flags, or incoming ignored-file collisions defer deployment. Verify deployed bytes and live behavior before reporting deployment complete.
 - Pi uses the live file vs snapshot pattern: `pi/.pi/agent/settings.json` and `pi/.pi/agent/mcp-adapter.json` are NOT stowed (`pi/.stow-local-ignore`). pi rewrites both at runtime (changelog version on startup, MCP server installs), which would clobber symlinks. Edit the live file, then refresh the snapshot: `cp ~/.pi/agent/settings.json ~/dotfiles/pi/.pi/agent/settings.json` (same for `mcp-adapter.json`).
 
 ## Pi Skills
@@ -108,12 +114,15 @@ Work in two modes: planning and execution. Pick the mode from the request.
 ## Worktrees
 
 - Worktree lifecycle is owned by [worktrunk](https://worktrunk.dev) (`wt`), configured in `~/dotfiles/worktrunk/.config/worktrunk/config.toml`.
-- To create or switch a worktree as an agent: `WORKTRUNK_AGENT=1 wt switch --create <branch> --no-cd --yes --format json`
+- To create or switch a worktree as an agent: `WORKTRUNK_AGENT=1 wt switch --create <branch> --no-cd --yes --format json`. For a new task, fetch and pass `--base origin/<verified-default>` unless a different base was agreed. The pre-switch hook fetches without moving live main. Parallel agents use separate source worktrees. Coordinate overlapping files before combining their commits.
 - Worktree creation does not open an editor. All setup hooks still run (venv symlink, copy-ignored, known-repos registry, AGENTS.md links), so the worktree remains visible in `cop list` and understory. `WORKTRUNK_AGENT=1` remains in agent invocations for compatibility, not as an editor gate.
 - `cop new` is safe for agents too. Never use raw `git worktree add` (skips hooks and registry). Luis opens VS Code manually with Cmd+E inside pi when he needs an editor.
 - Canopy and understory only open or reuse Ghostty windows through the existing window-title matcher.
 - Herdr uses the Worktrunk plugin for worktree creation and removal. Native `herdr worktree create/remove` and sidebar context-menu creation bypass wt hooks. `cop herdr` explicitly creates or reuses a wt checkout, finishes setup, opens Pi, and focuses its workspace. `cop new` and direct wt calls do not open orchestrator workspaces, even inside Herdr; there is no global post-switch launch hook. Close a worktree workspace before removing its checkout through coppice or wt; external removal does not close it automatically.
-- For repos managed by wt, never create worktrees through Orca (`orca worktree create` or New Workspace in the UI): Orca-native worktrees bypass every wt hook, land off wt's path template, and `cop` flags them as mismatched (`cop relocate` moves them, `cop clean` can sweep them). Orca watches and runs agents in wt-created worktrees; wt creates and removes them.
+- For repos managed by wt, never create or remove worktrees through Orca's native actions. They bypass wt hooks and path rules. Orca watches and runs agents in wt-created worktrees; wt creates and removes them.
+- Stop or hand off the owning worker before removal. `repo-guard check-remove` checks the target's dirty files and remote publication through the global wt pre-remove hook. Other unfinished worktrees do not block a completed target. Offline or uncertain publication means keep the worktree. Inspect valuable ignored files separately; ordinary Git status does not protect them.
+- `--force`, `--force-delete`, and `--yes` are not permission to discard work. Use hook bypasses only after explicit scoped discard approval and preservation checks. Native deletion, raw Git removal, filesystem deletion, and disabled hooks bypass these safety rails. Prefer Sleep or keeping the checkout for unfinished work.
+- Pi's `/work-status` reminder is advisory. It does not approve commits, prove authorship, or block terminal shutdown. Before closing a session, report pending review, publication, and deployment. Keep its source worktree or give a clear handoff.
 
 ## Model Choice
 

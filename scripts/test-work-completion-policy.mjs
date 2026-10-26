@@ -1,0 +1,42 @@
+#!/usr/bin/env node
+// Pin the approval and ownership rules without inspecting live credentials.
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const text = (file) => fs.readFileSync(path.join(root, file), 'utf8');
+let count = 0;
+function check(value, label) { assert.ok(value, label); console.log(`PASS ${++count}: ${label}`); }
+const global = text('pi/.pi/agent/AGENTS.md');
+const repo = text('AGENTS.md');
+const hf = text('hellofresh/projects/hellofresh/AGENTS.md');
+const wt = text('worktrunk/.config/worktrunk/config.toml');
+const guide = text('docs/dev-setup-overview.md');
+check(global.includes('Plan approval permits implementation, not staging, committing, or pushing.'), 'plan and publication approval remain separate');
+check(global.includes('Parallel agents use separate source worktrees'), 'parallel source isolation remains supported');
+check(global.includes('Never use mixed or soft reset'), 'live HEAD shortcuts are forbidden');
+check(global.includes('dirt, hidden index flags, or incoming ignored-file collisions defer deployment'), 'dirty or hidden live work defers deployment');
+check(global.includes('Publication never updates the primary checkout'), 'publication cannot activate live configuration');
+check(global.includes('`Task complete. No required steps remain.` only when all required work is finished') && global.includes('Waiting for approval or being safe to close is not completion') && global.includes('`Task incomplete: <pending steps>`'), 'explicit completion and pending statements cannot imply a safe pause is finished');
+check(global.includes('Agent: safe to close') && global.includes('Worktree: keep, review/publication/deployment pending'), 'safe pause remains distinct from task completion');
+check(repo.includes('`Task complete. No required steps remain.` only when all required work is finished'), 'repo rules cannot claim completion prematurely');
+check(global.includes('`Next steps:` lists required in-scope actions') && global.includes('`Open ideas:` lists optional out-of-scope suggestions') && !global.includes('Prefix out-of-scope ideas'), 'required actions and optional ideas have separate headings');
+check(guide.includes('Task incomplete: review, publication, and deployment pending.'), 'guide pending-work example does not claim completion');
+check([global, repo, guide].every(value => !value.includes('Done for today')), 'ambiguous completion phrase is retired');
+check(global.includes('only after a fresh removal check and ignored-file review'), 'closing statement needs fresh removal evidence');
+check(global.includes('Do not run `cop sync` while affected workers or publication are active'), 'legacy sync bypass is documented');
+check(repo.includes('temporary task branches are allowed') || repo.includes('Temporary task branches are allowed'), 'personal task branches remain allowed');
+check(!repo.includes('No feature branches'), 'no main-only editing rule remains');
+check(hf.includes('HelloFresh work in every directory, including linked worktrees'), 'HelloFresh scope follows the work');
+check(hf.includes('cannot relax approval gates or impact-data privacy rules'), 'nested policy cannot relax privacy or approval');
+check(hf.includes('Do not use the personal `repo-guard publish` command'), 'HelloFresh retains feature PR publication');
+const preSwitch = wt.split('[pre-switch]')[1]?.split('[step.copy-ignored]')[0] ?? '';
+check(preSwitch.includes('git fetch') && !/git[^\n]*(?:merge|reset|update-ref)/.test(preSwitch), 'creation never updates a checked-out branch');
+const preRemove = wt.split('[pre-remove]')[1]?.split('[post-remove]')[0] ?? '';
+check(preRemove.includes('main|master|live') && preRemove.includes('repo-guard" check-remove'), 'ordered removal hook protects branches and checks remote preservation');
+check(!preRemove.includes('\npublish =') && !preRemove.includes('\nsafety ='), 'safety does not run as a parallel hook key');
+check(guide.includes('Offline checks fail closed') && guide.includes('Git status excludes ignored files'), 'offline and ignored-file boundaries are explicit');
+check(guide.includes('Implementation approval does not authorize commits or pushes'), 'workflow guide preserves review gate');
+check(!guide.includes('```mermaid') && !guide.includes('wtx new'), 'current guide has no retired command or raw diagram');
+console.log(`${count} policy checks passed`);

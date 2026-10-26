@@ -37,6 +37,8 @@ Both names complete directory paths with Tab. Linked worktrees resolve to the ma
 
 The function lives in `zsh/.zsh_config/funcs_orca.zsh`. Completion lives in `zsh/.zfunc/_orca-watch`. Run `zsh -f scripts/test-orca-watch.zsh` to check path handling and failure cases without changing your Orca registrations.
 
+The optional [Coppice handoff](https://github.com/luiul/coppice) starts or reuses Pi after an interactive `cop new` in a watched repo. It finishes configured wt user setup first and keeps Orca focus unchanged. Direct wt, agent-marked, piped, and Herdr calls do not auto-start Pi. The watch helper itself still does not launch agents. Retry a failed handoff with `cop orca /absolute/checkout/path`. Orca 1.4.241 starts background Pi but does not bind its PTY to sidebar state. With Hide sleeping enabled, the row remains hidden until the terminal tab is opened once. Coppice keeps focus unchanged rather than work around this with a focus-hop.
+
 Before deleting a disposable registered repo, close its terminal tabs with `orca terminal close --worktree path:<checkout> --all --json`. Removing its project setup can leave terminal tabs and resume records behind. If the repo is already gone, find the exact stale handle in `orca terminal list --json` and close only that tab with `orca terminal close --terminal <handle> --tab --json`.
 
 ## Per-repo worktree sharing

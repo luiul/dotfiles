@@ -96,8 +96,12 @@ for name in AGENTS.md CLAUDE.md; do
     [ "$parent" = "$dir" ] && break
     dir="$parent"
   done
-  [ -n "$found" ] && ln -sf "$found" "$owner_dir/$name"
+  if [ -n "$found" ]; then
+    ln -sf "$found" "$owner_dir/$name" || exit 1
+  fi
 done
+# No inherited instructions is a valid setup result, not a hook failure.
+true
 '''
 # Both new and existing checkouts opened by wt or coppice appear in the calling
 # Herdr session, without moving focus. No server is started outside Herdr.

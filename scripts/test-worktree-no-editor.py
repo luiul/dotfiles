@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -26,6 +27,20 @@ def wait_for(check, description: str) -> None:
         time.sleep(0.1)
 
 
+def check_hooks(value) -> None:
+    """Keep orchestrator commands out of every maintained lifecycle hook."""
+    if isinstance(value, dict):
+        for name, child in value.items():
+            if name.startswith(("pre-", "post-")):
+                assert not re.search(r"\b(?:orca|herdr|herdr-wt-open)\b", json.dumps(child)), (
+                    f"{name} must not call an orchestrator"
+                )
+            check_hooks(child)
+    elif isinstance(value, list):
+        for child in value:
+            check_hooks(child)
+
+
 def main() -> None:
     """Check creation and cleanup in a disposable home directory."""
     wt = shutil.which("wt")
@@ -36,6 +51,7 @@ def main() -> None:
     config = tomllib.loads(source.read_text())
     assert set(config["post-start"]) == {"venv", "copy", "registry", "agents-md"}
     assert "post-switch" not in config, "Orchestrator opening belongs to explicit cop commands"
+    check_hooks(config)
     assert config["pre-remove"]["protect"]
     assert config["post-remove"]["prune-empty-branch-dir"]
     assert not any("code -n" in value for value in config["post-start"].values())

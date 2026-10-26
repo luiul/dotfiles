@@ -6,6 +6,13 @@ stow symlink with a real file. Because of that, this package is **not
 stowable** — `karabiner.json` is kept here as a versioned export, the same way
 the `rectangle` package works.
 
+## Command center shortcut
+
+`cmd+shift+c` calls `~/.config/raycast/scripts/cc.sh mark` when Ghostty is frontmost.
+It marks the current tab and clears any previous command center designation.
+Caps Lock remains the `super` modifier, with `super+c` handled by Raycast.
+See `raycast/README.md` for setup and tests.
+
 ## Restore on a new machine
 
 ```sh

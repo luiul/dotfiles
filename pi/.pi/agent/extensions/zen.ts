@@ -9,11 +9,10 @@
  *   │   $ cat missing.txt ✗ cat: missing.txt: … (2.1s)  ← error, red bg│
  *   └──────────────────────────────────────────────────────────────────┘
  *
- * Every tool call stays visible as exactly one line: the native call line
- * plus a status suffix. Success blocks show `✓ (0.4s)`; failed blocks
- * show `✗ <first error line> (2.1s)` on the native error background.
- * Click or ctrl+o expands any block to pi's full native rendering
- * (byte-exact, pure delegation); clicking again collapses it back.
+ * Every collapsed text call stays visible as one physical row plus Pi's
+ * separator. Width-aware previews keep filenames, read ranges, MCP operations,
+ * status and structured warnings. Images stay visible and owned by Pi.
+ * Click or Ctrl+O restores full native details; arguments and results never change.
  *
  * Built entirely on pi's public tool renderer API:
  * - `pi.registerToolRenderer((toolName, next) => renderers)` chooses the
@@ -27,8 +26,9 @@
  * - Collapsed success renders an empty Container (zero rows) — pi's own
  *   read renderer uses the same trick for skills and docs files, so this
  *   is a native pattern, not a hack.
- * - Status colors stay native: pending, success, and error backgrounds
- *   come from ToolExecutionComponent, untouched.
+ * - The public renderShell: "self" removes native box padding in compact mode.
+ *   Expanded and toggle-off views use public Box framing around native renderers.
+ *   Pending, success and error backgrounds still use Pi's theme tokens.
  * - Thinking is fully native: the `hideThinkingBlock` setting collapses
  *   it, ctrl+t peeks at one message. Zen v1's thinking code is gone.
  *
@@ -41,16 +41,10 @@
  * Writes happen only on change, so the sequence terminates in two
  * passes (unit-tested).
  *
- * Per-tool call lines:
- * - One-line native calls (bash, read, ls, find, grep, powershell) keep
- *   pi's own formatting: zen delegates, then appends the suffix at
- *   render time through a tiny decorator component. Native niceties
- *   (path shortening, $ prompt, bash timer state) keep working.
- * - Multi-line native calls (write, edit) get zen's own compact line
- *   (`write <path> (N lines)`, `edit <path> (N edits)`) while collapsed;
- *   expanded delegates to native.
- * - Unknown and MCP tools (no renderer functions) get a generic one-line
- *   renderer: bold tool name plus condensed args, full output expanded.
+ * Per-tool call lines use cached summaries in compact mode. Commands flatten
+ * line breaks; paths are relative where possible and shorten from the tail.
+ * Narrow error rows drop timing before error detail. Expanded rendering delegates
+ * to native components. Bash and PowerShell retain native running timer lifecycle.
  *
  * Toggle: `/zen [on|off]` or ctrl+alt+t, persisted in ~/.pi/agent/zen.json
  * (`filter`, default on). Off returns `next()` unchanged for new blocks
@@ -65,8 +59,8 @@
  * back to its built-in rendering (the block shows native detail). Zen
  * never throws into pi's render path.
  *
- * Overhead: completed reads reuse native call formatting; suffix decorators
- * and empty results are reused. Partial results still delegate to native,
+ * Overhead: collapsed layout is cached by argument values, theme colors,
+ * final status and width. Partial results still delegate to native,
  * including one final cleanup pass. Unknown expanded output uses one framed
  * Text like Pi's fallback; registered generic tools keep native fallback slots.
  * Benchmark actual components with scripts/bench-zen-renderers.ts, including
@@ -83,8 +77,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import * as path from "node:path";
 import {
-	Container, Text, getCapabilities, getImageDimensions, getKeybindings, imageFallback,
-	stripTerminalSequences, visibleWidth as terminalWidth,
+	Box, Text, getCapabilities, getImageDimensions, getKeybindings, imageFallback,
+	stripTerminalSequences, truncateToWidth, sliceByColumn, visibleWidth as terminalWidth,
 } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
@@ -132,17 +126,14 @@ export function stripAnsi(text: string): string {
 	return text.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
-/** Visible length of styled text. Counts code points, ANSI stripped. */
+/** Visible terminal columns, including wide and combining characters. */
 export function visibleWidth(text: string): number {
-	return [...stripAnsi(text)].length;
+	return terminalWidth(text);
 }
 
 /** Truncate plain (unstyled) text to a visible budget, ellipsis on cut. */
 export function truncateVisible(text: string, budget: number): string {
-	const chars = [...text];
-	if (chars.length <= budget) return text;
-	const cut = budget <= 1 ? 0 : budget - 1;
-	return chars.slice(0, cut).join("") + "…";
+	return budget <= 0 ? "" : stripAnsi(truncateToWidth(text, budget, "…"));
 }
 
 /** Duration for the suffix: seconds with one decimal, or ms under 100. */
@@ -160,10 +151,8 @@ export function firstTextLine(content: Array<{ type: string; text?: string }> | 
 	if (!Array.isArray(content)) return "";
 	for (const block of content) {
 		if (block?.type !== "text" || typeof block.text !== "string") continue;
-		for (const line of block.text.split("\n")) {
-			const trimmed = line.trim();
-			if (trimmed) return trimmed;
-		}
+		const match = /[^\s][^\r\n]*/.exec(block.text);
+		if (match) return match[0].trim();
 	}
 	return "";
 }
@@ -173,24 +162,29 @@ export interface ZenInfo {
 	ok: boolean;
 	durationMs: number | undefined;
 	errLine: string;
+	warning?: string;
 }
 
 /** Extract zen's status info from a final result and its context. */
 export function infoFromResult(
-	result: { content: Array<{ type: string; text?: string }> },
+	result: { content: Array<{ type: string; text?: string }>; details?: any },
 	ctx: { isError: boolean; durationMs?: number },
 ): ZenInfo {
 	return {
 		ok: !ctx.isError,
 		durationMs: ctx.durationMs,
-		errLine: ctx.isError ? truncateVisible(firstTextLine(result.content), 50) : "",
+		errLine: ctx.isError ? truncateVisible(singleLine(firstTextLine(result.content)), 200) : "",
+		warning: result.details?.truncation?.truncated || result.details?.matchLimitReached ||
+			result.details?.resultLimitReached || result.details?.linesTruncated ? "truncated" :
+			typeof result.details?.fullOutputPath === "string" && result.details.fullOutputPath ? "full output" : "",
 	};
 }
 
 /** Whether new info differs from stored info (drives the deferred invalidate). */
 export function infoChanged(prev: ZenInfo | undefined, next: ZenInfo): boolean {
 	return (
-		prev === undefined || prev.ok !== next.ok || prev.durationMs !== next.durationMs || prev.errLine !== next.errLine
+		prev === undefined || prev.ok !== next.ok || prev.durationMs !== next.durationMs || prev.errLine !== next.errLine ||
+		prev.warning !== next.warning
 	);
 }
 
@@ -202,14 +196,21 @@ export function suffixFor(info: ZenInfo | undefined, theme: any): string {
 	if (!info) return "";
 	const dur = formatDuration(info.durationMs);
 	const durText = dur ? ` (${dur})` : "";
-	if (info.ok) return theme.fg("muted", ` ✓${durText}`);
+	if (info.ok) return theme.fg("muted", " ✓") +
+		(info.warning ? theme.fg("warning", ` ${info.warning}`) : "") + theme.fg("muted", durText);
 	return theme.fg("error", ` ✗ ${info.errLine}${durText}`);
 }
 
 // ─── per-tool call-line formatting (pure; exported for unit tests) ───────────
 
-/** Tools whose native collapsed call line is already one line: delegate. */
+/** Native shell calls need their lifecycle renderer while running. */
 export const NATIVE_ONE_LINE_TOOLS = new Set(["bash", "powershell", "read", "ls", "find", "grep"]);
+
+/** Sanitize only the preview. Original arguments and output stay untouched. */
+export function singleLine(text: string): string {
+	return stripTerminalSequences(text.replace(/\u009b[0-?]*[ -/]*[@-~]/g, ""))
+		.replace(/[\x00-\x1f\x7f-\x9f\uFFF9-\uFFFB]+/g, " ").trim();
+}
 
 /** A short string for an arbitrary args object, for generic one-liners. */
 export function condenseArgs(args: unknown): string {
@@ -220,10 +221,14 @@ export function condenseArgs(args: unknown): string {
 			if (typeof value === "string" && value) return value;
 		}
 		const first = Object.entries(args as Record<string, unknown>)[0];
-		if (first && typeof first[1] === "string") return first[1];
+		if (first) {
+			if (typeof first[1] === "string") return first[1];
+			return `${first[0]}: ${Array.isArray(first[1]) ? `${first[1].length} items` :
+				first[1] !== null && typeof first[1] === "object" ? "object" : String(first[1])}`;
+		}
+		return "";
 	}
-	const text = typeof args === "string" ? args : JSON.stringify(args);
-	return truncateVisible(text ?? "", 60);
+	return typeof args === "string" ? args : Array.isArray(args) ? `${args.length} items` : String(args);
 }
 
 /**
@@ -263,11 +268,19 @@ function stateOf(ctx: any): Record<string, any> {
 
 /** Store final status once and request its first suffix repaint. */
 function storeFinalInfo(result: any, ctx: any, state: any): void {
+	const truncated = !!(result.details?.truncation?.truncated || result.details?.matchLimitReached ||
+		result.details?.resultLimitReached || result.details?.linesTruncated);
+	const errorSource = ctx.isError ? result.content?.find((block: any) => block.type === "text" && block.text)?.text : undefined;
+	const outputPath = result.details?.fullOutputPath;
 	if (state.zenContent === result.content && state.zenError === ctx.isError &&
-		state.zenDuration === ctx.durationMs && state[INFO_KEY]) return;
+		state.zenDuration === ctx.durationMs && state.zenTruncated === truncated &&
+		state.zenOutputPath === outputPath && state.zenErrorSource === errorSource && state[INFO_KEY]) return;
 	state.zenContent = result.content;
 	state.zenError = ctx.isError;
 	state.zenDuration = ctx.durationMs;
+	state.zenTruncated = truncated;
+	state.zenErrorSource = errorSource;
+	state.zenOutputPath = outputPath;
 	const info = infoFromResult(result, ctx);
 	if (!infoChanged(state[INFO_KEY], info)) return;
 	state[INFO_KEY] = info;
@@ -285,53 +298,157 @@ function emptyResult(): typeof EMPTY_RESULT {
 	return EMPTY_RESULT;
 }
 
-/** Plain text result output, the fail-open fallback for native throws. */
-function plainTextResult(result: any, theme: any): Container {
-	const container = new Container();
-	const output = result?.content
-		?.filter((c: any) => c.type === "text")
-		.map((c: any) => c.text || "")
-		.join("\n");
-	if (output) container.addChild(new Text(theme.fg("toolOutput", output), 0, 0));
-	return container;
+/** Sanitized fallback for a native renderer that throws. */
+function plainTextResult(result: any, theme: any): Text {
+	return new Text(theme.fg("toolOutput", genericOutput(result, false)), 0, 0);
 }
 
-/**
- * Decorator component: native call rendering with the status suffix
- * appended to the first painted line. handleMouse delegates to the
- * wrapped component so native click regions keep working.
- */
-function decoratedCall(): any {
+/** Summary fields that matter in a collapsed row, never raw output scans. */
+function previewPath(value: unknown, cwd: string): string {
+	if (typeof value !== "string") return "";
+	if (!path.isAbsolute(value)) return singleLine(value);
+	const rel = path.relative(cwd || process.cwd(), value);
+	return singleLine(rel && !rel.startsWith("../") && rel !== ".." ? rel : value);
+}
+
+/** Fit paths from the tail, keeping the filename rather than the root. */
+function fitPath(value: string, width: number): string {
+	if (terminalWidth(value) <= width) return value;
+	if (width <= 1) return truncateVisible(value, width);
+	return "…" + sliceByColumn(value, Math.max(0, terminalWidth(value) - width + 1), width - 1, true);
+}
+
+/** Values, not object identity: streaming parsers may mutate arguments. */
+function previewValues(tool: string, args: any, ctx: any): unknown[] {
+	return [args?.file_path ?? args?.path, args?.command, args?.offset, args?.limit,
+		args?.timeout, args?.content, args?.edits?.length, args?.oldText,
+		tool === "find" || tool === "grep" ? args?.pattern : undefined,
+		tool === "mcp" ? args?.tool : undefined, tool === "mcp" ? args?.name : undefined,
+		tool === "mcp" ? args?.search : undefined, tool === "mcp" ? args?.describe : undefined,
+		tool === "mcp" ? args?.server : undefined, tool === "mcp" ? args?.action : undefined,
+		NATIVE_ONE_LINE_TOOLS.has(tool) || tool === "write" || tool === "edit" || tool === "mcp" ? undefined : condenseArgs(args),
+		ctx.cwd, ctx.outputPad ?? 1, ctx.isPartial, ctx.isError];
+}
+
+function previewParts(tool: string, args: any, cwd: string): { title: string; body: string; tail: string; path: boolean } {
+	if (tool === "bash" || tool === "powershell") return {
+		title: tool === "bash" ? "$" : "PS>", body: singleLine(String(args?.command ?? "…")),
+		tail: args?.timeout ? ` (timeout ${args.timeout}s)` : "", path: false,
+	};
+	if (["read", "write", "edit", "ls"].includes(tool)) {
+		let tail = "";
+		if (tool === "read" && (args?.offset || args?.limit)) {
+			const start = args.offset ?? 1;
+			tail = args.limit ? `:${start}–${start + args.limit - 1}` : `:${start}…`;
+		}
+		if (tool === "write" && typeof args?.content === "string") {
+			let count = 1;
+			for (let i = args.content.indexOf("\n"); i !== -1; i = args.content.indexOf("\n", i + 1)) count++;
+			tail = ` (${count} lines)`;
+		}
+		if (tool === "edit") {
+			const count = Array.isArray(args?.edits) ? args.edits.length : args?.oldText ? 1 : 0;
+			tail = ` (${count} edit${count === 1 ? "" : "s"})`;
+		}
+		return { title: tool, body: previewPath(args?.file_path ?? args?.path, cwd), tail, path: true };
+	}
+	if (tool === "find" || tool === "grep") return {
+		title: tool, body: singleLine(String(args?.pattern ?? "")) +
+			(args?.path ? ` in ${previewPath(args.path, cwd)}` : ""), tail: "", path: false,
+	};
+	if (tool === "mcp") {
+		const operation = args?.tool ?? args?.name ?? (args?.describe ? `describe ${args.describe}` :
+			args?.search ? `search ${args.search}` : args?.action ?? args?.server ?? "status");
+		return { title: "mcp", body: singleLine(String(operation)), tail: "", path: false };
+	}
+	return { title: tool, body: singleLine(condenseArgs(args)), tail: "", path: false };
+}
+
+/** One physical row, cached across unchanged invalidation passes. */
+function compactRow(tool: string): any {
 	return {
-		comp: undefined as any,
-		suffix: "",
-		suffixWidth: 0,
-		render(width: number): string[] {
-			const { comp, suffix, suffixWidth } = this;
-			if (!suffix) return comp.render(width);
-			// Render the native line narrower so the suffix fits inside the
-			// width pi asked for: native renderers pad their lines to the
-			// width given, so appending after a full-width render would push
-			// the suffix past the visible edge (measured: clipped by the
-			// pane before this fix).
-			const budget = Math.max(1, width - suffixWidth);
-			const lines = comp.render(budget);
-			if (lines.length === 0) return lines;
-			return [lines[0] + suffix, ...lines.slice(1)];
-		},
-		invalidate(): void {
-			// pi-tui requires invalidate on every component (MouseRegion
-			// and theme changes call it).
-			try {
-				this.comp.invalidate?.();
-			} catch {
-				/* fail-open */
+		values: undefined as unknown[] | undefined, colors: undefined as any, info: undefined as ZenInfo | undefined,
+		parts: undefined as ReturnType<typeof previewParts> | undefined, theme: undefined as any,
+		width: -1, lines: [] as string[], pad: 1, bg: "toolPendingBg",
+		update(args: any, theme: any, ctx: any, state: any) {
+			const values = previewValues(tool, args, ctx);
+			const changed = !this.values || values.some((v, i) => v !== this.values[i]);
+			if (changed) this.parts = previewParts(tool, args, ctx.cwd);
+			if (changed || this.colors !== theme.colors || this.info !== state[INFO_KEY] || this.theme !== theme) {
+				this.width = -1;
+				this.values = values;
+				this.colors = theme.colors;
+				this.info = state[INFO_KEY];
+				this.theme = theme;
+				this.pad = ctx.outputPad ?? 1;
+				this.bg = ctx.isPartial ? "toolPendingBg" : ctx.isError ? "toolErrorBg" : "toolSuccessBg";
 			}
 		},
-		handleMouse(event: any) {
-			return this.comp.handleMouse?.(event);
+		render(width: number): string[] {
+			if (this.width === width) return this.lines;
+			const pad = Math.min(this.pad, Math.max(0, Math.floor((width - 1) / 2)));
+			const budget = Math.max(0, width - 2 * pad);
+			const { parts, info, theme } = this;
+			let status = suffixFor(info, theme);
+			const titleWidth = Math.min(terminalWidth(parts.title) + 1, Math.max(0, Math.floor(budget / 3)));
+			// Errors and structured warnings outrank elapsed time on narrow panes.
+			if (info && terminalWidth(status) > budget - titleWidth) {
+				const available = Math.max(0, budget - titleWidth);
+				const text = info.ok ? ` ✓${info.warning ? ` ${info.warning}` : ""}` : ` ✗ ${info.errLine}`;
+				status = theme.fg(info.ok ? info.warning ? "warning" : "muted" : "error", truncateVisible(text, available));
+			}
+			const callBudget = Math.max(0, budget - terminalWidth(status));
+			const title = truncateVisible(parts.title, callBudget);
+			const rest = Math.max(0, callBudget - terminalWidth(title) - 1);
+			const tail = truncateVisible(parts.tail, rest);
+			const bodyBudget = Math.max(0, rest - terminalWidth(tail));
+			const body = parts.path ? fitPath(parts.body, bodyBudget) : truncateVisible(parts.body, bodyBudget);
+			const call = theme.fg("toolTitle", theme.bold(title)) +
+				(rest > 0 ? " " + theme.fg("toolOutput", body) + theme.fg("muted", tail) : "");
+			const line = " ".repeat(pad) + call + status;
+			this.lines = [theme.bg(this.bg, line + " ".repeat(Math.max(0, width - terminalWidth(line))))];
+			this.width = width;
+			return this.lines;
 		},
+		invalidate() { /* update compares values and colors; a new width misses the cache */ },
 	};
+}
+
+/** Avoid re-flattening unchanged native detail rows on every cached paint. */
+class DetailFrame extends Box {
+	private paintedWidth = -1;
+	private paintedLines: string[] | undefined;
+	private cacheAllowed = false;
+	invalidateCache(): void {
+		super.invalidateCache();
+		this.paintedLines = undefined;
+	}
+	handleMouse(event: any): any {
+		this.paintedLines = undefined;
+		return super.handleMouse(event);
+	}
+	setCacheAllowed(allowed: boolean): void { this.cacheAllowed = allowed; }
+	render(width: number): string[] {
+		if (this.cacheAllowed && this.paintedLines && this.paintedWidth === width) return this.paintedLines;
+		this.paintedWidth = width;
+		return this.paintedLines = super.render(width);
+	}
+}
+
+/** Native framing through public Box, never private Pi components. */
+function nativeFrame(call: any, theme: any, ctx: any, state: any): any {
+	const pad = ctx.outputPad ?? 1;
+	if (!state.zenFrame || state.zenFramePad !== pad) {
+		state.zenFrame = new DetailFrame(pad, 1);
+		state.zenFramePad = pad;
+	}
+	state.zenFrameExpanded = ctx.expanded;
+	const box = state.zenFrame;
+	box.setCacheAllowed(state.zenCacheDetail === true);
+	box.setBgFn((line: string) => theme.bg(ctx.isPartial ? "toolPendingBg" : ctx.isError ? "toolErrorBg" : "toolSuccessBg", line));
+	box.clear();
+	box.addChild(call);
+	return box;
 }
 
 /** Call a native renderer, returning undefined when it throws (fail-open). */
@@ -388,78 +505,37 @@ const isCompact = (ctx: any) => filterOn && !(ctx?.expanded === true);
 const isCompactResult = (options: { expanded?: boolean }) => filterOn && !(options?.expanded === true);
 
 /** Wrap a tool's native renderers with zen's compact behavior. */
-function wrapNative(toolName: string, native: { renderCall?: any; renderResult?: any }): any {
-	const oneLine = NATIVE_ONE_LINE_TOOLS.has(toolName);
+function wrapNative(toolName: string, native: { renderCall?: any; renderResult?: any; renderShell?: string }): any {
+	const self = native.renderShell === "self";
 	const nativeResult = (result: any, options: any, theme: any, ctx: any, state: any) => {
 		const component = safeNative(native.renderResult, result, options, theme, {
 			...ctx,
 			lastComponent: state[RESULT_KEY],
-		}) ?? plainTextResult(result, theme);
+		}) ?? (native.renderResult ? plainTextResult(result, theme) : fallbackResult(result, options, theme, ctx, state));
 		state[RESULT_KEY] = component;
 		return component;
 	};
 	return {
 		...native,
+		renderShell: "self",
 		renderCall(args: any, theme: any, ctx: any) {
 			rememberInvalidate(ctx);
 			const state = stateOf(ctx);
-			if (!isCompact(ctx) && oneLine) {
-				state.zenReadCall = undefined;
-				// Off or expanded: plain native call line. Native throws fall
-				// back to a minimal title line (fail-open), never undefined:
-				// pi's updateDisplay would addChild(undefined).
-				const comp = safeNative(native.renderCall, args, theme, {
-					...ctx,
-					lastComponent: state[CALL_KEY],
-				});
-				if (comp) {
-					state[CALL_KEY] = comp;
-					return comp;
-				}
-				return (
-					safeNative(native.renderCall, args, theme, ctx) ??
-					new Text(theme.fg("toolTitle", theme.bold(toolName)), 0, 0)
-				);
+			if (!isCompact(ctx)) {
+				const call = safeNative(native.renderCall, args, theme, { ...ctx, lastComponent: state[CALL_KEY] }) ??
+					new Text(registeredCallText(toolName, args, theme, ctx.expanded), 0, 0);
+				state[CALL_KEY] = call;
+				state.zenCacheDetail = NATIVE_ONE_LINE_TOOLS.has(toolName) || toolName === "write" || toolName === "edit";
+				return self ? call : nativeFrame(call, theme, ctx, state);
 			}
-			if (!isCompact(ctx) && !oneLine) {
-				// Off or expanded: full native call (diffs, content).
-				return safeNative(native.renderCall, args, theme, ctx) ?? new Text("", 0, 0);
+			// Native shell renderers own their running timer; retain their lifecycle.
+			if ((toolName === "bash" || toolName === "powershell") && ctx.isPartial) {
+				state.zenPartialResult = true;
+				state[CALL_KEY] = safeNative(native.renderCall, args, theme, { ...ctx, lastComponent: state[CALL_KEY] });
 			}
-			if (oneLine) {
-				// Compact: native call line + suffix via the decorator. The
-				// native component is kept and fed back as lastComponent so
-				// its internal reuse (bash timer, path handling) works. A
-				// throw falls back to a minimal title line (fail-open).
-				const cached = state.zenReadCall;
-				const colors = toolName === "read" ? theme.colors : undefined;
-				// Read args are complete before caching. Key on their values,
-				// since streaming parsers can reuse and mutate an args object.
-				const readKey = toolName === "read" ? JSON.stringify([
-					args?.file_path, args?.path, args?.offset, args?.limit, ctx.cwd,
-				]) : undefined;
-				const reuseRead = toolName === "read" && ctx.argsComplete && colors && cached &&
-					cached.key === readKey && cached.colors === colors;
-				const comp = reuseRead ? state[CALL_KEY] :
-					safeNative(native.renderCall, args, theme, { ...ctx, lastComponent: state[CALL_KEY] }) ??
-					new Text(theme.fg("toolTitle", theme.bold(toolName)), 0, 0);
-				if (toolName === "read" && ctx.argsComplete && colors) {
-					state.zenReadCall = { key: readKey, colors };
-				}
-				state[CALL_KEY] = comp;
-				const decorator = state[STATE_KEY] ??= decoratedCall();
-				decorator.comp = comp;
-				const suffix = suffixFor(state[INFO_KEY], theme);
-				if (decorator.suffix !== suffix) {
-					decorator.suffix = suffix;
-					decorator.suffixWidth = terminalWidth(suffix);
-				}
-				return decorator;
-			}
-			// Compact, multi-line native call (write, edit): zen's own line.
-			state[CALL_KEY] ??= new Text("", 0, 0);
-			const text = state[CALL_KEY];
-			text.setText(compactCallText(toolName, args, theme) + suffixFor(state[INFO_KEY], theme));
-			return text;
+			const row = state[STATE_KEY] ??= compactRow(toolName);
+			row.update(args, theme, ctx, state);
+			return row;
 		},
 		renderResult(result: any, options: { expanded: boolean; isPartial: boolean }, theme: any, ctx: any) {
 			const state = stateOf(ctx);
@@ -468,7 +544,20 @@ function wrapNative(toolName: string, native: { renderCall?: any; renderResult?:
 				// A throw falls back to plain text (fail-open), never
 				// undefined: pi's updateDisplay would addChild(undefined).
 				state.zenPartialResult = options.isPartial;
-				return nativeResult(result, options, theme, ctx, state);
+				const component = nativeResult(result, options, theme, ctx, state);
+				if (!isCompactResult(options)) {
+					if (self || !state.zenFrame || state.zenFrameExpanded !== ctx.expanded) return component;
+					state.zenFrame?.addChild(component);
+					return emptyResult();
+				}
+				if (self) return component;
+				// Keep the native live preview, with its original result padding.
+				const frame = state.zenLiveFrame ??= new Box(ctx.outputPad ?? 1, 0);
+				frame.setPaddingX(ctx.outputPad ?? 1);
+				frame.setBgFn((line: string) => theme.bg("toolPendingBg", line));
+				frame.clear();
+				frame.addChild(component);
+				return frame;
 			}
 			if (state.zenPartialResult) {
 				// Let the native final pass release resources started by a partial
@@ -521,55 +610,65 @@ function registeredCallText(toolName: string, args: any, theme: any, expanded: b
 	return `${header} ${theme.fg("muted", pairs.length > 100 ? pairs.slice(0, 97) + "..." : pairs)}`;
 }
 
+/** Match Pi's fallback when a custom definition lacks a result renderer. */
+function fallbackResult(result: any, options: any, theme: any, ctx: any, state: any): any {
+	const output = genericOutput(result, ctx.showImages);
+	const lines = output ? output.split("\n") : [];
+	const shown = options.expanded ? lines : lines.slice(0, 10);
+	let body = shown.map((line: string) => theme.fg("toolOutput", line)).join("\n");
+	const remaining = lines.length - shown.length;
+	if (remaining > 0) {
+		const keys = getKeybindings().getKeys("app.tools.expand").join("/")
+			.replace(/alt/g, process.platform === "darwin" ? "option" : "alt");
+		body += theme.fg("muted", `\n... (${remaining} more lines,`) + " " +
+			theme.fg("dim", keys) + theme.fg("muted", " to expand") + theme.fg("muted", ")");
+	}
+	const text = state.zenFallbackResult ??= new Text("", 0, 0);
+	text.setText(body);
+	return text;
+}
+
 /** Registered tools use native fallback slots; unknown tools use one Text. */
-function genericRenderers(toolName: string, registered: boolean): any {
+function genericRenderers(toolName: string, registered: boolean, self = false): any {
 	const background = (theme: any, ctx: any) => (line: string) =>
 		theme.bg(ctx.isPartial ? "toolPendingBg" : ctx.isError ? "toolErrorBg" : "toolSuccessBg", line);
 	return {
-		renderShell: registered ? "default" : "self",
+		renderShell: "self",
 		renderCall(args: any, theme: any, ctx: any) {
 			rememberInvalidate(ctx);
 			const state = stateOf(ctx);
+			if (isCompact(ctx)) {
+				const row = state[STATE_KEY] ??= compactRow(toolName);
+				row.update(args, theme, ctx, state);
+				return row;
+			}
 			const text = state[CALL_KEY] ??= new Text("", registered ? 0 : ctx.outputPad ?? 1, registered ? 0 : 1);
 			if (!registered) {
 				text.setPaddingX(ctx.outputPad ?? 1);
 				text.setCustomBgFn(background(theme, ctx));
 			}
-			if (!isCompact(ctx)) {
-				if (registered) {
-					text.setText(registeredCallText(toolName, args, theme, ctx.expanded));
-					return text;
-				}
-				// Pi's fallback renders args and output in one Text. Use the same
-				// layout, instead of wrapping and padding two separate components.
-				const argsText = JSON.stringify(args, null, 2);
-				state.zenGenericHeader = theme.fg("toolTitle", theme.bold(toolName)) +
-					(argsText ? `\n\n${argsText}` : "");
-				text.setText(state.zenGenericHeader);
-				return text;
+			if (registered) {
+				text.setText(registeredCallText(toolName, args, theme, ctx.expanded));
+				state.zenCacheDetail = true;
+				return self ? text : nativeFrame(text, theme, ctx, state);
 			}
-			text.setText(compactCallText(toolName, args, theme) + suffixFor(state[INFO_KEY], theme));
+			// Unknown native fallback keeps arguments and output in one Text.
+			const argsText = JSON.stringify(args, null, 2);
+			state.zenGenericHeader = theme.fg("toolTitle", theme.bold(toolName)) +
+				(argsText ? `\n\n${argsText}` : "");
+			text.setText(state.zenGenericHeader);
 			return text;
 		},
 		renderResult(result: any, options: { expanded: boolean; isPartial: boolean }, theme: any, ctx: any) {
 			const state = stateOf(ctx);
 			if (!isCompactResult(options)) {
-				const output = genericOutput(result, ctx.showImages);
 				if (registered) {
-					const lines = output ? output.split("\n") : [];
-					const shown = options.expanded ? lines : lines.slice(0, 10);
-					let body = shown.map((line: string) => theme.fg("toolOutput", line)).join("\n");
-					const remaining = lines.length - shown.length;
-					if (remaining > 0) {
-						const keys = getKeybindings().getKeys("app.tools.expand").join("/")
-							.replace(/alt/g, process.platform === "darwin" ? "option" : "alt");
-						body += theme.fg("muted", `\n... (${remaining} more lines,`) + " " +
-							theme.fg("dim", keys) + theme.fg("muted", " to expand") + theme.fg("muted", ")");
-					}
-					const text = state[RESULT_KEY] ??= new Text("", 0, 0);
-					text.setText(body);
-					return text;
+					const text = fallbackResult(result, options, theme, ctx, state);
+					if (self || !state.zenFrame || state.zenFrameExpanded !== ctx.expanded) return text;
+					state.zenFrame?.addChild(text);
+					return emptyResult();
 				}
+				const output = genericOutput(result, ctx.showImages);
 				// renderCall and renderResult share state. Updating the call Text
 				// here avoids a second wrapping pass and a deferred repaint.
 				const text = state[CALL_KEY] ??= new Text("", ctx.outputPad ?? 1, 1);
@@ -602,7 +701,7 @@ export function makeResolver(getFilter: () => boolean): (toolName: string, next:
 			// Definition with a result renderer only: wrap what exists.
 			return wrapNative(toolName, native);
 		}
-		return genericRenderers(toolName, native !== undefined);
+		return genericRenderers(toolName, native !== undefined, native?.renderShell === "self");
 	};
 }
 

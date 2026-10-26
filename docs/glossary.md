@@ -28,7 +28,7 @@ Source: `pi/.pi/agent/AGENTS.md`, Worktrees section.
 
 ## compact tool calls
 
-The `zen` extension's compact view of tool calls in pi's transcript. Successful and failed calls stay visible as one line with a status suffix. Click or `ctrl+o` expands tool output. Zen uses the public `pi.registerToolRenderer` API and delegates to native renderers when expanded or turned off. Thinking uses pi's native `hideThinkingBlock` setting. This view replaces the retired split extension and zen v1's transcript filter.
+The `zen` extension's compact view of tool calls in pi's transcript. Collapsed text calls use one content row with a status suffix, plus Pi's blank separator. Width-safe previews keep filenames, read ranges, operation names, and structured warnings where space allows. Click or `ctrl+o` restores native details. Inline images remain visible. Zen uses public `pi.registerToolRenderer`, self framing, and `Box`; execution, arguments, and results never change. Thinking uses pi's native `hideThinkingBlock` setting. This view replaces the retired split extension and zen v1's transcript filter.
 
 Source: `pi/.pi/agent/extensions/zen.ts`, `pi/.pi/agent/extensions/README.md`, and https://github.com/luiul/dotfiles/issues/67.
 

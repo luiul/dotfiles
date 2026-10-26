@@ -77,24 +77,30 @@ autoload -Uz add-zsh-hook
 add-zsh-hook precmd _my_title_precmd
 add-zsh-hook preexec _my_title_preexec
 
-# OSC 7 working directory report at shell startup.
+# OSC 7 working directory report: once at shell startup, then at every prompt.
 #
-# Ghostty tracks each window's working directory from OSC 7 reports
+# Ghostty tracks each surface's working directory from OSC 7 reports
 # (kitty-shell-cwd format) and opens new windows, tabs, and splits (cmd+n,
-# cmd+t) in the focused window's last tracked directory. It seeds every
-# surface with the shell's initial directory, but only OSC 7 reports update
-# the tracked value afterwards. Ghostty's own shell integration defers all
-# hook registration to the first prompt: it only appends
-# _ghostty_deferred_init to precmd_functions. A `zsh -ic 'exec <tui>'` window
-# (piw, and any other tool wrapper) never shows a prompt, so it never reports:
-# its directory stays invisible to Ghostty's session view (AppleScript
-# `working directory`, session search) and the tracked value goes stale if the
-# shell cd's before exec'ing the TUI. Emit one report here so every window,
-# including TUI-only ones, is known to Ghostty from startup. Write to the
+# cmd+t) in the focused surface's last tracked directory. Ghostty's own
+# shell integration re-reports at each prompt, but it is injected via ZDOTDIR
+# only into the surface's own login shell: nested interactive shells (a plain
+# `zsh` run from the prompt, inside a window whose login shell stays in its
+# creation directory) never load it, so their cd moves are never reported and
+# windows opened from that surface land in the stale outer directory. This
+# hook comes from .zshrc, so every interactive zsh, nested or not, reports.
+# The per-prompt report also self-heals stray reports: the gitstatus daemon
+# wrapper subshell can emit an OSC 7 of /, and the next prompt overwrites it.
+# Report on precmd, not on chpwd: precmd hooks do not run inside the
+# non-interactive gitstatus wrapper subshell, while a chpwd hook would be
+# inherited by it (its `cd -q /` fires chpwd in subshells). Write to the
 # controlling terminal, never to stdout: tool wrappers capture stdout, and an
 # escape sequence in captured output would corrupt it. Only live directories
 # are reported: reporting a deleted directory makes Ghostty fall back to /
 # when opening new windows from this one (ghostty discussion #10448).
-if [[ $TERM_PROGRAM == ghostty && -n $TTY && -w $TTY && $PWD == /* && -d $PWD ]]; then
-	printf '\e]7;kitty-shell-cwd://%s%s\a' "$HOST" "$PWD" > $TTY
-fi
+_my_title_osc7() {
+	if [[ $TERM_PROGRAM == ghostty && -n $TTY && -w $TTY && $PWD == /* && -d $PWD ]]; then
+		printf '\e]7;kitty-shell-cwd://%s%s\a' "$HOST" "$PWD" > $TTY
+	fi
+}
+_my_title_osc7
+add-zsh-hook precmd _my_title_osc7

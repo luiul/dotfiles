@@ -42,6 +42,11 @@ function harness(code: string) {
 	const commands = new Map<string, any>();
 	const calls: { cwd: string; timeout: number; args: string[]; complete: (stdout?: string, error?: Error) => void; done: boolean }[] = [];
 	const reads: string[] = [];
+	const copies: string[] = [];
+	let copyError = false;
+	let saved = true;
+	let gitIdentity = "/repo/one\n/repo/one/.git\n/repo/one/.git\n";
+	let compactionEnabled = true;
 	let holdGit = false;
 	let running = 0;
 	let maxRunning = 0;
@@ -53,7 +58,7 @@ function harness(code: string) {
 		let timeout: any;
 		const call = {
 			cwd: options.cwd, timeout: options.timeout, args, done: false,
-			complete: (stdout = gitOutput, error?: Error) => {
+			complete: (stdout = args[0] === "rev-parse" ? gitIdentity : gitOutput, error?: Error) => {
 				if (call.done) return;
 				call.done = true;
 				running--;
@@ -79,9 +84,13 @@ function harness(code: string) {
 		setInterval, clearInterval: clearTimer, setTimeout, clearTimeout: clearTimer,
 		require: (name: string) => {
 			if (name === "node:child_process") return { execFile };
-			if (name === "node:fs") return { readFileSync: (path: string) => {
+			if (name === "@earendil-works/pi-coding-agent") return { copyToClipboard: async (text: string) => {
+				if (copyError) throw new Error("Clipboard unavailable");
+				copies.push(text);
+			} };
+			if (name === "node:fs") return { existsSync: () => saved, readFileSync: (path: string) => {
 				reads.push(path);
-				return JSON.stringify({ compaction: { enabled: true, reserveTokens: 16384 } });
+				return JSON.stringify({ compaction: { enabled: compactionEnabled, reserveTokens: 16384 } });
 			} };
 			return require(name);
 		},
@@ -115,7 +124,7 @@ function harness(code: string) {
 						if (mode !== "tui" || !hasUI) return;
 						footer?.dispose();
 						footer = factory?.({ requestRender: () => { renders++; } }, theme, {
-							getGitBranch: () => "main",
+							getGitBranch: () => state.branchLabel,
 							getExtensionStatuses: () => statuses,
 							onBranchChange: (fn: () => void) => {
 								subscribers.add(fn);
@@ -127,6 +136,9 @@ function harness(code: string) {
 					notify: (text: string) => { notices.push(text); },
 				},
 				sessionManager: {
+					getLeafId: () => "active-leaf",
+					getSessionId: () => "12345678-abcd-4321-8765-0123456789ab",
+					getSessionFile: (): string | undefined => "/sessions/test.jsonl",
 					getSessionName: () => "test session",
 					getBranch: () => [{ type: "message", message: {
 						role: "assistant", stopReason: "stop",
@@ -136,7 +148,7 @@ function harness(code: string) {
 				model: { id: "model-id", name: "Model Name", provider: "router" },
 				getContextUsage: () => ({ tokens: 30000, contextWindow: 128000, percent: 23.4375 }),
 			},
-			subscribers, history, notices,
+			subscribers, history, notices, statuses, branchLabel: "main",
 			get footer() { return footer; },
 			get renders() { return renders; },
 			get footerSets() { return footerSets; },
@@ -145,12 +157,17 @@ function harness(code: string) {
 		return state;
 	};
 	return {
-		calls, reads, context, timers,
+		calls, reads, copies, context, timers,
+		set copyError(value: boolean) { copyError = value; },
+		set saved(value: boolean) { saved = value; },
+		set identity(value: string) { gitIdentity = value; },
+		set compactionEnabled(value: boolean) { compactionEnabled = value; },
 		set hold(value: boolean) { holdGit = value; },
 		set output(value: string) { gitOutput = value; },
 		get maxRunning() { return maxRunning; },
 		intervals: () => [...timers.values()].filter(t => t.interval !== undefined).map(t => t.interval).sort(),
 		fire: async (name: string, state: ReturnType<typeof context>) => { await handlers.get(name)?.({}, state.ctx); await flush(); },
+		command: async (name: string, state: ReturnType<typeof context>) => { await commands.get(name).handler("", state.ctx); await flush(); },
 		toggle: async (state: ReturnType<typeof context>) => { await commands.get("statusbar").handler("", state.ctx); await flush(); },
 		advance: async (ms: number) => {
 			const target = now + ms;
@@ -171,6 +188,7 @@ function harness(code: string) {
 	};
 }
 
+const strip = (text: string) => text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
 const code = await compile(sourcePath);
 const baselineArg = process.argv.indexOf("--baseline");
 const baselineCode = baselineArg >= 0 ? await compile(resolve(process.argv[baselineArg + 1])) : undefined;
@@ -198,21 +216,23 @@ for (const [mode, hasUI] of [["sdk", false], ["rpc", true], ["json", false], ["p
 	await h.fire("agent_settled", state);
 	await h.fire("session_start", state);
 	await h.fire("session_shutdown", state);
+	await h.command("session-ref", state);
 	check(`${mode} hasUI=${hasUI} has no footer resources or settings reads`, () => {
 		assert.equal(h.calls.length, 0);
 		assert.equal(h.reads.length, 0);
 		assert.equal(h.timers.size, 0);
 		assert.equal(state.footerSets, 0);
 		assert.equal(state.renders, 0);
+		assert.equal(h.copies.length, 0);
 		assert.equal(state.notices.length, 0);
 	});
 	if (mode === "sdk" || mode === "rpc") {
 		const after = await measure(code, mode, hasUI);
 		const before = baselineCode ? await measure(baselineCode, mode, hasUI) : undefined;
 		console.log(`12s mock ${mode}: baseline=${before ? JSON.stringify(before) : "not supplied"} after=${JSON.stringify(after)}`);
-		if (before) check(`${mode} measurement pins four baseline git calls and zero after`, () => {
-			assert.equal(before.git, 4);
-			assert.equal(after.git, 0);
+		if (before) check(`${mode} measurement preserves zero headless resources`, () => {
+			assert.equal(before.git, 0);
+			assert.deepEqual(after, before);
 		});
 	}
 }
@@ -227,12 +247,15 @@ for (const [mode, hasUI] of [["sdk", false], ["rpc", true], ["json", false], ["p
 		assert.deepEqual(h.intervals(), [4000]);
 		assert.equal(state.subscribers.size, 1);
 		assert.equal(state.renders, 1);
+		assert.equal(h.calls.length, 2);
+		assert.equal(h.calls[0].args.join(" "), "rev-parse --path-format=absolute --show-toplevel --git-common-dir --git-dir");
 	});
 	await h.advance(12000);
 	check("TUI retains startup plus three polls over 12s, rendering once per refresh", () => {
-		assert.equal(h.calls.length, 4);
+		assert.equal(h.calls.length, 5);
 		assert.equal(state.renders, 4);
-		assert.ok(h.calls.every(c => c.timeout === 2000 && c.args.join(" ") === "status --porcelain=2 --branch"));
+		assert.ok(h.calls.every(c => c.timeout === 2000));
+		assert.ok(h.calls.slice(1).every(c => c.args.join(" ") === "status --porcelain=2 --branch"));
 		assert.ok([...h.timers.values()].every(t => t.unref));
 	});
 	await h.fire("before_agent_start", state);
@@ -310,14 +333,14 @@ for (const [mode, hasUI] of [["sdk", false], ["rpc", true], ["json", false], ["p
 	state.branch();
 	state.branch();
 	await h.advance(1000);
-	check("branch refreshes coalesce while one git subprocess runs", () => assert.equal(h.calls.length, 2));
-	h.calls[1].complete("# branch.ab +5 -6\n? only\n");
-	await flush();
-	check("one queued refresh runs after completion without overlap", () => { assert.equal(h.calls.length, 3); assert.equal(h.maxRunning, 1); });
+	check("branch refreshes coalesce while one git subprocess runs", () => assert.equal(h.calls.length, 3));
 	h.calls[2].complete("# branch.ab +5 -6\n? only\n");
 	await flush();
+	check("one queued refresh runs after completion without overlap", () => { assert.equal(h.calls.length, 4); assert.equal(h.maxRunning, 1); });
+	h.calls[3].complete("# branch.ab +5 -6\n? only\n");
+	await flush();
 	check("parsed git state still renders changed, ahead and behind", () => {
-		const text = state.footer.render(160).join("\n");
+		const text = strip(state.footer.render(160).join("\n"));
 		assert.ok(text.includes("changed 1") && text.includes("ahead 5") && text.includes("behind 6"));
 	});
 	state.branch();
@@ -368,11 +391,13 @@ for (const transition of ["disable", "reenable", "replace", "headless", "shutdow
 		}
 	});
 	if (transition === "replace" || transition === "reenable") {
-		h.calls[1].complete("# branch.ab +1 -0\n? fresh\n");
+		h.calls[1].complete("/repo/two\n/repo/two/.git\n/repo/two/.git\n");
+		await flush();
+		h.calls[2].complete("# branch.ab +1 -0\n? fresh\n");
 		await flush();
 		check(`${transition} renders only the fresh generation`, () => {
 			assert.equal(next.renders, nextRenders + 1);
-			assert.ok(next.footer.render(160).join("\n").includes("changed 1"));
+			assert.ok(strip(next.footer.render(160).join("\n")).includes("changed 1"));
 		});
 	}
 	await h.fire("session_shutdown", next);
@@ -387,23 +412,231 @@ if (baselineCode) {
 	const c = current.context();
 	await baseline.fire("session_start", b);
 	await current.fire("session_start", c);
-	for (const width of [45, 79, 80, 120, 200]) {
-		check(`footer rendering matches baseline at width ${width}`, () => assert.equal(JSON.stringify(c.footer.render(width)), JSON.stringify(b.footer.render(width))));
-	}
+	check("layout intentionally changes from baseline", () => {
+		assert.equal(c.footer.render(120).length, 3);
+		assert.equal(c.footer.render(60).length, 4);
+		assert.notEqual(JSON.stringify(c.footer.render(120)), JSON.stringify(b.footer.render(120)));
+	});
 	await baseline.fire("before_agent_start", b);
 	await current.fire("before_agent_start", c);
 	await baseline.advance(12000);
 	await current.advance(12000);
-	check("active wide and narrow footer rendering matches baseline", () => {
-		for (const width of [60, 160]) assert.equal(JSON.stringify(c.footer.render(width)), JSON.stringify(b.footer.render(width)));
-	});
-	check("TUI polling cadence matches baseline with one fewer idle render timer", () => {
-		assert.equal(current.calls.length, baseline.calls.length);
-		assert.equal(current.calls.length, 4);
-		assert.equal(current.intervals().length, baseline.intervals().length - 1);
+	check("TUI status polling cadence and timer count match baseline", () => {
+		assert.equal(current.calls.filter(c => c.args[0] === "status").length, baseline.calls.length);
+		assert.equal(current.calls.filter(c => c.args[0] === "status").length, 4);
+		assert.equal(current.intervals().length, baseline.intervals().length);
 	});
 	await baseline.fire("session_shutdown", b);
 	await current.fire("session_shutdown", c);
 	b.footer.dispose();
 }
+{
+	const h = harness(code);
+	h.identity = "/worktrees/luiul/improve-status-bar/dotfiles\n/home/luis/dotfiles/.git\n/home/luis/dotfiles/.git/worktrees/dotfiles2\n";
+	const state = h.context();
+	state.ctx.model = { id: "gpt-6.1-sol", name: "GPT-6.1 Sol", provider: "ai-model-router" };
+	await h.fire("session_start", state);
+	const text = (width: number) => strip(state.footer.render(width).join("\n"));
+	check("wide footer groups checkout, runtime and session identity in three rows", () => {
+		const rows = state.footer.render(200).map(strip);
+		assert.equal(rows.length, 3);
+		assert.ok(rows[0].includes("dotfiles  worktree improve-status-bar  branch main  changed 2  ahead 2  behind 3"));
+		assert.ok(rows[1].includes("GPT-6.1 Sol [ai-model-router]"));
+		assert.ok(rows[1].includes("context 30k/128k") && rows[1].includes("until compact 82k"));
+		assert.ok(rows[2].includes(state.ctx.sessionManager.getSessionId()));
+		for (const metric of ["test session", "$0.123", "hit 80%", "in 1.0k", "out 2.0k", "cache 4.1k", "plain status"]) assert.ok(rows[2].includes(metric), metric);
+		assert.ok(!text(200).includes("free "));
+	});
+	check("four narrow rows keep UUID, provider, context and timer before metrics", () => {
+		assert.equal(state.footer.render(60).length, 4);
+		assert.ok(text(60).includes("GPT-6.1 Sol [ai-model-router]"));
+		assert.ok(text(60).includes("until compact 82k"));
+		assert.ok(text(60).includes(state.ctx.sessionManager.getSessionId()));
+	});
+	await h.fire("before_agent_start", state);
+	await h.advance(3000);
+	check("working timer and headroom survive crowded runtime rows", () => {
+		for (const width of [36, 44, 60, 79, 80, 100]) {
+			assert.ok(text(width).includes("working 3s"), `${width}: ${text(width)}`);
+			assert.ok(text(width).includes("until compact 82k"), `${width}: ${text(width)}`);
+		}
+	});
+	const { visibleWidth } = require("@earendil-works/pi-tui");
+	check("every row fits its terminal width and never silently shortens UUID", () => {
+		for (const width of [0, 1, 10, 20, 35, 36, 43, 44, 45, 60, 79, 80, 100, 120, 160, 200]) {
+			const rows = state.footer.render(width);
+			assert.ok(rows.every((r: string) => visibleWidth(r) <= width), `width ${width}`);
+			if (width >= 36) assert.ok(text(width).includes(state.ctx.sessionManager.getSessionId()), `width ${width}`);
+			if (width > 0 && width < 36) assert.ok(rows.at(-1).includes("…"), `width ${width}`);
+		}
+	});
+	check("long model names yield to the whole provider, headroom and timer", () => {
+		state.ctx.model.name = "Very long model name ".repeat(12);
+		const rendered = text(80);
+		assert.ok(rendered.includes("[ai-model-router]") && rendered.includes("…"));
+		assert.ok(rendered.includes("working 3s") && rendered.includes("until compact 82k"));
+		state.ctx.model = { id: "eu.anthropic.claude-sonnet-4-6", name: "Sonnet", provider: "amazon-bedrock" };
+		assert.ok(text(200).includes("eu.anthropic.claude-sonnet-4-6 [amazon-bedrock]"));
+	});
+	check("long providers shorten clearly across the 79/80 layout boundary", () => {
+		const model = state.ctx.model;
+		state.ctx.model = { id: "gpt-6.1-sol", name: "GPT-6.1 Sol", provider: "very-long-company-model-router" };
+		for (const width of [36, 44, 60, 79, 80, 81, 85, 100]) {
+			const rendered = text(width);
+			assert.ok(/\[[^\]]+\]/.test(rendered), `${width}: ${rendered}`);
+			assert.ok(rendered.includes("working 3s") && rendered.includes("until compact 82k"));
+			assert.ok(state.footer.render(width).every((r: string) => visibleWidth(r) <= width));
+		}
+		assert.ok(text(80).includes("…"));
+		state.ctx.model = model;
+	});
+	check("missing model has a clear fallback without a fake provider", () => {
+		const saved = state.ctx.model;
+		(state.ctx as any).model = undefined;
+		assert.ok(text(200).includes("no model") && !text(200).includes("[amazon-bedrock]"));
+		state.ctx.model = saved;
+	});
+	check("provider and session identity follow current context without restart", () => {
+		state.ctx.sessionManager.getSessionId = () => "87654321-1234-4321-abcd-112233445566";
+		assert.ok(text(80).includes("87654321-1234-4321-abcd-112233445566"));
+		assert.ok(!text(200).includes("12345678-abcd"));
+	});
+	check("long names, branch and Unicode paths do not hide protected fields", () => {
+		state.ctx.sessionManager.getSessionName = () => "长名字🚀 ".repeat(60) + "\n\x1b[31minjected";
+		state.branchLabel = "long-branch-".repeat(100);
+		for (const width of [36, 44, 60, 80, 120, 200]) {
+			const rows = state.footer.render(width);
+			assert.ok(rows.every((r: string) => !r.includes("\n") && visibleWidth(r) <= width));
+			assert.ok(text(width).includes("87654321-1234-4321-abcd-112233445566"));
+			assert.ok(text(width).includes("working 3s"));
+		}
+	});
+	check("extension colors survive without accepting terminal controls", () => {
+		state.statuses.set("meter", "\x1b[31mbh\x1b[0m O\x1b[32m▕▏▏\x1b[0m\n\x1b[2J\x1b]52;c;secret\x07");
+		const rows = state.footer.render(200);
+		const raw = rows.join("\n");
+		assert.ok(raw.includes("\x1b[31m") && strip(raw).includes("blackhole"));
+		assert.ok(!raw.includes("\x1b[2J") && !raw.includes("secret"));
+		assert.ok(rows.every((r: string) => !r.includes("\n")));
+		state.statuses.set("meter", "plain status");
+	});
+	check("unknown context and unavailable context never claim compaction headroom", () => {
+		(state.ctx as any).getContextUsage = () => ({ tokens: null, contextWindow: 128000, percent: null });
+		assert.ok(text(200).includes("context unknown"));
+		assert.ok(!text(200).includes("until compact"));
+		(state.ctx as any).getContextUsage = () => undefined;
+		assert.ok(text(200).includes("context unavailable"));
+		assert.ok(!text(200).includes("until compact"));
+	});
+	check("context past the threshold clamps headroom to zero", () => {
+		state.ctx.getContextUsage = () => ({ tokens: 120000, contextWindow: 128000, percent: 93.75 });
+		assert.ok(text(200).includes("until compact 0"));
+	});
+	h.compactionEnabled = false;
+	await h.fire("session_start", state);
+	check("disabled auto compaction is explicit", () => {
+		assert.ok(text(80).includes("auto compact off"));
+		assert.ok(!text(200).includes("until compact"));
+	});
+	await h.fire("session_shutdown", state);
+}
+
+for (const identity of ["/repo/one\n/repo/one/.git\n/repo/one/.git\n", "/repo/linked\n/repo/main/.git\n/repo/main/.git/worktrees/linked\n"]) {
+	const h = harness(code);
+	h.identity = identity;
+	const state = h.context("tui", true, identity.startsWith("/repo/linked") ? "/repo/linked/src" : "/repo/one");
+	await h.fire("session_start", state);
+	check(`checkout label resolves ${identity.startsWith("/repo/linked") ? "linked subdirectory" : "main checkout"}`, () => {
+		const text = strip(state.footer.render(200).join("\n"));
+		if (identity.startsWith("/repo/linked")) assert.ok(text.includes("main  worktree linked") && text.includes("dir src"));
+		else assert.ok(text.includes("one  worktree main"));
+	});
+	const calls = h.calls.length;
+	const reads = h.reads.length;
+	for (let i = 0; i < 20; i++) state.footer.render(100);
+	check("renders do not launch subprocesses or read files", () => { assert.equal(h.calls.length, calls); assert.equal(h.reads.length, reads); });
+	await h.fire("session_shutdown", state);
+}
+
+{
+	const h = harness(code);
+	h.identity = "";
+	const state = h.context("tui", true, "/tmp/plain-folder");
+	state.branchLabel = "";
+	await h.fire("session_start", state);
+	check("non-Git directories keep cwd and session identity", () => {
+		const text = strip(state.footer.render(120).join("\n"));
+		assert.ok(text.includes("plain-folder") && text.includes(state.ctx.sessionManager.getSessionId()));
+		assert.ok(!text.includes("worktree") && !text.includes("branch"));
+	});
+	await h.fire("session_shutdown", state);
+}
+
+{
+	const h = harness(code);
+	const state = h.context();
+	await h.fire("session_start", state);
+	await h.toggle(state);
+	await h.command("session-ref", state);
+	check("session-ref works with footer disabled and copies context only", () => {
+		assert.equal(h.copies.length, 1);
+		const text = h.copies[0];
+		for (const s of [state.ctx.sessionManager.getSessionId(), 'Session file: "/sessions/test.jsonl"', 'Working directory: "/repo/one"', "Do not resume", "snapshot", "Current branch leaf: active-leaf", "untrusted context"]) assert.ok(text.includes(s), s);
+		assert.ok(!text.includes("pi --resume") && !text.includes("pi --session"));
+		assert.ok(state.notices.at(-1)?.includes("copied"));
+	});
+	state.ctx.sessionManager.getLeafId = () => "older-selected-leaf";
+	state.ctx.sessionManager.getSessionFile = () => '/custom sessions/session "quoted".jsonl';
+	await h.command("session-ref", state);
+	check("session-ref pins the selected branch and exact custom session path", () => {
+		assert.ok(h.copies[1].includes("Current branch leaf: older-selected-leaf"));
+		assert.ok(h.copies[1].includes(`Session file: ${JSON.stringify(state.ctx.sessionManager.getSessionFile())}`));
+	});
+	const copyCount = h.copies.length;
+	h.saved = false;
+	await h.command("session-ref", state);
+	check("session-ref rejects transcript not yet saved", () => {
+		assert.equal(h.copies.length, copyCount);
+		assert.ok(state.notices.at(-1)?.includes("No saved transcript"));
+	});
+	state.ctx.sessionManager.getSessionFile = () => undefined;
+	await h.command("session-ref", state);
+	check("session-ref rejects ephemeral sessions", () => assert.equal(h.copies.length, copyCount));
+	state.ctx.sessionManager.getSessionFile = () => "/sessions/test.jsonl";
+	h.saved = true;
+	h.copyError = true;
+	await h.command("session-ref", state);
+	check("clipboard errors report failure without changing footer resources", () => {
+		assert.equal(h.copies.length, copyCount);
+		assert.ok(state.notices.at(-1)?.includes("Could not copy"));
+		assert.equal(h.timers.size, 0);
+	});
+	await h.fire("session_shutdown", state);
+}
+
+{
+	const h = harness(code);
+	h.hold = true;
+	const state = h.context();
+	await h.fire("session_start", state);
+	await h.advance(2000);
+	check("checkout lookup timeout uses the same bounded subprocess slot", () => {
+		assert.equal(h.calls.length, 2);
+		assert.equal(h.calls[0].timeout, 2000);
+		assert.equal(h.maxRunning, 1);
+	});
+	h.calls[1].complete();
+	await flush();
+	check("failed identity lookup leaves cwd and UUID usable", () => {
+		const text = strip(state.footer.render(120).join("\n"));
+		assert.ok(text.includes("one") && text.includes(state.ctx.sessionManager.getSessionId()));
+	});
+	await h.advance(2000);
+	check("identity lookup is not repeated on each poll", () => {
+		assert.equal(h.calls.filter(c => c.args[0] === "rev-parse").length, 1);
+	});
+	await h.fire("session_shutdown", state);
+	await h.advance(4000);
+}
+
 console.log(`ALL PASS (${checks} checks)`);

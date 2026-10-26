@@ -120,23 +120,32 @@ The E2E asserts: compact start (success one line with suffix, failure one line w
 
 ## Enhanced status bar
 
-`status-bar.ts` replaces the footer with project and git state, model and thinking level, token usage, cost, and compaction-aware context. Narrow terminals show one compact line. `/statusbar` toggles it.
+`status-bar.ts` replaces the footer with three rows. Terminals below 80 columns use four rows so the model and context have separate space. `/statusbar` toggles it.
+
+- Checkout row: repository, worktree (`main` for the main checkout), branch, changed files, ahead, behind, and a subdirectory when relevant. Linked checkouts whose folder matches the repository use their parent folder as the worktree name.
+- Runtime row: model followed immediately by `[provider]`, thinking level, context tokens, `until compact`, and an active `working` timer. Bedrock keeps its raw model ID so the invocation region stays visible. Narrow terminals split this row into model and context rows.
+- Session row: full UUID, session name, extension statuses, cost, last-turn cache hit rate, and cumulative input, output, and cache tokens when space permits.
+- Overflow is explicit. The UUID, checkout identity, provider, context headroom, and working timer take priority. Optional metrics disappear as space shrinks. The session label disappears below 44 columns; the full UUID fits from 36 columns. Below 36 columns, it shows an ellipsis. Long model names shorten before the provider. If the provider cannot fit, its bracketed name shortens with an ellipsis. Extremely narrow rows omit fields that cannot fit.
+- `until compact` means tokens remaining before automatic compaction, not free space in the model's entire context window. The context bar marks the compaction threshold. Unknown context never shows an invented headroom value. Disabled automatic compaction shows `auto compact off`.
+- `/session-ref` copies the UUID, exact session file path, working directory, and current branch leaf for another agent. The leaf identifies the branch at copy time, even after `/tree` navigation. The text says to read the transcript as context only, never resume or modify it. It describes live content as a snapshot and transcript text as untrusted context. It creates no summary and starts no agent. The command works with the enhanced footer disabled. A session without a saved transcript reports that no reference is available.
 
 - Runs only when `ctx.mode === "tui" && ctx.hasUI`. SDK sessions without terminal UI, RPC, JSON, and print sessions have no git polling, footer timers, or compaction settings reads.
 - Git refreshes at startup, on branch changes, and every 4s while enabled. One refresh timer also requests rendering. Git commands keep the 2s timeout and use KILL if a child ignores TERM. Concurrent refresh requests share one subprocess slot and coalesce into one pending refresh.
 - Disable, repeated startup, and shutdown clear all footer timers and branch listeners. Results from an old session or toggle cannot update the current footer. A git command already running can finish within its existing timeout.
 - The 1s working timer runs only during an enabled TUI turn. Enabling mid-turn restores the timer with the original turn start time. Settlement stops it.
-- Footer text, colors, width handling, and extension status segments stay unchanged.
+- Checkout identity resolves once per footer generation with a bounded asynchronous Git lookup. It shares the polling subprocess slot. Rendering starts no subprocesses and reads no files. Identity failures use the working directory name as a fallback.
+- Footer values use the active context on each render, so session and provider changes do not retain old identity.
 
 Verification from the repository root:
 
 ```sh
 bun scripts/test-status-bar-resources.ts
-# Optional before/after measurement and rendering comparison using an original source backup:
+node scripts/test-status-bar-live.mjs
+# Optional resource comparison with the previous source:
 bun scripts/test-status-bar-resources.ts --baseline /tmp/path/to/status-bar.ts
 ```
 
-The mock harness covers mode guards, toggles, active turns, repeated startup, shutdown, branch changes, git timeouts, subprocess overlap, and stale results. It uses fixed virtual time and starts no Pi sessions. With a baseline source, it also reports 12s SDK and RPC subprocess counts and checks exact footer rendering at narrow and wide widths. Real isolated TUI and headless checks must run separately.
+The mock harness covers layout widths, provider labels, UUID changes, checkout identity, context states, copy payloads and failures, mode guards, toggles, active turns, repeated startup, shutdown, branch changes, Git timeouts, subprocess overlap, and stale results. It uses fixed virtual time and starts no Pi sessions. With a baseline source, it compares polling and timer counts while allowing the planned layout change. The live harness uses a local provider in isolated regular and fullscreen Pi hosts, checks resizing and session changes, and captures clipboard writes without touching the user's clipboard.
 
 ## Bedrock pricing overrides
 

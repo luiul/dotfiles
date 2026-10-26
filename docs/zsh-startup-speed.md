@@ -52,8 +52,7 @@ The latest review removed repeated completion generation and kept Git work off t
 - The prompt is assembled in the main shell. Rendering no longer uses `PROMPT='$(my_prompt)'` or starts a subprocess on each redraw.
 - Normal Git repos use asynchronous daemon queries. A pending query never blocks typing. Late results cannot overwrite the current directory or command generation.
 - The daemon starts only when a normal repo needs it. Its executable starts asynchronously. A pipe-readiness callback completes the handshake with a 50 ms bound and at most three attempts per shell. Home directories and filtered repos need no daemon.
-- Repos with clean or process filters use background Git. Filter decisions expire after 30 seconds. Content changes to local or global config invalidate them sooner, even if size and modification time stay unchanged. Pending daemon results recheck the original config snapshot before publishing. Config files above 64 KiB always use background Git.
-- The config snapshot also records exported Git config overrides with Zsh builtins. Exporting, changing, or unsetting `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n`, `GIT_CONFIG_VALUE_n`, `GIT_CONFIG_PARAMETERS`, or `GIT_CONFIG_NOSYSTEM` changes its identity immediately. Nonzero or invalid counts and nonempty inherited `git -c` parameters always use background Git. The input path does not parse those overrides or start Git.
+- Repos with clean or process filters use background Git. Filter decisions expire after 30 seconds. Changes to HEAD, local config, or global config invalidate them sooner.
 - Workers publish complete newline-delimited records. The callback uses nonblocking reads, so partial results cannot freeze input. Replaced workers and their process groups are cancelled. A five-second deadline marks unavailable status as `git:?`, not clean.
 - Completed worker and daemon timers are removed. Shell exit closes descriptors and stops background work.
 
@@ -63,7 +62,7 @@ The layout still shows time, directory, branch or detached ref, upstream ahead/b
 
 Conflicts now have a separate `!N` count. Type changes count as modified. Both status paths count renames as deletion plus addition. Linked worktrees read stashes from the common Git directory. Submodule commit changes count, but dirt inside a submodule does not. An active virtual environment stays visible outside its project.
 
-Branch, tag, and environment labels escape prompt-percent sequences. Shell substitution stays off, so labels cannot run shell commands. Window titles remove terminal control characters and resolve relative Git pointers correctly.
+Branch, tag, and environment labels escape prompt-percent sequences. Window titles remove terminal control characters and resolve relative Git pointers correctly.
 
 ### Measurements
 
@@ -79,8 +78,6 @@ These are local measurements from the same review. Endpoint-security caches and 
 
 The window-request measurement includes AppleScript and window creation. The shell-start measurement isolates the startup config. Both real Ghostty cases used new windows, not the reused quick terminal. Completion registration was ready at the first prompt hook in the instrumented shells. PATH stayed byte-identical.
 
-A repeat check in the isolated worktree compared the committed startup config with this change. Seven interleaved login-shell samples measured 303 ms before and 47 ms after. Three interleaved real Ghostty samples measured shell startup at 400 ms before and 85 ms after. Window request to first command measured 637 ms before and 317 ms after, including automation. PATH stayed identical, and both Mole completion names were ready at the first prompt. Existing Ghostty windows stayed open.
-
 ### Checks
 
 Run these after changes:
@@ -94,14 +91,14 @@ zsh scripts/test-orca-watch.zsh
 git diff --check
 ```
 
-The live suite uses a private `ZDOTDIR` and this checkout's config through `ZSH_CONFIG_DIR`. It never uses another checkout's stowed prompt. Test sessions have registered owners and deadlines. The suite checks real login shells, Mole Tab completion, Git live completion, failure codes, duration, slow-worker typing, cancellation, deadlines, and shutdown cleanup. Worker cancellation checks record the PID from a `precmd` hook after launch. Each check proves that the positive worker PID owns a process group separate from the shell, with a live descendant. Directory-change checks disable command and prompt cancellation hooks so only `chpwd` can remove that group. Exit checks disable command cancellation so they exercise `zshexit`. Disabled job control uses the same ownership checks. No cancellation check treats group zero as evidence. The fixture suite checks type changes, rename counts, conflicts, escaped labels, linked worktrees, window titles, stashes, cache invalidation, exported config overrides, config races, and asynchronous query identity.
+The live suite checks real login shells, Mole Tab completion, Git live completion, failure codes, duration, slow-worker typing, cancellation, deadlines, and shutdown cleanup. The fixture suite checks type changes, rename counts, conflicts, escaped labels, linked worktrees, stashes, cache invalidation, and asynchronous query identity.
 
 ## If something breaks
 
 - Tools not found or wrong PATH: check `echo $options[globalrcs]` prints `off`, then compare `echo $PATH` against the array in `zsh/.zshenv`. If IT adds a file under `/etc/paths.d`, add its entries to that array.
 - Completions broken: check the plugin still exists at `~/repos/marlonrichert/zsh-autocomplete`. If it was deleted, either re-clone it or remove the source block in `.zshrc`. The `compinit -C` fallback then provides basic completions.
 - A completion cache needs refresh after a tool update: Mole checks its executable automatically. Other generated completions retain the existing Znap cache behavior.
-- A Git filter was changed through an included config file: allow 30 seconds or open a new shell. Direct local/global config content and branch changes invalidate immediately.
+- A Git filter was changed through an included config file: allow 30 seconds or open a new shell. Local/global config and branch changes normally invalidate immediately.
 - Prompt shows `git:?`: a background Git query exceeded its five-second deadline. Check `git status` directly. The next command retries.
 - Shell errors on startup mentioning `.zshenv`: the stow symlink may be stale. Re-run `cd ~/dotfiles && stow -R zsh`.
 

@@ -1,4 +1,4 @@
-zsh_config_dir="${ZSH_CONFIG_DIR:-$HOME/.zsh_config}"
+zsh_config_dir="$HOME/.zsh_config"
 
 # Orphan guard: interactive shells with no tty and no -c command can never show a
 # prompt, but zle spins in a busy loop forever without one (41 such login shells,

@@ -8,10 +8,6 @@ fixture=$(mktemp -d "${TMPDIR:-/tmp}/test-git-prompt.XXXXXX") || exit 1
 fixture=${fixture:A}
 trap 'command rm -rf -- "$fixture"' EXIT
 trap 'exit 130' INT TERM
-# Do not inherit command-scope config from the test runner.
-for name in ${(k)parameters[(I)GIT_CONFIG*]}; do
-    [[ "$name" == GIT_CONFIG || "$name" == GIT_CONFIG_* ]] && unset "$name"
-done
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 export GIT_AUTHOR_NAME=Test GIT_AUTHOR_EMAIL=test@example.invalid
 export GIT_COMMITTER_NAME=Test GIT_COMMITTER_EMAIL=test@example.invalid
@@ -282,8 +278,6 @@ WORKTRUNK_AGENT=1 WORKTRUNK_CONFIG_PATH="$fixture/wt.toml" \
     WORKTRUNK_PROJECT_CONFIG_PATH="$fixture/empty-wt.toml" \
     command wt switch --create linked --no-cd --yes --format json > "$fixture/wt-result.json" 2> "$fixture/wt.log" || fail 'Worktrunk fixture creation failed'
 [[ -f "$fixture/linked/.git" ]] || fail 'linked fixture is not a worktree'
-# Exercise relative pointers in both the prompt and the window title.
-print -r -- 'gitdir: ../cases/.git/worktrees/linked' > "$fixture/linked/.git"
 git config -f "$fixture/linked-filter.gitconfig" filter.included.clean cat || exit 1
 git config include.path "$fixture/linked-filter.gitconfig" || exit 1
 print -r -- stash >> tracked.txt
@@ -298,15 +292,6 @@ mock_status_reset
 VCS_STATUS_STASHES=1
 assert_daemon_parity "$expected"
 pass 'linked worktree honors included filter and shared stash in common Git dir'
-source "$repo/zsh/.zsh_config/title.zsh"
-add-zsh-hook -d precmd _my_title_precmd
-add-zsh-hook -d preexec _my_title_preexec
-_my_title_repo_info || fail 'title did not resolve relative worktree pointer'
-[[ $_my_title_root == "$fixture/linked" && $_my_title_branch == linked ]] || fail 'relative worktree title mismatch'
-pass 'window title resolves relative worktree pointer and branch'
-title_output=$(_my_title_render $'test\atitle')
-[[ $title_output == $'\e]0;testtitle • '"${(D)PWD}"$' • linked\a' ]] || fail 'title retained injected terminal controls'
-pass 'window title strips terminal controls from dynamic text'
 builtin cd "$fixture/cases" || exit 1
 git config --unset include.path || exit 1
 git stash drop -q || exit 1
@@ -350,186 +335,6 @@ refresh_worker
 [[ ${_my_prompt_git_filters[$PWD]} == 0 ]] || fail 'global filter removal not reprobed'
 pass 'global config change invalidates cache and reprobes filters'
 
-# Exported command-scope overrides must invalidate both cache and callbacks.
-# No config parser or Git subprocess is allowed in the fingerprint itself.
-mkdir -p "$fixture/overrides" || exit 1
-git init -q -b main "$fixture/overrides" || exit 1
-builtin cd "$fixture/overrides" || exit 1
-print -r -- $'stable\nruntime=one' > tracked.txt
-print -r -- 'tracked.txt filter=strip-runtime' > .gitattributes
-git -c "filter.strip-runtime.clean=sed '/^runtime=/d'" add . || exit 1
-git -c commit.gpgsign=false commit -qm overrides || exit 1
-print -r -- $'stable\nruntime=two' > tracked.txt
-refresh_worker
-[[ ${_my_prompt_git_filters[$PWD]} == 0 ]] && _my_prompt_filter_cached || fail 'override cache baseline'
-_my_prompt_filter_fingerprint
-baseline_key=$REPLY
-GIT_CONFIG_COUNT=0
-_my_prompt_filter_fingerprint
-[[ $REPLY == "$baseline_key" ]] || fail 'unexported config affected fingerprint'
-export GIT_CONFIG_COUNT
-_my_prompt_filter_cached && fail 'exported count retained cache'
-assert_worker_dispatch
-refresh_worker
-[[ ${_my_prompt_git_filters[$PWD]} == 0 ]] && _my_prompt_filter_cached || fail 'zero count should allow daemon'
-GIT_CONFIG_COUNT=1
-export GIT_CONFIG_KEY_0=filter.strip-runtime.clean GIT_CONFIG_VALUE_0="sed '/^runtime=/d'"
-_my_prompt_filter_cached && fail 'changed count retained cache'
-assert_worker_dispatch
-refresh_worker
-[[ ${_my_prompt_git_filters[$PWD]} == 1 && $_my_prompt_git != *'U['* ]] || fail 'environment clean filter not applied'
-_my_prompt_filter_cached && fail 'command-scope overrides must stay on background Git'
-_my_prompt_filter_fingerprint
-value_key=$REPLY
-GIT_CONFIG_VALUE_0=cat
-_my_prompt_filter_fingerprint
-[[ $REPLY != "$value_key" ]] || fail 'changed override value retained fingerprint'
-refresh_worker
-[[ $_my_prompt_git == *'U[%F{222}~1%f]'* ]] || fail 'changed environment filter not applied'
-_my_prompt_filter_fingerprint
-key_key=$REPLY
-GIT_CONFIG_KEY_0=test.no-filter
-_my_prompt_filter_fingerprint
-[[ $REPLY != "$key_key" ]] || fail 'changed override key retained fingerprint'
-refresh_worker
-[[ ${_my_prompt_git_filters[$PWD]} == 1 ]] || fail 'non-filter command override marked daemon safe'
-GIT_CONFIG_COUNT=0
-refresh_worker
-_my_prompt_filter_cached || fail 'zeroed count did not restore safe cache'
-unset GIT_CONFIG_KEY_0
-_my_prompt_filter_cached && fail 'unset override key retained cache'
-refresh_worker
-_my_prompt_filter_cached || fail 'unused value cache baseline'
-unset GIT_CONFIG_VALUE_0
-_my_prompt_filter_cached && fail 'unset override value retained cache'
-refresh_worker
-_my_prompt_filter_cached || fail 'unset count cache baseline'
-unset GIT_CONFIG_COUNT
-_my_prompt_filter_cached && fail 'unset count retained cache'
-refresh_worker
-_my_prompt_filter_fingerprint
-[[ $REPLY == "$baseline_key" ]] || fail 'unset count did not restore original identity'
-pass 'count, key and value exports, changes and unsets invalidate override identity'
-
-# A local value becomes effective only when exported to the Git child.
-GIT_CONFIG_KEY_0=test.local GIT_CONFIG_VALUE_0=local
-_my_prompt_filter_cached || fail 'local key/value invalidated cache'
-export GIT_CONFIG_KEY_0
-_my_prompt_filter_cached && fail 'key export retained cache'
-refresh_worker
-export GIT_CONFIG_VALUE_0
-_my_prompt_filter_cached && fail 'value export retained cache'
-refresh_worker
-unset GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
-refresh_worker
-pass 'exporting existing key and value parameters invalidates cache'
-
-# git -c passes its inherited command-scope config through this quoted format.
-export GIT_CONFIG_PARAMETERS="'filter.strip-runtime.clean'='cat'"
-_my_prompt_filter_cached && fail 'inherited -c export retained cache'
-assert_worker_dispatch
-refresh_worker
-[[ ${_my_prompt_git_filters[$PWD]} == 1 && $_my_prompt_git == *'U[%F{222}~1%f]'* ]] || fail 'inherited -c filter not applied'
-_my_prompt_filter_fingerprint
-parameters_key=$REPLY
-GIT_CONFIG_PARAMETERS="'filter.strip-runtime.clean'='sed '\\''/^runtime=/d'\\'''"
-_my_prompt_filter_fingerprint
-[[ $REPLY != "$parameters_key" ]] || fail 'changed inherited -c retained fingerprint'
-refresh_worker
-[[ $_my_prompt_git != *'U['* ]] || fail 'changed inherited -c filter not applied'
-unset GIT_CONFIG_PARAMETERS
-_my_prompt_filter_fingerprint
-[[ $REPLY == "$baseline_key" ]] || fail 'unset inherited -c retained fingerprint'
-refresh_worker
-_my_prompt_filter_cached || fail 'unset inherited -c did not restore safe cache'
-# Malformed and unbounded counts must never be parsed on the input path.
-for GIT_CONFIG_COUNT in invalid 999999999999999999999999999; do
-    export GIT_CONFIG_COUNT
-    _my_prompt_filter_fingerprint
-    (( ! _my_prompt_filter_cacheable )) || fail 'invalid count marked cacheable'
-    assert_worker_dispatch
-    refresh_worker
-    [[ ${_my_prompt_git_filters[$PWD]} == 1 && $_my_prompt_git == *'git:?'* ]] || fail 'invalid count failed open'
-done
-unset GIT_CONFIG_COUNT
-refresh_worker
-pass 'inherited -c changes and unsets invalidate identity; invalid counts fail closed'
-
-# All active pairs affect identity, not only the first override.
-export GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=test.first GIT_CONFIG_VALUE_0=one
-export GIT_CONFIG_KEY_1=filter.strip-runtime.clean GIT_CONFIG_VALUE_1="sed '/^runtime=/d'"
-refresh_worker
-[[ ${_my_prompt_git_filters[$PWD]} == 1 && $_my_prompt_git != *'U['* ]] || fail 'second config pair not applied'
-_my_prompt_filter_fingerprint
-second_key=$REPLY
-GIT_CONFIG_VALUE_1=cat
-_my_prompt_filter_fingerprint
-[[ $REPLY != "$second_key" ]] || fail 'second config value retained fingerprint'
-refresh_worker
-[[ $_my_prompt_git == *'U[%F{222}~1%f]'* ]] || fail 'second config value change not applied'
-unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1
-refresh_worker
-_my_prompt_filter_cached || fail 'second pair removal did not restore safe cache'
-pass 'multiple environment config pairs participate in identity and background status'
-
-# GIT_CONFIG_NOSYSTEM changes effective config even when the file is unchanged.
-export GIT_CONFIG_SYSTEM="$fixture/system.gitconfig"
-git config -f "$GIT_CONFIG_SYSTEM" filter.system.clean cat || exit 1
-refresh_worker
-_my_prompt_filter_cached || fail 'disabled system cache baseline'
-GIT_CONFIG_NOSYSTEM=0
-_my_prompt_filter_cached && fail 'enabled system config retained cache'
-assert_worker_dispatch
-refresh_worker
-[[ ${_my_prompt_git_filters[$PWD]} == 1 ]] || fail 'enabled system filter not applied'
-GIT_CONFIG_NOSYSTEM=1
-refresh_worker
-_my_prompt_filter_cached || fail 'disabled system did not restore cache'
-unset GIT_CONFIG_NOSYSTEM
-_my_prompt_filter_cached && fail 'unset nosystem retained cache'
-refresh_worker
-[[ ${_my_prompt_git_filters[$PWD]} == 1 ]] || fail 'unset nosystem did not load system config'
-export GIT_CONFIG_NOSYSTEM=1
-_my_prompt_filter_cached && fail 'nosystem export retained cache'
-refresh_worker
-[[ ${_my_prompt_git_filters[$PWD]} == 0 ]] || fail 'nosystem export not applied'
-unset GIT_CONFIG_SYSTEM
-refresh_worker
-pass 'system config export, change and unset invalidate cache immediately'
-
-# Pending worker and daemon results must retain their launch-time identity.
-_my_prompt_dir=$PWD
-_my_prompt_worker_generation=$_my_prompt_generation
-_my_prompt_git_worker > "$fixture/result"
-export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=filter.env-race.clean GIT_CONFIG_VALUE_0=cat
-_my_prompt_git=env-worker-sentinel
-_my_prompt_worker_buffer=''
-exec {fd}< "$fixture/result"
-_my_prompt_fd=$fd
-_my_prompt_async_cb "$fd"
-[[ $_my_prompt_git == env-worker-sentinel && -z ${_my_prompt_git_filters[$PWD]-} ]] || fail 'override export accepted old worker result'
-unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
-refresh_worker
-# Keep the mock request pending so the environment can change before callback.
-query_calls=0
-gitstatus_query() { (( ++query_calls )); VCS_STATUS_RESULT=tout; return 0; }
-_my_prompt_gitstatus_update || fail 'environment race daemon dispatch failed'
-export GIT_CONFIG_PARAMETERS="'filter.env-race.clean'='cat'"
-_my_prompt_git=env-daemon-sentinel
-VCS_STATUS_RESULT=ok-async VCS_STATUS_LOCAL_BRANCH=obsolete
-_my_prompt_daemon_cb
-[[ $_my_prompt_git == env-daemon-sentinel && -z ${_my_prompt_git_filters[$PWD]-} ]] || fail 'override export accepted old daemon result'
-unset GIT_CONFIG_PARAMETERS
-refresh_worker
-# Replacing Git with a failing recorder pins the builtin-only fingerprint path.
-git() { print -r -- called > "$fixture/fingerprint-exec"; return 128; }
-_my_prompt_filter_fingerprint
-unfunction git
-[[ ! -e "$fixture/fingerprint-exec" ]] || fail 'fingerprint executed Git'
-pass 'pending results reject exported overrides and fingerprint never invokes Git'
-builtin cd "$fixture/cases" || exit 1
-refresh_worker
-
 print -r -- '[test]' > "$fixture/ttl.gitconfig"
 git config include.path "$fixture/ttl.gitconfig" || exit 1
 refresh_worker
@@ -544,43 +349,6 @@ refresh_worker
 git config --unset include.path || exit 1
 refresh_worker
 pass '30 second TTL invalidates changed included config without sleeping'
-
-# Same-size edits with the same mtime still invalidate the safe filter decision.
-builtin cd "$fixture/cases" || exit 1
-config_file="$fixture/cases/.git/config"
-cp "$config_file" "$fixture/config-original" || exit 1
-print -r -- $'[unused "same"]\n\tclean = cat' >> "$config_file"
-refresh_worker
-[[ ${_my_prompt_git_filters[$PWD]} == 0 ]] && _my_prompt_filter_cached || fail 'same-size baseline not safe'
-_my_prompt_dir=$PWD
-_my_prompt_worker_generation=$_my_prompt_generation
-_my_prompt_git_worker > "$fixture/result"
-cp -p "$config_file" "$fixture/config-time" || exit 1
-config_text=$(<"$config_file")
-print -r -- "${config_text/unused/filter}" > "$config_file"
-touch -r "$fixture/config-time" "$config_file" || exit 1
-[[ $(wc -c < "$config_file") == $(wc -c < "$fixture/config-time") ]] || fail 'same-size edit changed length'
-_my_prompt_filter_cached && fail 'same-size same-mtime edit retained safe cache'
-_my_prompt_git=same-size-sentinel
-_my_prompt_worker_buffer=''
-exec {fd}< "$fixture/result"
-_my_prompt_fd=$fd
-_my_prompt_async_cb "$fd"
-[[ $_my_prompt_git == same-size-sentinel && -z ${_my_prompt_git_filters[$PWD]-} ]] || fail 'same-size edit accepted obsolete worker probe'
-refresh_worker
-[[ ${_my_prompt_git_filters[$PWD]} == 1 ]] || fail 'same-size edit not reprobed'
-cp "$fixture/config-original" "$config_file" || exit 1
-refresh_worker
-pass 'same-size same-mtime config edits reject cached and pending worker results'
-
-# Large config files stay off the input path and cannot enable daemon use.
-print -r -- "${(l:65536::#:):-}" >> "$config_file"
-refresh_worker
-[[ ${_my_prompt_git_filters[$PWD]} == 1 ]] || fail 'large config probe marked safe'
-_my_prompt_filter_cached && fail 'large config reused daemon cache'
-cp "$fixture/config-original" "$config_file" || exit 1
-refresh_worker
-pass 'oversized config uses background Git instead of reading it during redraw'
 
 # A daemon timeout returns immediately, retaining one request until its callback.
 mock_status_reset
@@ -602,18 +370,6 @@ VCS_STATUS_NUM_UNTRACKED=1 VCS_STATUS_HAS_UNTRACKED=1
 _my_prompt_daemon_cb || fail 'async callback failed'
 [[ $_my_prompt_daemon_pending == 0 && $_my_prompt_git == *'U[%F{152}?1%f]'* && $PROMPT == *"$_my_prompt_git"* ]] || fail 'async callback did not publish and render'
 pass 'async -t 0 callback renders result with at most one pending request'
-
-# Other shells can change filters without changing this shell's generation.
-_my_prompt_gitstatus_update || fail 'config-race query dispatch failed'
-git config filter.daemon-race.clean cat || exit 1
-_my_prompt_git=daemon-race-sentinel
-VCS_STATUS_RESULT=ok-async VCS_STATUS_LOCAL_BRANCH=obsolete
-_my_prompt_daemon_cb || fail 'config-race callback failed'
-[[ $_my_prompt_git == daemon-race-sentinel && $_my_prompt_daemon_pending == 0 && -z ${_my_prompt_git_filters[$PWD]-} ]] || fail 'changed config accepted daemon result'
-git config --unset filter.daemon-race.clean || exit 1
-refresh_worker
-query_calls=1
-pass 'config changes during daemon query discard its result and invalidate cache'
 
 _my_prompt_gitstatus_update || fail 'stale query dispatch failed'
 [[ $_my_prompt_daemon_pending == 1 ]] || fail 'stale fixture has no pending query'

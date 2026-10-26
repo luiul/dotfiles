@@ -24,7 +24,6 @@ typeset -g _my_prompt_last_exit=0  # exit code of the last foreground command
 typeset -g _my_prompt_gitstatus_ok=0
 typeset -gA _my_prompt_git_filters=()  # 0 = safe for daemon
 typeset -gA _my_prompt_git_filter_time=() _my_prompt_git_filter_key=()
-typeset -g _my_prompt_filter_cacheable=1 _my_prompt_daemon_filter_key=""
 typeset -g _my_prompt_worker_pid=0 _my_prompt_worker_generation=0
 typeset -g _my_prompt_worker_group=0
 typeset -g _my_prompt_worker_buffer="" _my_prompt_generation=0
@@ -65,41 +64,20 @@ _my_prompt_repo_dirs() {
     fi
 }
 
-# Compare small config contents with builtins, even for same-second edits.
-# Large configs always use Git. Included files retain the 30s probe TTL.
+# Cheap invalidation for local/global config and branch changes, plus a 30s TTL
+# for included config files. All expensive config parsing stays in the worker.
 _my_prompt_filter_fingerprint() {
-    local file="" content="" key="$PWD|" name=""
-    _my_prompt_filter_cacheable=1
-    # Git sees exported overrides only. Encode names and values separately so
-    # export, change and unset all invalidate pending probes without an exec.
-    for name in ${(ok)parameters[(I)GIT_CONFIG*]}; do
-        [[ "$name" == GIT_CONFIG || "$name" == GIT_CONFIG_* ]] || continue
-        [[ ${(tP)name} == *-export* ]] || continue
-        content=${(P)name}
-        key+="env:${(q)name}:${(q)content}|"
-        # Arbitrary command-scope config can add includes or change status
-        # policy. Leave its parsing to background Git, not the input path.
-        if [[ "$name" == GIT_CONFIG_COUNT && "$content" != 0 ]] || \
-           [[ "$name" == GIT_CONFIG_PARAMETERS && -n "$content" ]] || \
-           [[ "$name" == GIT_CONFIG && -n "$content" ]]; then
-            _my_prompt_filter_cacheable=0
-        fi
-    done
+    local file="" key="$PWD|"
     if _my_prompt_repo_dirs; then
         key+="$_my_prompt_repo_dir|$(<"$_my_prompt_repo_dir/HEAD")|"
     fi
     for file in "$_my_prompt_common_dir/config" "$_my_prompt_repo_dir/config.worktree" \
         "${GIT_CONFIG_GLOBAL:-$HOME/.gitconfig}" "${XDG_CONFIG_HOME:-$HOME/.config}/git/config" \
         "${GIT_CONFIG_SYSTEM:-/etc/gitconfig}"; do
-        # Devices such as /dev/null have changing mtimes but no config data.
-        [[ -f "$file" ]] || continue
         local -a info=()
-        if [[ -r "$file" ]] && zstat -A info +size -- "$file" 2>/dev/null && (( info[1] <= 65536 )); then
-            content=$(<"$file")
-            key+="$file:${(q)content}|"
-        else
-            _my_prompt_filter_cacheable=0
-            key+="$file:uncached|"
+        if zstat -A info +mtime -- "$file" 2>/dev/null; then
+            key+="$file:$info[1]:"
+            zstat -A info +size -- "$file" 2>/dev/null && key+="$info[1]|"
         fi
     done
     REPLY=$key
@@ -109,7 +87,7 @@ _my_prompt_filter_cached() {
     [[ -n ${_my_prompt_git_filters[$PWD]-} ]] || return 1
     (( EPOCHSECONDS - ${_my_prompt_git_filter_time[$PWD]:-0} < 30 )) || return 1
     _my_prompt_filter_fingerprint
-    (( _my_prompt_filter_cacheable )) && [[ "$REPLY" == "${_my_prompt_git_filter_key[$PWD]-}" ]]
+    [[ "$REPLY" == "${_my_prompt_git_filter_key[$PWD]-}" ]]
 }
 
 # Build ONLY the git segment (single line) from plain `git status`. Runs in the
@@ -268,7 +246,6 @@ _my_prompt_git_worker() {
         filters=1
         (( rc == 1 )) && filters=0
     fi
-    (( _my_prompt_filter_cacheable )) || filters=1
     local segment="$(_my_prompt_git_segment)"
     print -r -- "$filters"$'\t'"$fingerprint"$'\t'"$segment"
 }
@@ -278,7 +255,6 @@ _my_prompt_gitstatus_update() {
     _my_prompt_filter_cached || return 2
     [[ "${_my_prompt_git_filters[$PWD]}" == 0 ]] || return 2
     (( _my_prompt_daemon_pending )) && return 0
-    _my_prompt_daemon_filter_key=$REPLY
     _my_prompt_daemon_pending=1
     _my_prompt_daemon_dir=$PWD
     _my_prompt_daemon_generation=$_my_prompt_generation
@@ -304,11 +280,6 @@ _my_prompt_daemon_cb() {
     if [[ "$PWD" != "$_my_prompt_daemon_dir" ]] || \
        (( _my_prompt_generation != _my_prompt_daemon_generation || _my_prompt_command_running )); then
         (( _my_prompt_command_running )) || _my_prompt_refresh_git
-        return 0
-    fi
-    if ! _my_prompt_filter_cached || [[ "$REPLY" != "$_my_prompt_daemon_filter_key" ]]; then
-        unset "_my_prompt_git_filters[$PWD]"
-        _my_prompt_refresh_git
         return 0
     fi
     _my_prompt_gitstatus_segment || return 0

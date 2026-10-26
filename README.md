@@ -31,16 +31,8 @@ One package is stowed only in part: `macos` stows `Library/LaunchAgents/` normal
 
 ### Apply or Update All
 
-`./setup.sh` does this, or mirror its skip list by hand:
-
-```sh
-for pkg in */; do
-	case "${pkg%/}" in
-		rectangle | karabiner | datagrip | docs | scripts) continue ;;
-	esac
-	stow --no-folding "${pkg%/}"
-done
-```
+Run `./setup.sh` to apply or update all stow packages.
+Its Stow step owns the package exclusions and directory setup.
 
 ### Stow a Single Package
 

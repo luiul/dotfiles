@@ -123,81 +123,30 @@ cod() {
 	command code .
 }
 
-# Loaded once, imports only zf_rm (not a global rm override) so temp-file
-# cleanup in piw() below doesn't fork an external rm process.
-zmodload -F zsh/files b:zf_rm 2>/dev/null
-
-# piw: open a new Ghostty window running pi, wherever `cd <args>` lands.
-# Terminal alternative to cod (pi instead of VS Code).
-#
-# `cd "$@"` (no `--`, current shell) goes through the zoxide-backed `cd`
-# wrapper, so `piw dot` resolves like `cd dot` does and the dir change
-# persists in the calling shell, exactly as cod behaved. With no argument,
-# `cd .` keeps the current directory: bare `cd` would jump to $HOME.
-# zoxide returns
-# non-zero with "you are already in the only match" when cwd is already the
-# best match; that's success here (open pi in $PWD). No `--`: zoxide treats
-# it as part of the query and resolution breaks.
-#
-# The new window MUST land in the ONE running Ghostty instance. The old
-# `open -na` spawned a second Ghostty process per call, which broke the
-# Switch window switcher (one app, two processes: windows split between
-# them) and super+c (ghostty-cc finds the command center via `tell application
-# "Ghostty"`, which resolves to only one of the running instances; from the
-# other one the cc tab looks missing and ghostty-cc opens a duplicate). Ghostty
-# 1.3's AppleScript dictionary opens windows
-# in the running instance instead: `new window with configuration` accepts
-# `initial working directory` and `command`. Only when Ghostty is not
-# running at all does `open -a` (never `-n`: that flag is what spawned the
-# extra instances) start the single instance; `--args` are dropped by an
-# already-running app, hence the running check first.
-# `--window-save-state=never` stops macOS resume from re-opening the previous
-# saved session in the new instance. Config keys must come before `-e`, because
-# `-e` consumes all remaining arguments. The `zsh -ic` wrapper loads .zshrc
-# first so pi inherits the same env as a normal terminal (direnv, hooks).
-#
-# Input drain: the window is blank for several seconds (zsh boot, then pi's
-# own extension/TUI boot), and pi's TUI SUBMITS whatever keystrokes were
-# buffered in the pty during that time the moment it comes up. Keys the user
-# types into the invisible window (probe keys, or keystrokes that land here
-# because `activate` moved focus right as they were typing elsewhere) used
-# to reach the agent as a submitted prompt, e.g. a stray "pi". So the wrapper
-# echoes "starting pi..." immediately (the window is visibly alive), switches
-# the pty to non-canonical no-echo, and drains input: exec pi only after a
-# 0.2s silence probe followed by 1s of quiet. Keys typed before the TUI is
-# up are discarded instead of submitted; pasting a prompt during boot is
-# also discarded, wait for the TUI before typing or pasting.
-# No --title: the title pipeline (title.zsh hook, then the session-title pi
-# extension) owns the window title, and mycelium matches windows by that
-# title grammar.
+# piw: same directory rules as cod, then start Pi in a new Ghostty window.
+# Use the running app when possible. open -na would create a second instance.
+# Load the shell environment and discard buffered input before starting Pi.
 piw() {
-	local tmp="${TMPDIR:-/tmp}/piw.$$.$RANDOM" rc err
-	(( $# )) || set -- .
-	cd "$@" 2>"$tmp"
-	rc=$?
-	err="$(<$tmp)"
-	zf_rm -f -- "$tmp"
-	if (( rc == 0 )) || [[ "$err" == *"already in the only match"* ]]; then
-		if [[ "$(osascript -e 'tell application "System Events" to (exists process "ghostty")')" == true ]]; then
-			if ! osascript - "$PWD" >/dev/null 2>&1 <<'APPLESCRIPT'
+	if (( $# )); then
+		cd "$@" || return
+	fi
+	local boot='echo starting pi...; stty -icanon -echo min 0 time 0 2>/dev/null; while read -k1 -t 0.2 _; do while read -k1 -t 1 _; do :; done; done; exec pi'
+	if [[ "$(osascript -e 'tell application "System Events" to (exists process "ghostty")')" == true ]]; then
+		if ! osascript - "$PWD" "$boot" >/dev/null 2>&1 <<'APPLESCRIPT'
 on run argv
 	tell application "Ghostty"
 		activate
-		new window with configuration {initial working directory:(item 1 of argv), command:"/bin/zsh -ic 'echo starting pi...; stty -icanon -echo min 0 time 0 2>/dev/null; while read -k1 -t 0.2 _; do while read -k1 -t 1 _; do :; done; done; exec pi'"}
+		new window with configuration {initial working directory:(item 1 of argv), command:("/bin/zsh -ic " & quoted form of (item 2 of argv))}
 	end tell
 end run
 APPLESCRIPT
-			then
-				print -u2 "piw: Ghostty is running but no window could be created in it."
-				return 1
-			fi
-		else
-			open -a Ghostty.app --args --window-save-state=never \
-				--working-directory="$PWD" -e /bin/zsh -ic 'echo starting pi...; stty -icanon -echo min 0 time 0 2>/dev/null; while read -k1 -t 0.2 _; do while read -k1 -t 1 _; do :; done; done; exec pi'
+		then
+			print -u2 "piw: Ghostty is running but no window could be created in it."
+			return 1
 		fi
 	else
-		[[ -n "$err" ]] && print -r -- "$err" >&2
-		return $rc
+		open -a Ghostty.app --args --window-save-state=never \
+			--working-directory="$PWD" -e /bin/zsh -ic "$boot"
 	fi
 }
 

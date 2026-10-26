@@ -63,23 +63,28 @@ The script drives the real extension with a stubbed ExtensionAPI: rewrite contra
 
 Key behaviors:
 
-- One cumulative Session set per session, never reset per prompt. Counts are measured against each file's Original (first touch this session), not git HEAD, so pre-session dirt is not attributed to the agent. A file reverted to its Original drops off the list by itself, and its Original is forgotten: reconciled files (e.g. committed mid-session) are not re-scanned at settle, so edits from a parallel session or another terminal are never attributed to this one. A later touch captures a fresh Original.
-- Tracks `edit`/`write` at any path. `bash` changes are caught two ways: a `git status` diff before/after each call for the repo containing cwd, plus a path sniff of the command text (content snapshots of path tokens, `cd`-aware) for files anywhere else, shown as absolute paths. Rows render as plain words (`modified path (+1/-2)`), most recently touched first, capped at 8 rows plus an overflow line.
-- Every Panel line is prefixed with a dim `│ ` gutter, quote-block style: the continuous bar separates the Panel from the transcript above it without adding emphasis (no background) or spending any of the 10 widget lines. The `/filechanges` List output has no gutter.
-- The Panel defaults to the last Round (the changes of the current or most recent prompt). `/filechanges-mode` toggles between the Round and all session changes; the choice persists across `/reload`. `/filechanges` prints the current view into the transcript (`/filechanges round` or `/filechanges all` prints one view once), `/filechanges-clear` empties the set and the Round and forgets all Originals (counts then restart from the post-Clear state).
-- Each row in a git repo also carries its Repo state after the counts: `untracked`, `staged` (anything in the index, `MM` included), `unstaged`, `conflicted`, or `committed` (matches HEAD; porcelain silence counts as committed only when `git ls-files` tracks the path, so ignored files get no word). Files outside any repo show no word. State refreshes on each prompt, settle, bash result, restore, and `/filechanges`, so a mid-round stage in VS Code shows up at the next refresh point; it is never persisted, restore recomputes it.
-- Colors are semantic: the header is bold with the scope's totals (`+A/-R`), the kind word is colored by meaning (created green, modified yellow, deleted red), the path is plain text, counts use the theme's diff colors with zeros dimmed, and the state word stays quiet metadata (staged accent, committed dim, untracked and unstaged muted, conflicted red), so it never clashes with the kind hues on the same row.
-- The set, the Round, and the Mode persist via `pi.appendEntry()` on settle, so `/reload` restores the Panel. Originals are re-captured from `git show HEAD:<path>` in a repo; outside a repo restored counts stay frozen.
-- Ignore patterns via `filechanges.ignore` in `.pi/settings.json` (project wins over global); defaults cover lockfiles, `node_modules`, `dist`, `build`, `.env*`, and editor temp names (`*.tmp`, `*.temp`, `*~`, `*.swp`, `*.swo`, `.#*`). Files under the OS temp dirs (`tmpdir()`, `/tmp`, `/private/tmp`, `/var/tmp`) are always excluded, hardcoded, at every tracking entry point and on restore. Binary files are NUL-sniffed and shown as `(binary)`.
-- The tracking state is shared, not private: it lives in `filechanges-tracker.ts` (a per-session singleton on `globalThis`, keyed by session id, so subagent child sessions never mix with the main one). `filechanges.ts` only renders the Panel and registers the commands. The tracker's `setWidgetSuppressed` switch still exists for a second presentation consumer; with the split view retired no extension sets it, so the above-editor widget is always shown. Tracking always continues regardless.
+- One cumulative Session set per session, never reset per prompt. Counts compare against each file's Original while it remains in memory. A Revert forgets both the Change and Original, so later external edits to that reconciled file are not picked up by settlement. A later touch captures a fresh Original.
+- Tracks `edit`/`write` at any path. Bash detection uses Git status and command-path snapshots, including paths outside the cwd repo. Bash remains best effort, not a guarantee of authorship.
+- The Panel always shows the Session set. A new prompt resets only Prompt activity markers, never the file list. Counts remain cumulative, not per prompt.
+- The Panel uses a summary, up to six width-safe file rows, and an overflow hint. Directory prefixes shorten before filename tails. All rows keep the dim gutter, without backgrounds or animations.
+- `/filechanges` opens a complete scrollable List with full paths and Repo state. The Panel hides while the List is open and returns on close. Escape closes it. `/filechanges-clear` forgets tracking without changing files. Both take no arguments; Round and Mode filters are retired.
+- Repo state refreshes on settlement, Bash results, restore, and `/filechanges`. External staging can remain stale until the next refresh. Routine state yields space to filenames in the Panel; conflicts stay visible.
+- Semantic colors distinguish Kind and Counts. Routine Repo state and Prompt activity remain quiet metadata. VS Code through Cmd+E remains the diff review surface.
+- The Session set and Prompt activity persist through custom entries. Older entries still load, with saved Mode ignored. Restore rebuilds Originals from HEAD in the cwd repo, so exact first-touch counts after reload are not guaranteed for pre-dirty files.
+- Ignore rules, OS temporary-directory exclusions, and binary detection remain. Project `filechanges.ignore` settings override global settings.
+- Rendering uses cached state only. No filesystem reads, Git calls, watchers, or polling run in `render()`. Unchanged content skips repeated diff work. Session shutdown releases tracking state and subscriptions.
 
 Verification from the repository root:
 
 ```sh
 bun scripts/test-filechanges-extension.ts
+bun scripts/test-filechanges-components.ts
+bun scripts/test-filechanges-tracker.ts
+node scripts/test-filechanges-live.mjs
+FILECHANGES_BENCH_BASELINE=/path/to/saved/baseline node scripts/bench-filechanges.ts
 ```
 
-The script drives the real extension with a stubbed ExtensionAPI against a real temp git repo: accumulation across prompts, revert detection, bash-driven changes, bash changes outside the cwd repo via path sniffing (other repos, non-repo dirs, `cd` + relative redirects), the 8-row cap, Clear semantics, reload-restore with HEAD re-capture, Round/All mode toggling (command and `/filechanges` view args), malformed-entry handling, Repo state annotation (unstaged -> staged -> committed across real `git add`/`git commit` bash calls, untracked for created files, no word for non-repo files, refresh-point timing, restore recompute), and semantic colors plus header totals (via a recording theme). A live check additionally runs `pi --no-extensions -e ~/.pi/agent/extensions/filechanges.ts --thinking off -p '<prompt that creates a file>'` and confirms a `filechanges:session-set` custom entry lands in the session jsonl. The script needs the pi-coding-agent package resolvable; a gitignored `node_modules` symlink to the global install covers that.
+Unit tests use real files and Git repositories. Component tests cover widths, Unicode, caching, theme changes, and complete List scrolling. The real Pi TUI test uses a local model fixture with live Zen, without network model calls. Benchmarks compare cached and invalidated rendering, tracking hooks, settlement, CPU, RSS, and subprocess counts under Pi's Node runtime.
 
 ## Compact tool calls (`zen.ts`)
 

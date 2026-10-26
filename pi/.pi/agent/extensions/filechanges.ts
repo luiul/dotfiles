@@ -1,256 +1,250 @@
-/**
- * filechanges.ts — the file-changes Panel and the /filechanges* commands
- * (presentation only).
- *
- * Tracking lives in filechanges-tracker.ts: the shared per-session state
- * (Session set, Round, Mode, Originals, Repo state, persistence, and the six
- * pi event subscriptions that drive it). This module's header in that file
- * explains the sharing, session keying, and /reload continuity. Vocabulary:
- * docs/filechanges-design.md.
- *
- * This extension renders the tracker's state two ways:
- * - Panel: a persistent widget above the editor ("filechanges"), live on
- *   every tracker state change (via subscribe). It shows the Mode's scope:
- *   the Round by default, the whole Session set in all mode. The header is
- *   bold and carries the scope's totals: `Changes last round (N): +A/-R`
- *   (totals hidden when both sides are zero, e.g. binary-only). One row per
- *   Change, most recently touched first, carrying its Repo state word after
- *   the counts when the file is in a git repo, capped at 8 rows plus one
- *   trailing line (pi truncates widgets past 10 lines). The trailing line is
- *   the overflow when there is one, else a pointer to the Changes the Round
- *   hides. Hidden when the Session set is empty; an empty Round with a
- *   non-empty Session set shows a one-line hint instead.
- * - Framing: every Panel line is prefixed with a dim left gutter (`│ `),
- *   quote-block style. The continuous bar separates the Panel from the
- *   transcript above it without adding emphasis (no background) or spending
- *   any of the 10 widget lines. Panel only: the List is requested
- *   transcript output and stays unframed.
- * - Colors are semantic, from the pi theme: the kind word by meaning
- *   (created = success, modified = warning, deleted = error), the path in
- *   text, counts in toolDiffAdded/toolDiffRemoved with zero counts dimmed,
- *   `(binary)` muted, and the Repo state word as quiet metadata (staged =
- *   accent, committed = dim, untracked = muted, unstaged = muted, conflicted
- *   = error, the only state red is spent on). The same scheme renders in
- *   the Panel and the List. The no-UI fallback (console.log) stays plain.
- *
- * The tracker also exposes setWidgetSuppressed for another presentation.
- * That consumer can call tracker.setWidgetSuppressed(true) to hide this
- * Panel. Tracking keeps working, and nothing is shown twice.
- *
- * Commands:
- * - `/filechanges` prints the Mode's scope into the transcript (up to 30
- *   rows, then an overflow note). `/filechanges round` and `/filechanges all`
- *   print one scope once without changing the Mode.
- * - `/filechanges-mode` toggles the Mode; the choice persists across
- *   /reload.
- * - `/filechanges-clear` empties the Session set and the Round and forgets
- *   all Originals (all through the tracker). Tracking restarts from that
- *   point: a file edited again gets a fresh Original, so its counts are
- *   measured from the post-Clear state.
- *
- * On notification delivery: `ctx.ui.notify`/`setWidget` are fire-and-forget
- * in every mode. In the TUI they render directly; in RPC mode (e.g. an
- * editor integration) they're emitted as `extension_ui_request` events on
- * stdout, which the RPC client may render or silently ignore per the pi RPC
- * spec. There's no extension-side way to guarantee a specific RPC client
- * surfaces them. If changes aren't visible in your editor, check whether its
- * pi integration handles `notify`/`setWidget` extension UI requests.
- */
-
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+/** Persistent cumulative file changes, with full detail on demand. Uses only public Pi UI APIs. */
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { Container, ScrollView, Text, matchesKey, sliceByColumn, stripTerminalSequences, truncateToWidth, visibleWidth, type KeyId } from "@earendil-works/pi-tui";
 import { getSharedFileChangesTracker, KIND_COLORS, REPO_STATE_COLORS } from "./filechanges-tracker.ts";
-import type { FileChange, Mode } from "./filechanges-tracker.ts";
-
-// Test seam: moved to the tracker module (where the tmp filtering lives);
-// re-exported so the existing test script's import keeps working.
+import type { FileChange } from "./filechanges-tracker.ts";
 export { __setTmpRootsForTest } from "./filechanges-tracker.ts";
 
-const PANEL_MAX_ROWS = 8;
-const LIST_MAX_ROWS = 30;
+const PANEL_ROWS = 6;
+const plainTheme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as Theme;
 
-function countsText(t: FileChange): string {
-	return t.binary ? "(binary)" : `(+${t.added}/-${t.removed})`;
+/** File names must never inject terminal control sequences or extra Panel rows. */
+export function displayPath(path: string): string {
+	return stripTerminalSequences(path).replace(/[\x00-\x1f\x7f-\x9f]/g, (c) => {
+		const escaped = JSON.stringify(c).slice(1, -1);
+		return escaped === c ? `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}` : escaped;
+	});
 }
 
-/**
- * Kind and Repo-state color keys live in filechanges-tracker.ts (KIND_COLORS,
- * REPO_STATE_COLORS, exported there so every consumer renders identical
- * hues): color does the scannability job glyphs would, so the words stay
- * plain, and the state axis stays quiet metadata so it cannot clash with
- * the kind hues on the same row (staged = accent, committed = dim,
- * untracked/unstaged = muted, conflicted = the only state red is spent on).
- */
-
-/**
- * Panel framing: a dim left gutter (`│ `) on every line, quote-block style.
- * The continuous bar separates the Panel from the transcript above it
- * without adding emphasis (no background) or spending widget lines. Panel
- * only: the List is requested transcript output and stays unframed.
- */
-function withGutter(lines: string[], theme?: any): string[] {
-	const gutter = theme ? theme.fg("dim", "│ ") : "│ ";
-	return lines.map((line) => gutter + line);
+export function shortenPath(path: string, width: number): string {
+	if (width <= 0) return "";
+	if (visibleWidth(path) <= width) return path;
+	if (width === 1) return "…";
+	return "…" + sliceByColumn(path, visibleWidth(path) - width + 1, width - 1, true);
 }
 
-/** Shared row renderer, used by the Panel and by `/filechanges`. Plain words, no glyphs; color carries the meaning. */
-function formatChangeLine(t: FileChange, theme?: any): string {
-	const label = t.kind.padEnd(9); // "modified" is the longest kind at 8 chars
-	if (!theme) return `${label}${t.path} ${countsText(t)}${t.repoState ? ` ${t.repoState}` : ""}`;
-	const prefix = theme.fg(KIND_COLORS[t.kind], label) + theme.fg("text", `${t.path} `);
-	let counts: string;
-	if (t.binary) {
-		counts = theme.fg("muted", "(binary)");
-	} else {
-		const plus = t.added === 0 ? theme.fg("dim", `+${t.added}`) : theme.fg("toolDiffAdded", `+${t.added}`);
-		const minus = t.removed === 0 ? theme.fg("dim", `-${t.removed}`) : theme.fg("toolDiffRemoved", `-${t.removed}`);
-		counts = theme.fg("dim", "(") + plus + theme.fg("dim", "/") + minus + theme.fg("dim", ")");
+function counts(item: FileChange, theme: Theme): string {
+	if (item.binary) return theme.fg("muted", "(binary)");
+	return theme.fg(item.added ? "toolDiffAdded" : "dim", `+${item.added}`) + theme.fg("dim", "/") +
+		theme.fg(item.removed ? "toolDiffRemoved" : "dim", `-${item.removed}`);
+}
+
+function summary(items: readonly FileChange[], theme: Theme, width: number): string {
+	let added = 0, removed = 0, active = 0;
+	for (const item of items) {
+		if (!item.binary) { added += item.added; removed += item.removed; }
+		if (item.touchedThisPrompt) active++;
 	}
-	const state = t.repoState ? " " + theme.fg(REPO_STATE_COLORS[t.repoState], t.repoState) : "";
-	return prefix + counts + state;
+	const title = theme.bold(`Session changes: ${items.length} ${items.length === 1 ? "file" : "files"}`);
+	const totals = added || removed ? "  " + counts({ added, removed } as FileChange, theme) : "";
+	const activity = active ? theme.fg("muted", `  ·  ${active} this prompt`) : "";
+	return truncateToWidth(title + totals + activity, width);
 }
 
-/** Line-count totals over one scope. Binary rows carry no counts and add nothing. */
-function totalsOf(items: FileChange[]): { added: number; removed: number } {
-	let added = 0;
-	let removed = 0;
-	for (const t of items) {
-		if (t.binary) continue;
-		added += t.added;
-		removed += t.removed;
-	}
-	return { added, removed };
+interface PreparedRow {
+	path: string;
+	pathWidth: number;
+	minimumPath: number;
+	label: string;
+	delta: string;
+	deltaWidth: number;
+	state: string;
+	stateWidth: number;
+	conflicted: boolean;
+	activity: string;
+	activityWidth: number;
 }
 
-/**
- * Panel/List header for one scope: bold label plus the scope's totals, e.g.
- * `Changes last round (3): +45/-12`. Round is the default view; "all" is the
- * whole Session set. Totals are hidden when both sides are zero (binary-only
- * scopes), leaving a bare `Changes last round (N):`.
- */
-function formatHeader(mode: Mode, items: FileChange[], theme?: any): string {
-	const base = mode === "round" ? `Changes last round (${items.length}):` : `Session changes (${items.length}):`;
-	const { added, removed } = totalsOf(items);
-	if (added === 0 && removed === 0) return theme ? theme.bold(base) : base;
-	if (!theme) return `${base} +${added}/-${removed}`;
-	const plus = added === 0 ? theme.fg("dim", `+${added}`) : theme.fg("toolDiffAdded", `+${added}`);
-	const minus = removed === 0 ? theme.fg("dim", `-${removed}`) : theme.fg("toolDiffRemoved", `-${removed}`);
-	return theme.bold(base) + " " + plus + theme.fg("dim", "/") + minus;
+function prepareRow(item: FileChange, theme: Theme): PreparedRow {
+	const path = displayPath(item.path);
+	return {
+		path, pathWidth: visibleWidth(path), minimumPath: Math.min(visibleWidth(path), Math.max(12, visibleWidth(path.split("/").pop() ?? ""))),
+		label: theme.fg(KIND_COLORS[item.kind], item.kind.padEnd(9)),
+		delta: " " + counts(item, theme), deltaWidth: visibleWidth(item.binary ? " (binary)" : ` +${item.added}/-${item.removed}`),
+		state: item.repoState ? " " + theme.fg(REPO_STATE_COLORS[item.repoState], item.repoState) : "",
+		stateWidth: item.repoState ? item.repoState.length + 1 : 0, conflicted: item.repoState === "conflicted",
+		activity: item.touchedThisPrompt ? theme.fg("muted", "  this prompt") : "", activityWidth: item.touchedThisPrompt ? 13 : 0,
+	};
 }
 
-/**
- * Panel content for one scope: header, up to PANEL_MAX_ROWS rows, and at most
- * one trailing line (10 lines total, pi's widget limit). The trailing line is
- * the overflow when there is one, else a pointer to the Changes the Round
- * hides. Empty Round with a non-empty Session set: a one-line hint. Every
- * line is framed with the gutter.
- */
-function buildPanelLines(items: FileChange[], sessionSize: number, mode: Mode, theme?: any): string[] | undefined {
-	if (items.length === 0) {
-		if (sessionSize === 0 || mode === "all") return undefined;
-		const hint = `No changes last round (${sessionSize} this session): /filechanges-mode`;
-		return withGutter([theme ? theme.fg("muted", hint) : hint], theme);
-	}
-	const lines: string[] = [formatHeader(mode, items, theme)];
+function renderRow(row: PreparedRow, width: number, theme: Theme): string {
+	let stateWidth = row.stateWidth, activityWidth = row.activityWidth;
+	const budget = () => width - 9 - row.deltaWidth - stateWidth - activityWidth;
+	if (budget() < row.minimumPath && !row.conflicted) stateWidth = 0;
+	if (budget() < row.minimumPath) activityWidth = 0;
+	const pathWidth = Math.max(0, budget());
+	const path = row.pathWidth <= pathWidth ? row.path : pathWidth <= 0 ? "" :
+		pathWidth === 1 ? "…" : "…" + sliceByColumn(row.path, row.pathWidth - pathWidth + 1, pathWidth - 1, true);
+	const line = row.label + theme.fg("text", path) + row.delta + (stateWidth ? row.state : "") + (activityWidth ? row.activity : "");
+	return width < 9 + row.deltaWidth + stateWidth + activityWidth ? truncateToWidth(line, width) : line;
+}
 
-	const shown = items.slice(0, PANEL_MAX_ROWS);
-	for (const t of shown) lines.push(formatChangeLine(t, theme));
-	if (items.length > shown.length) {
-		const more = `…and ${items.length - shown.length} more (see /filechanges)`;
-		lines.push(theme ? theme.fg("dim", more) : more);
-	} else if (mode === "round" && sessionSize > items.length) {
-		const more = `…and ${sessionSize - items.length} more this session (see /filechanges-mode)`;
-		lines.push(theme ? theme.fg("dim", more) : more);
+/** Reserve metadata space before shortening the path, never wrap a Panel row. */
+export function formatPanelRow(item: FileChange, width: number, theme: Theme): string {
+	return renderRow(prepareRow(item, theme), width, theme);
+}
+
+/** One session-owned widget. Cached rows have no file reads, Git calls, or sorting. */
+export class FileChangesPanel {
+	private items: readonly FileChange[];
+	private cachedWidth = -1;
+	private cachedColors: unknown;
+	private cachedLines: string[] | undefined;
+	private preparedItems: readonly FileChange[] | undefined;
+	private preparedColors: unknown;
+	private rows: PreparedRow[] = [];
+	constructor(items: readonly FileChange[], private theme: Theme) { this.items = items; }
+	setItems(items: readonly FileChange[]): boolean {
+		if (items === this.items) return false;
+		this.items = items;
+		this.cachedLines = undefined;
+		return true;
 	}
-	return withGutter(lines, theme);
+	// Pi can invalidate the whole tree on unrelated events. All layout inputs are
+	// checked in render(), so unchanged immutable state keeps its cached rows.
+	invalidate(): void {}
+	render(width: number): string[] {
+		if (this.cachedLines && this.cachedWidth === width && this.cachedColors === this.theme.colors) return this.cachedLines;
+		if (this.preparedItems !== this.items || this.preparedColors !== this.theme.colors) {
+			this.rows = this.items.slice(0, PANEL_ROWS).map((item) => prepareRow(item, this.theme));
+			this.preparedItems = this.items;
+			this.preparedColors = this.theme.colors;
+		}
+		const gutter = this.theme.fg("dim", "│ ");
+		const budget = Math.max(0, width - 2);
+		const lines = this.items.length ? [summary(this.items, this.theme, budget),
+			...this.rows.map((row) => renderRow(row, budget, this.theme))] : [];
+		if (this.items.length > PANEL_ROWS) lines.push(truncateToWidth(this.theme.fg("dim", `${this.items.length - PANEL_ROWS} more · /filechanges`), budget));
+		this.cachedWidth = width;
+		this.cachedColors = this.theme.colors;
+		return this.cachedLines = width < 2 ? lines.map(() => width > 0 ? this.theme.fg("dim", "│") : "") : lines.map((line) => gutter + line);
+	}
+}
+
+/** Full paths wrap in the requested List. ScrollView owns scroll state, without timers. */
+export class FileChangesList {
+	private scroll: ScrollView;
+	private body = new Container();
+	private colors: unknown;
+	private cachedHeader: string | undefined;
+	private cachedHeaderWidth = -1;
+	private cachedHeaderColors: unknown;
+	constructor(private items: readonly FileChange[], private theme: Theme, private tui: any,
+		private keybindings: any, private done: () => void) {
+		this.scroll = new ScrollView(this.body, { follow: "none", scrollbar: "hidden", overscroll: "contain" });
+		this.rebuild();
+	}
+	private rebuild(): void {
+		const theme = this.theme;
+		this.body.clear();
+		for (const item of this.items) {
+			const state = item.repoState ? " " + theme.fg(REPO_STATE_COLORS[item.repoState], item.repoState) : "";
+			const activity = item.touchedThisPrompt ? theme.fg("muted", "  this prompt") : "";
+			this.body.addChild(new Text(theme.fg(KIND_COLORS[item.kind], item.kind.padEnd(9)) + theme.fg("text", displayPath(item.path)) +
+				" " + counts(item, theme) + state + activity, 0, 0));
+		}
+		this.colors = theme.colors;
+	}
+	invalidate(): void { this.colors = undefined; this.cachedHeader = undefined; this.scroll.invalidate(); }
+	render(width: number): string[] {
+		if (width <= 0) return [];
+		if (this.colors !== this.theme.colors) this.rebuild();
+		const lines = this.scroll.render(Math.max(1, width));
+		if (this.cachedHeader === undefined || this.cachedHeaderWidth !== width || this.cachedHeaderColors !== this.theme.colors) {
+			this.cachedHeader = summary(this.items, this.theme, width);
+			this.cachedHeaderWidth = width;
+			this.cachedHeaderColors = this.theme.colors;
+		}
+		const header = this.cachedHeader;
+		const height = Math.max(1, (this.tui.terminal?.rows ?? 24) - 8);
+		this.scroll.updateLayout(lines.length, height, () => this.tui.requestRender());
+		const top = this.scroll.scrollTop;
+		return [header, ...lines.slice(top, top + height),
+			truncateToWidth(this.theme.fg("dim", `${top + 1}–${Math.min(top + height, lines.length)}/${lines.length} lines · ↑↓ PgUp/PgDn Home/End · Escape closes`), width)];
+	}
+	handleInput(data: string): void {
+		const match = (action: string, key: KeyId) => this.keybindings?.matches(data, action) || matchesKey(data, key);
+		if (match("tui.select.cancel", "escape") || matchesKey(data, "ctrl+c")) { this.done(); return; }
+		if (match("tui.select.up", "up")) this.scroll.scrollBy(-1);
+		else if (match("tui.select.down", "down")) this.scroll.scrollBy(1);
+		else if (match("tui.select.pageUp", "pageUp")) this.scroll.scrollBy(-this.scroll.viewportHeight);
+		else if (match("tui.select.pageDown", "pageDown")) this.scroll.scrollBy(this.scroll.viewportHeight);
+		else if (matchesKey(data, "home")) this.scroll.scrollToStart();
+		else if (matchesKey(data, "end")) this.scroll.scrollToEnd();
+		else return;
+		this.tui.requestRender();
+	}
 }
 
 export default function (pi: ExtensionAPI) {
-	// The session's one tracker. Created eagerly at factory time (before any
-	// event) so its six event subscriptions are wired before the first
-	// session_start/tool_call; binds to the session key on its first event.
 	const tracker = getSharedFileChangesTracker(pi);
-
-	/**
-	 * Paint the Panel from the tracker's current state. Called on every
-	 * tracker state change (subscribe) and from the commands with their own
-	 * ctx. While the tracker is widget-suppressed (a consumer owns
-	 * presentation), the Panel is cleared and not rendered.
-	 */
-	function refreshWidget(ctx?: ExtensionContext) {
-		const c = ctx ?? tracker.getContext();
-		if (!c?.hasUI) return;
-		if (tracker.isWidgetSuppressed()) {
-			c.ui.setWidget("filechanges", undefined);
-			return;
-		}
+	let panel: FileChangesPanel | undefined;
+	let requestRender: (() => void) | undefined;
+	let visible = false;
+	let listDepth = 0;
+	let active = true;
+	function refreshWidget() {
+		const ctx = tracker.getContext();
+		if (!active || ctx?.mode !== "tui" || !ctx.hasUI) return;
 		const items = tracker.getChanges();
-		const sessionSize = tracker.getChanges("all").length;
-		c.ui.setWidget("filechanges", buildPanelLines(items, sessionSize, tracker.getMode(), c.ui.theme));
+		if (listDepth > 0 || !items.length) {
+			if (visible) ctx.ui.setWidget("filechanges", undefined);
+			panel = undefined; requestRender = undefined; visible = false;
+		} else if (!visible) {
+			visible = true;
+			ctx.ui.setWidget("filechanges", (tui, theme) => {
+				panel = new FileChangesPanel(items, theme);
+				requestRender = () => tui.requestRender();
+				return panel;
+			});
+		} else if (panel?.setItems(items)) requestRender?.();
 	}
-
-	tracker.subscribe(() => refreshWidget());
-
-	/** `/filechanges`: print one scope into the transcript, colored like the Panel. A `round`/`all` arg picks a scope once without changing the Mode. */
-	function listSessionSet(ctx: ExtensionContext, args: string) {
-		const arg = args.trim();
-		const view: Mode = arg === "all" || arg === "round" ? arg : tracker.getMode();
-		const items = tracker.getChanges(view);
-		const sessionSize = tracker.getChanges("all").length;
-		if (items.length === 0) {
-			const msg =
-				view === "round" && sessionSize > 0
-					? `filechanges: no changes last round (${sessionSize} this session: /filechanges-mode).`
-					: "filechanges: no files changed this session.";
-			if (ctx.hasUI) ctx.ui.notify(msg, "info");
-			else console.log(`[filechanges] ${msg}`);
-			return;
-		}
-		const theme = ctx.hasUI ? ctx.ui.theme : undefined;
-		const shown = items.slice(0, LIST_MAX_ROWS);
-		const lines = [formatHeader(view, items, theme), ...shown.map((t) => formatChangeLine(t, theme))];
-		if (items.length > shown.length) {
-			const more = `  …and ${items.length - shown.length} more`;
-			lines.push(theme ? theme.fg("dim", more) : more);
-		} else if (view === "round" && sessionSize > items.length) {
-			const more = `  …and ${sessionSize - items.length} more this session (see /filechanges-mode)`;
-			lines.push(theme ? theme.fg("dim", more) : more);
-		}
-		const body = lines.join("\n");
-		if (ctx.hasUI) ctx.ui.notify(body, "info");
-		else console.log(`[filechanges] ${body}`);
+	const unsubscribe = tracker.subscribe(refreshWidget);
+	pi.on("session_shutdown", (_event, ctx) => {
+		active = false;
+		unsubscribe();
+		if (ctx.mode === "tui" && visible) ctx.ui.setWidget("filechanges", undefined);
+		panel = undefined; requestRender = undefined; visible = false;
+	});
+	function validArgs(args: string, ctx: ExtensionContext, command: string): boolean {
+		if (!args.trim()) return true;
+		ctx.ui.notify(`Usage: /${command} (no arguments). Filechanges always shows session changes.`, "info");
+		return false;
 	}
-
 	pi.registerCommand("filechanges", {
-		description: "List changed files for the current view (append 'round' or 'all' to pick a view once)",
+		description: "Show all session file changes in a scrollable list",
 		handler: async (args, ctx) => {
+			if (!validArgs(args, ctx, "filechanges")) return;
 			await ctx.waitForIdle();
-			// Refresh first so the List always prints current git state, even if it moved outside pi.
 			await tracker.refreshRepoStates(ctx);
-			refreshWidget(ctx);
-			listSessionSet(ctx, args);
+			refreshWidget();
+			const items = tracker.getChanges();
+			if (ctx.mode !== "tui" || !ctx.hasUI || !items.length) {
+				const text = items.length ? [summary(items, plainTheme, 10000), ...items.map((item) =>
+					`${item.kind} ${displayPath(item.path)} ${item.binary ? "(binary)" : `+${item.added}/-${item.removed}`}${item.repoState ? ` ${item.repoState}` : ""}`)].join("\n") : "filechanges: no files changed this session.";
+				if (ctx.hasUI) ctx.ui.notify(text, "info");
+				else console.log(text);
+				return;
+			}
+			listDepth++;
+			refreshWidget();
+			try {
+				await ctx.ui.custom<void>((tui, theme, keybindings, done) => new FileChangesList(items, theme, tui, keybindings, done), {
+					overlay: true,
+					overlayOptions: { anchor: "center", width: "100%", margin: { top: 2, bottom: 2 } },
+				});
+			} finally {
+				listDepth--;
+				refreshWidget();
+			}
 		},
 	});
-
-	pi.registerCommand("filechanges-mode", {
-		description: "Toggle the filechanges view between the last round and all session changes",
-		handler: async (_args, ctx) => {
-			await ctx.waitForIdle();
-			tracker.setMode(tracker.getMode() === "round" ? "all" : "round");
-			refreshWidget(ctx);
-			const msg = tracker.getMode() === "round" ? "filechanges: showing changes last round." : "filechanges: showing all session changes.";
-			if (ctx.hasUI) ctx.ui.notify(msg, "info");
-			else console.log(`[filechanges] ${msg}`);
-		},
-	});
-
 	pi.registerCommand("filechanges-clear", {
-		description: "Clear the session change list and restart tracking",
-		handler: async (_args, ctx) => {
+		description: "Clear tracking and start fresh, without changing files",
+		handler: async (args, ctx) => {
+			if (!validArgs(args, ctx, "filechanges-clear")) return;
 			await ctx.waitForIdle();
 			tracker.clear();
-			refreshWidget(ctx);
-			if (ctx.hasUI) ctx.ui.notify("filechanges: cleared. Tracking restarts from the next change.", "info");
-			else console.log("[filechanges] cleared.");
 		},
 	});
 }

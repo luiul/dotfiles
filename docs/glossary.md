@@ -32,6 +32,18 @@ The `zen` extension's compact view of tool calls in pi's transcript. Collapsed t
 
 Source: `pi/.pi/agent/extensions/zen.ts`, `pi/.pi/agent/extensions/README.md`, and https://github.com/luiul/dotfiles/issues/67.
 
+## Session set
+
+The cumulative collection of files tracked by filechanges since session start or Clear. A new prompt never hides it. The Panel shows a compact view; `/filechanges` opens the complete List. Counts compare against each file's Original while that Original remains available.
+
+Source: `docs/filechanges-design.md`.
+
+## Prompt activity
+
+Display metadata for files changed during the current or most recently completed user prompt. A new user prompt resets these markers without clearing or filtering the Session set. Counts remain cumulative. Prompt activity replaces the retired Round and Mode filters.
+
+Source: `docs/filechanges-design.md`.
+
 ## zen toggle
 
 The switch for compact tool calls: `/zen [on|off]` or `ctrl+alt+t`. The state persists in `~/.pi/agent/zen.json` (default on). `--zen` and `--no-zen` force it for one session without saving. The toggle changes existing tool blocks as well as new ones. Native `ctrl+t` controls thinking independently.

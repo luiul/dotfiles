@@ -1,8 +1,6 @@
 # DataGrip
 
-Snapshot of the DataGrip data source config. Same convention as
-`claude/settings.json`: not stowed (JetBrains atomic saves would clobber the
-symlink), just tracked here and copied into place.
+Snapshot of the DataGrip data source config. It uses the live file vs snapshot pattern and is not stowed. JetBrains atomic saves would replace the symlink. Track the snapshot here and copy it into place.
 
 ## Where DataGrip 2026 keeps the data sources
 

@@ -10,15 +10,15 @@ Source: `~/dotfiles/AGENTS.md`, Structure section.
 
 ## live file vs snapshot
 
-The pattern for files an app rewrites at runtime (for example `~/.claude/settings.json`, `~/.pi/agent/settings.json`, `~/.pi/agent/mcp-adapter.json`). The file in `$HOME` is the live file and the source of truth; it is NOT stowed, because the app's runtime rewrite would clobber a symlink. The dotfiles copy is a snapshot, refreshed with `cp` after editing the live file.
+The pattern for files an app rewrites at runtime (for example `~/.pi/agent/settings.json` and `~/.pi/agent/mcp-adapter.json`). The file in `$HOME` is the live file and the source of truth; it is NOT stowed, because the app's runtime rewrite would clobber a symlink. The dotfiles copy is a snapshot, refreshed with `cp` after editing the live file.
 
 Source: `pi/.pi/agent/AGENTS.md`, Dotfiles section.
 
 ## stow-local-ignore
 
-A per-package ignore file that lists files GNU Stow must not symlink into `$HOME`. It guards the live files of the live file vs snapshot pattern: `claude/.claude/settings.json` (`claude/.stow-local-ignore`), `pi/.pi/agent/settings.json` and `pi/.pi/agent/mcp-adapter.json` (`pi/.stow-local-ignore`).
+A per-package ignore file that lists files GNU Stow must not symlink into `$HOME`. It guards the live files of the live file vs snapshot pattern: `pi/.pi/agent/settings.json` and `pi/.pi/agent/mcp-adapter.json` (`pi/.stow-local-ignore`).
 
-Source: `pi/.stow-local-ignore`, `claude/.stow-local-ignore`, and `pi/.pi/agent/AGENTS.md`, Dotfiles section.
+Source: `pi/.stow-local-ignore` and `pi/.pi/agent/AGENTS.md`, Dotfiles section.
 
 ## worktree
 

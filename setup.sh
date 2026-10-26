@@ -96,9 +96,9 @@ else
 	skip "Stow"
 fi
 
-# --- Shared agent scratch dir ---
+# --- Agent scratch dir ---
 step "Agent scratch dir"
-# pi and Claude write review/proofread output to ~/scratch (canonical AGENTS.md)
+# Pi writes scratch output to ~/scratch when asked (canonical AGENTS.md)
 mkdir -p "$HOME/scratch"
 ok "~/scratch ready"
 

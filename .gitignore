@@ -3,7 +3,7 @@
 # They are typically generated after calling the `zsh` command or when Zsh scripts are sourced.
 **/*.zwc
 .DS_Store
-# Ignore project-level Claude data (the claude/ stow package is tracked separately)
+# Keep legacy project-level Claude data out of version control
 /.claude/
 # Repo-local VS Code workspace settings: window.title must stay user-level only (dashkit parses it)
 /.vscode/

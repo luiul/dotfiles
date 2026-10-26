@@ -1,6 +1,6 @@
 # Browser Automation
 
-Setup for letting agents (pi, Claude Code) drive a real browser with logged-in sessions. Default tool is playwriter against the Brave Beta automation profile. Playwright MCP stays for clean-room work. Documented 2026-10-04 so we can iterate on it.
+Setup for letting Pi agents drive a real browser with logged-in sessions. Default tool is playwriter against the Brave Beta automation profile. Playwright MCP stays for clean-room work. Documented 2026-10-04 so we can iterate on it.
 
 ## Components
 

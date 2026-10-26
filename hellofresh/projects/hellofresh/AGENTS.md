@@ -172,7 +172,7 @@ CLI-first. Reach every system through its CLI, or a documented `curl` REST recip
 | AWS (S3, etc.) | `aws` CLI | SSO (`hfsso` session, browser) |
 | Google Docs | `md2gdoc` | service account |
 | Slack | approved official Slack MCP first; `slack-reader` browser fallback (shim: `slack-hf-read`) | separate OAuth for the current client; no credential capture or replay |
-| HelloDev KB | MCP (pi & Claude, via `pi-mcp-adapter`) | none required |
+| HelloDev KB | MCP (Pi, via `pi-mcp-adapter`) | none required |
 
 Do not use the Atlassian MCP for Jira or Confluence; the `jira` CLI recipes below and the REST recipes in `docs/confluence-rest.md` replace it.
 
@@ -223,7 +223,7 @@ Conventions:
 
 No Slack MCP is configured in Pi. The official endpoint was removed because it requires an approved OAuth client and rejects dynamic registration. Do not add it again without explicit user approval and a supported auth setup.
 
-If no authorized MCP read path is available, use `slack-reader` (`~/projects/personal/slack-reader`, https://github.com/luiul/slack-reader) as the browser fallback. It reads rendered UI through the dedicated Brave Beta profile without token capture, cookie extraction, or hand-built APIs, and re-derives the browser from the live loopback CDP listener on every command instead of trusting recorded PIDs or tab IDs. The legacy names `slack-hf-read` and `slack-hf-session-login` remain as shims into it. Normal navigation may change read state. Do not restore the retired credential-replay `slack-mcp-server`, or use `slackcli`, `slack-relogin`, `slack-hf-session`, or `slackdump`. Shared manual tools and Claude's configuration remain unchanged.
+If no authorized MCP read path is available, use `slack-reader` (`~/projects/personal/slack-reader`, https://github.com/luiul/slack-reader) as the browser fallback. It reads rendered UI through the dedicated Brave Beta profile without token capture, cookie extraction, or hand-built APIs, and re-derives the browser from the live loopback CDP listener on every command instead of trusting recorded PIDs or tab IDs. The legacy names `slack-hf-read` and `slack-hf-session-login` remain as shims into it. Normal navigation may change read state. Do not restore the retired credential-replay `slack-mcp-server`, or use `slackcli`, `slack-relogin`, `slack-hf-session`, or `slackdump`. Shared manual tools remain unchanged.
 
 Fallback is for an unavailable integration or unsupported read operation, not a way around access controls. On MCP auth loss, access denial, rate limiting, or suspected account-wide revocation, stop and report the error. Do not switch clients or retry credentials to work around it. Keep the browser's persistent auth pause and explicit recovery rules.
 
@@ -250,7 +250,7 @@ Auth loss or sign-in redirection persists a shared pause. Do not retry reads or 
 
 A dedicated profile does not protect desktop sessions from [Slack Anomaly Event Response](https://slack.engineering/building-slacks-anomaly-event-response/). [Enterprise session policy](https://slack.com/help/articles/115005223763-Manage-session-duration) can also force sign-in. Keeping a window open cannot override policy. Do not claim a fixed cooldown cures revocation. Report the cause as unknown without stronger evidence. If reads still correlate with desktop sign-outs, pause automation rather than adding evasion or credential replay. Do not add background keepalives or synthetic health polling.
 
-**Separate manual directory tooling, not a Pi fallback:** The existing `curl` recipes use `SLACK_TOKEN` from `.env` with directory-read scopes. Leave these tools and Claude's integration unchanged. Manual examples:
+**Separate manual directory tooling, not a Pi fallback:** The existing `curl` recipes use `SLACK_TOKEN` from `.env` with directory-read scopes. Leave these tools unchanged. Manual examples:
 
 ```bash
 curl -s -H "Authorization: Bearer $SLACK_TOKEN" -G --data-urlencode 'types=public_channel' --data-urlencode 'limit=20' \
@@ -268,7 +268,6 @@ The internal KB is exposed only as an HTTP MCP endpoint (`hellofresh-kb`, `.../m
 
 **Do not consult the HelloDev KB / `kb_*` MCP tools eagerly.** Only query it when I explicitly ask (e.g. "check HelloDev", "ask the KB", "search the knowledge base"). For everything else, prefer the repo checkout, the CLIs/REST recipes above, and what is already in context. Do not reach for these tools on your own initiative just because a question is HelloFresh-related.
 
-- Claude reaches it via the `hellofresh-kb` server in `~/.claude.json`.
 - pi reaches it via [`pi-mcp-adapter`](https://pi.dev/packages/pi-mcp-adapter) (the `kb` server in `~/dotfiles/pi/.pi/agent/mcp-adapter.json`), which registers each MCP tool directly, prefixed `kb_` (e.g. `kb_search_internal_knowledge_base`). Run `/mcp` in pi to list bridged servers/tools. The endpoint is reachable on the corporate network without a token.
 
 Note: this MCP serves the KB content, not the Backstage docs portal at `hellodev.hellofresh.io`. That portal is a JS SPA behind OAuth; `curl` only returns the app shell, and `/api/techdocs/*` is auth-gated. For docs that exist in a local repo checkout, read the repo copy instead.

@@ -5,7 +5,6 @@ tap "felixkratz/formulae", "https://github.com/FelixKratz/homebrew-formulae"
 tap "hashicorp/tap"
 tap "hishamkaram/slacktokens"
 tap "maferland/tap"
-tap "mlz11/tap"
 tap "oven-sh/bun"
 tap "raine/workmux"
 tap "shaharia-lab/tap"
@@ -123,8 +122,6 @@ brew "raine/workmux/workmux", trusted: true
 brew "shaharia-lab/tap/slackcli", trusted: true
 # Web browser focusing on privacy
 cask "brave-browser@beta"
-# macOS notifications with Claude icon for Claude Code hooks
-cask "mlz11/tap/claude-notifier", trusted: true
 # Databases and SQL IDE
 cask "datagrip"
 # Online diagram software
@@ -163,7 +160,6 @@ cask "spotify"
 cask "terraform-linters/tap/tflint", trusted: true
 vscode "adpyke.codesnap"
 vscode "altimateai.vscode-altimate-mcp-server"
-vscode "anthropic.claude-code"
 vscode "astral-sh.ty"
 vscode "aykutsarac.jsoncrack-vscode"
 vscode "bpruitt-goddard.mermaid-markdown-syntax-highlighting"

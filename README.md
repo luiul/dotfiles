@@ -12,17 +12,16 @@ The script is idempotent and prompts before each step. It will:
 
 1. Install Homebrew and Brewfile packages
 2. Install global npm packages listed in the Brewfile
-3. Install Claude Code (native build), register plugin marketplaces, and install plugins
-4. Install `znap` (zsh plugin manager)
-5. Stow all dotfile packages into `$HOME` (skips export-only packages and non-package dirs — see below)
-6. Generate an ed25519 SSH key (if missing) and add it to the macOS Keychain
-7. Clean stale `.zwc` files, configure git hooks, and create `.env` from `example.env`
+3. Install `znap` (zsh plugin manager)
+4. Stow all dotfile packages into `$HOME` (skips export-only packages and non-package dirs, see below)
+5. Generate an ed25519 SSH key (if missing) and add it to the macOS Keychain
+6. Clean stale `.zwc` files, configure git hooks, and create `.env` from `example.env`
 
 ## Stow Packages
 
 Each top-level directory is a stow package that mirrors `$HOME`:
 
-`aws`, `borders`, `brew`, `canopy`, `claude`, `datagrip`, `ghostty`, `git`, `hellofresh`, `hunk`, `karabiner`, `macos`, `pi`, `pip`, `rectangle`, `rtk`, `ruff`, `snapzy`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `sublime`, `vscode`, `worktrunk`, `zsh`
+`aws`, `borders`, `brew`, `canopy`, `datagrip`, `ghostty`, `git`, `hellofresh`, `hunk`, `karabiner`, `macos`, `pi`, `pip`, `rectangle`, `rtk`, `ruff`, `snapzy`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `sublime`, `vscode`, `worktrunk`, `zsh`
 
 Four packages are tracked but **not stowed** (export-only, see below): `karabiner`, `rectangle`, `datagrip`, and `snapzy`.
 
@@ -96,10 +95,6 @@ JetBrains IDEs rewrite config files with atomic saves (write temp + rename), whi
 
 Snapzy rewrites `~/.config/snapzy/config.toml` with atomic saves (write temp + rename, `atomically: true` in `SnapzyConfigurationService.swift`), which would replace a stow symlink with a real file on every settings sync. The `snapzy` package is therefore a tracked snapshot, not stowed. Restore or refresh the snapshot with the `cp` commands in `snapzy/README.md`.
 
-## Claude Code settings
-
-Claude Code rewrites `~/.claude/settings.json` in place at runtime (managed hooks), like Karabiner. So `claude/.claude/settings.json` is a tracked snapshot, not stowed: a `.stow-local-ignore` in the `claude` package keeps stow from linking it, while `CLAUDE.md` in the same package is still symlinked. Refresh the snapshot with `cp ~/.claude/settings.json claude/.claude/settings.json`.
-
 ## AWS
 
 The `aws` package stows `~/.aws/config` (used by the `aws-sso-refresh` pi extension via `AWS_PROFILE=sso-bedrock`). The real `aws/.aws/config` is gitignored because it contains an AWS account ID and the corporate SSO portal URL; only `aws/.aws/config.example` (placeholders) is tracked. On a fresh machine, copy the example to `aws/.aws/config`, fill in real values, then stow. See `aws/README.md`.
@@ -124,10 +119,10 @@ The helper excludes `canopy-status`, since SDK subagents share their parent's pr
 
 ## Agent Commands
 
-Custom slash commands live in `pi/.pi/agent/prompts/` (pi prompt templates, symlinked to `~/.pi/agent/prompts/`, picked up on the next pi session) and `claude/.claude/commands/` (Claude Code parity).
+Custom slash commands live in `pi/.pi/agent/prompts/`. These Pi prompt templates are symlinked to `~/.pi/agent/prompts/` and load in the next Pi session.
 
 - `/proofread <message> [--context <text>] [--scratch] [--no-copy]` (pi only): proofreads and polishes a message in ASD-STE100 style and copies the final version to the clipboard. `--context`/`-c` marks everything after it as context only (e.g. a pasted Slack thread), never rewritten. `--no-copy`/`-n` skips the clipboard step. `--scratch`/`-s` also saves the full review to `~/scratch/`. Flags combine freely and work as trailing tokens: `/proofread lgtm, ship it --context <thread> -s`.
-- `/scratch <what to write>` (pi and Claude Code): writes text output to `~/scratch/<descriptive-name>.md`, prints the absolute path, and shows the content in chat. Example: `/scratch write a short summary of the incident timeline`.
+- `/scratch <what to write>`: writes text output to `~/scratch/<descriptive-name>.md`, prints the absolute path, and shows the content in chat. Example: `/scratch write a short summary of the incident timeline`.
 
 Scratch files are opt-in everywhere (see the "Scratch Files" section in `pi/.pi/agent/AGENTS.md`): no tool writes to `~/scratch/` unless a command flag above says so, or the prompt contains the `scratch:` trigger.
 
@@ -164,23 +159,18 @@ brew bundle --file=brew/Brewfile
 grep '^npm ' brew/Brewfile | sed 's/^npm "\(.*\)"/\1/' | xargs -I{} npm install -g {}
 ```
 
-## Claude Code Plugins
-
-Claude Code itself is installed via the native installer (`curl -fsSL https://claude.ai/install.sh | bash`) and self-updates with `claude update`. Plugins are managed through `claude plugin install|update|list` and live inside registered marketplaces.
-
-Two files track this state, both auto-updated on every commit via the pre-commit hook:
-
-| File              | Format                            | Purpose                                                       |
-| ----------------- | --------------------------------- | ------------------------------------------------------------- |
-| `Marketplacefile` | `<name> <owner/repo>` per line    | Marketplaces to register with `claude plugin marketplace add` |
-| `Pluginfile`      | `<plugin>@<marketplace>` per line | Plugins to install with `claude plugin install`               |
-
-On a fresh machine, `setup.sh` first registers marketplaces, then installs plugins. Marketplace/plugin updates are handled by Claude Code itself, not by `upgrade-tools`.
-
 ## `upgrade-tools`
 
 The `upgrade-tools` shell function (defined in `zsh/.zsh_config/funcs.zsh`) upgrades everything in one go: Homebrew, `uv` tools, and npm globals. Missing tools are skipped rather than failing. Pass `--check` (or `-c`) for a dry-run preview of what is outdated.
 
 ## Pre-commit Hook
 
-The pre-commit hook auto-generates `example.env` from `.env` (keys only), updates the Brewfile, Marketplacefile, and Pluginfile, blocks `.env` from being committed, and runs [gitleaks](https://github.com/gitleaks/gitleaks) (`gitleaks protect --staged`) to scan staged changes for secrets. Bypass with `--no-verify` for false positives.
+The pre-commit hook generates `example.env` from `.env` (keys only), updates the Brewfile, and blocks `.env` from being committed. It excludes retired Claude CLI model defaults, ClaudeNotifier, and the Claude Code VS Code extension from these snapshots. It runs [gitleaks](https://github.com/gitleaks/gitleaks) (`gitleaks protect --staged`) to scan staged changes for secrets. Bypass with `--no-verify` for false positives.
+
+Pi agent activity is shown in Orca and Canopy. Pi desktop notifications and Claude Code configs are no longer part of this setup.
+
+Verification from the repository root:
+
+```sh
+bun scripts/test-retired-claude-config.ts
+```

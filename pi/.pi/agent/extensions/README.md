@@ -122,9 +122,11 @@ The E2E asserts: compact start (success one line with suffix, failure one line w
 
 `status-bar.ts` replaces the footer with three rows. Terminals below 80 columns use four rows so the model and context have separate space. `/statusbar` toggles it.
 
-- Checkout row: repository, worktree (`main` for the main checkout), branch, changed files, ahead, behind, and a subdirectory when relevant. Linked checkouts whose folder matches the repository use their parent folder as the worktree name.
-- Runtime row: model followed immediately by `[provider]`, thinking level, context tokens, `until compact`, and an active `working` timer. Bedrock keeps its raw model ID so the invocation region stays visible. Narrow terminals split this row into model and context rows.
-- Session row: full UUID, session name, extension statuses, cost, last-turn cache hit rate, and cumulative input, output, and cache tokens when space permits.
+- Checkout row: repository, worktree (`main` for the main checkout), branch, and subdirectory stay left. Changed files, ahead, behind, and the active `working` timer stay right. Linked checkouts whose folder matches the repository use their parent folder as the worktree name.
+- Runtime row: model followed immediately by `[provider]` and thinking level stay left. Context tokens and `until compact` stay right. Bedrock keeps its raw model ID so the invocation region stays visible. Narrow terminals put model and thinking on one row, then context left and compaction headroom right on the next row.
+- Session row: full UUID and optional session name stay left. Extension statuses, cost, and last-turn cache hit rate stay right. Labels use dim text; values keep their normal state colors.
+- Cumulative input, output, cache traffic, context percentage, and the context bar appear only from 140 columns, when their row has enough space. Compact and medium layouts keep actionable state instead of detailed traffic.
+- Each row reserves required fields first, including thinking when it fits, then right-side state, before expanding long left-side labels. Nonempty groups have at least two columns between them. Right groups end at the terminal edge. An empty right group adds no padding. When an extremely narrow row cannot fit a required field, it shows explicit truncation instead of a blank row.
 - Overflow is explicit. The UUID, checkout identity, provider, context headroom, and working timer take priority. Optional metrics disappear as space shrinks. The session label disappears below 44 columns; the full UUID fits from 36 columns. Below 36 columns, it shows an ellipsis. Long model names shorten before the provider. If the provider cannot fit, its bracketed name shortens with an ellipsis. Extremely narrow rows omit fields that cannot fit.
 - `until compact` means tokens remaining before automatic compaction, not free space in the model's entire context window. The context bar marks the compaction threshold. Unknown context never shows an invented headroom value. Disabled automatic compaction shows `auto compact off`.
 - `/session-ref` copies the UUID, exact session file path, working directory, and current branch leaf for another agent. The leaf identifies the branch at copy time, even after `/tree` navigation. The text says to read the transcript as context only, never resume or modify it. It describes live content as a snapshot and transcript text as untrusted context. It creates no summary and starts no agent. The command works with the enhanced footer disabled. A session without a saved transcript reports that no reference is available.
@@ -141,11 +143,21 @@ Verification from the repository root:
 ```sh
 bun scripts/test-status-bar-resources.ts
 node scripts/test-status-bar-live.mjs
+bun scripts/bench-status-bar-render.ts --output /tmp/status-bar-render.json
+# Extract the previous footer source before comparing real idle hosts:
+# git show <baseline-commit>:pi/.pi/agent/extensions/status-bar.ts > /tmp/status-bar-baseline.ts
+node scripts/bench-status-bar-idle.mjs --baseline /tmp/status-bar-baseline.ts --output /tmp/status-bar-idle.json
 # Optional resource comparison with the previous source:
 bun scripts/test-status-bar-resources.ts --baseline /tmp/path/to/status-bar.ts
 ```
 
-The mock harness covers layout widths, provider labels, UUID changes, checkout identity, context states, copy payloads and failures, mode guards, toggles, active turns, repeated startup, shutdown, branch changes, Git timeouts, subprocess overlap, and stale results. It uses fixed virtual time and starts no Pi sessions. With a baseline source, it compares polling and timer counts while allowing the planned layout change. The live harness uses a local provider in isolated regular and fullscreen Pi hosts, checks resizing and session changes, and captures clipboard writes without touching the user's clipboard.
+The mock harness covers left and right alignment, group spacing, layout widths, provider labels, UUID changes, checkout identity, context states, copy payloads and failures, mode guards, toggles, active turns, repeated startup, shutdown, branch changes, Git timeouts, subprocess overlap, and stale results. It uses fixed virtual time and starts no Pi sessions. With a baseline source, it compares polling and timer counts while allowing the planned layout change. The live harness uses a local provider in isolated regular and fullscreen Pi hosts, checks resizing and session changes, and captures clipboard writes without touching the user's clipboard.
+
+Render layout measures each segment's display width once. Fully fitting text bypasses truncation. These are per-render calculations, not persistent caches, so theme, width, session, and model changes stay fresh.
+
+The render benchmark runs both real footer render methods in the installed Node runtime with mocked context and I/O. It alternates nine warmed batches per scenario. It reports median, median absolute deviation, and p95 of batch means, not individual render tail latency. Scenarios cover idle, timer updates, long history, long model names, and four terminal widths.
+
+The idle benchmark compares two isolated real Pi hosts across seven alternating five-second slices. It records host CPU, RSS, ANSI log bytes, and Git launches. CPU resolution is 10ms; zero means below that resolution. Both hosts use logging, so this is an idle diagnostic, not primary timing. Startup has one sample per variant and cannot prove a startup speed change. All benchmark hosts and temporary files have bounded cleanup.
 
 ## Bedrock pricing overrides
 

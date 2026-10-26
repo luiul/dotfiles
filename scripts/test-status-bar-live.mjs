@@ -126,7 +126,7 @@ async function start(mode, { cwd = repo, width = 160, seeded = true, unknown = f
     NODE_OPTIONS: `--require ${JSON.stringify(preload)}` };
   // env -i also drops SSH and PI_CLIPBOARD_OSC52 markers. The preload blocks OSC 52 anyway.
   const args = [process.execPath, cli, '--offline', '--no-extensions', '--no-skills', '--no-prompt-templates',
-    '--no-context-files', '--no-approve', '--no-mcp', '--no-themes', '--no-tools', '--thinking', 'off',
+    '--no-context-files', '--no-approve', '--no-mcp', '--no-themes', '--no-tools', '--thinking', 'high',
     '--provider', provider, '--model', 'fixture', '--tui-mode', mode, '--use-theme', 'dark',
     '--session-dir', join(area, 'sessions'), '-e', fixture, '-e', candidate,
     ...(initial ? ['--session', initial.file] : [])];
@@ -171,7 +171,7 @@ async function stop(host) {
 }
 function footer(text, width) {
   const rows = text.split('\n').map((line) => line.trimEnd());
-  const last = rows.findLastIndex((line) => /^\s*session(?:\s|$)/i.test(line) || (width < 44 && /^[0-9a-f]{8}-[0-9a-f-]{27}\s*$/i.test(line)));
+  const last = rows.findLastIndex((line) => /^\s*session(?:\s|$)/i.test(line) || (width < 44 && /^[0-9a-f]{8}-[0-9a-f-]{27}(?:\s|$)/i.test(line)));
   assert(last >= 0, `Missing session row:\n${text}`);
   const count = width >= 80 ? 3 : 4;
   const lines = rows.slice(last - count + 1, last + 1);
@@ -181,34 +181,101 @@ function footer(text, width) {
   for (const line of lines) assert(visibleWidth(line) <= width, `Footer wraps at ${width}: ${line}`);
   return lines;
 }
+// tmux omits trailing spaces. A painted right group must therefore end at width.
+// Use display columns rather than string offsets so wide glyphs cannot hide overlap.
+function assertGroups(line, width, marker, row, groups) {
+  const match = line.match(marker);
+  assert(match, `Missing right group on row ${row} at ${width}: ${line}`);
+  const prefix = line.slice(0, match.index);
+  const left = prefix.trimEnd();
+  const right = line.slice(match.index);
+  const leftColumns = visibleWidth(left);
+  const rightColumn = visibleWidth(prefix);
+  const rightColumns = visibleWidth(right);
+  const gap = rightColumn - leftColumns;
+  assert(leftColumns > 0, `Missing left group on row ${row}: ${line}`);
+  assert(!/^\s/.test(left), `Left group is not anchored at column 0 on row ${row}: ${line}`);
+  assert(gap >= 2, `Groups overlap or lack a two-column gap on row ${row}: ${line}`);
+  assert.equal(rightColumn, width - rightColumns, `Right group starts at the wrong column on row ${row}: ${line}`);
+  assert.equal(visibleWidth(line), width, `Right group does not end at column ${width} on row ${row}: ${line}`);
+  groups.push({ row, leftColumns, rightColumn, rightColumns, gap });
+  return { left, right };
+}
 function assertFooter(host, text, { working = false, context = 'known', identity = true, compact = true } = {}) {
   const lines = footer(text, host.width);
   const full = lines.join('\n');
   const state = current(host);
+  const groups = [];
+  // Preserve the exact capture even when a column assertion fails.
+  report.screens.push({ mode: host.mode, width: host.width, context, working, rows: lines, groups });
+  const wide = host.width >= 80;
+  const contextRow = wide ? 1 : 2;
+  const sessionRow = lines.length - 1;
+  const timer = /\bworking\s+\d+(?:s|m|h|d)/;
+  const git = /\b(?:changed|ahead|behind)\s+\d+\b/;
+  const traffic = /\b(?:in|out|cache)\s+\d/;
+  const metrics = /\$\d+\.\d+|\bhit\s+\d+%|\b(?:in|out|cache)\s+\d/;
+  for (const [index, line] of lines.entries()) {
+    assert(!/^\s/.test(line), `Footer row ${index + 1} is not left-anchored at ${host.width}: ${line}`);
+    if (index !== 0) assert(!git.test(line) && !timer.test(line), `Git or timer is not on row 1: ${line}`);
+    if (index !== 1) assert(!/GPT-6\.1 Sol|\[(?:ai-model-router|sb-live)\]|\bthinking\b/.test(line), `Model, provider or thinking is not on row 2: ${line}`);
+    if (index !== contextRow) assert(!/\bcontext\b|until compact|auto compact off|[█░▏]/.test(line), `Context is on the wrong row: ${line}`);
+    if (index !== sessionRow) assert(!line.includes(state.uuid) && !metrics.test(line), `UUID or usage is not on the final row: ${line}`);
+  }
   if (host.width >= 44) {
-    assert(lines.at(-1).includes(`session ${state.uuid}`), `Full session UUID missing at ${host.width}: ${lines.at(-1)}`);
+    assert(lines[sessionRow].startsWith(`session ${state.uuid}`), `Full session UUID is not at column 0 at ${host.width}: ${lines[sessionRow]}`);
   } else if (host.width >= 36) {
-    assert.equal(lines.at(-1).trim(), state.uuid, '36-column UUID must remain complete');
+    assert(lines[sessionRow].startsWith(state.uuid), '36-column UUID must remain complete at column 0');
   }
   if (host.width >= 60) {
-    assert(full.includes('GPT-6.1 Sol'), `Friendly model missing:\n${full}`);
-    assert(/GPT-6\.1 Sol\s+(?:[|·]\s*)?(?:provider\s+)?\[?(?:ai-model-router|sb-live)\b/.test(full), `Provider must follow model directly:\n${full}`);
+    assert(lines[1].startsWith(`GPT-6.1 Sol [${provider}]`), `Model and immediate bracketed provider are not at column 0:\n${full}`);
   }
-  if (identity && host.width >= 80) {
-    assert(full.includes('dotfiles'), `Repository identity missing:\n${full}`);
-    assert(/worktree\s+improve-status-bar(?:\/dotfiles)?\b/.test(full), `Worktree identity missing:\n${full}`);
-    assert(/branch\s+improve-status-bar\b/.test(full), `Branch identity missing:\n${full}`);
+  if (identity) {
+    assert(lines[0].startsWith('dotfiles'), `Repository identity is not at column 0:\n${full}`);
+    if (host.width >= 100) {
+      assert(/worktree\s+improve-status-bar(?:\/dotfiles)?\b/.test(lines[0]), `Worktree identity missing:\n${full}`);
+      assert(/branch\s+improve-status-bar\b/.test(lines[0]), `Branch identity missing:\n${full}`);
+    }
+  } else assert(lines[0].startsWith(host.cwd.split('/').at(-1)), `Cwd fallback is not at column 0:\n${full}`);
+  if (git.test(lines[0]) || timer.test(lines[0])) {
+    const { left, right } = assertGroups(lines[0], host.width, /\b(?:changed|ahead|behind)\s+\d+\b|\bworking\s+\d+(?:s|m|h|d)/, 1, groups);
+    assert(!/\b(?:worktree|branch|dir)\b/.test(right), `Checkout identity leaked into the right group: ${right}`);
+    if (working) assert(timer.test(right) && !timer.test(left), `Working timer is not in the right group: ${lines[0]}`);
   }
   if (host.width >= 60) {
+    const row = lines[contextRow];
     if (context === 'known') {
-      assert(/context\b/.test(full), `Context missing:\n${full}`);
-      assert(!/context (unknown|unavailable)/.test(full), `Known context lost:\n${full}`);
-      assert(full.includes(compact ? 'until compact' : 'auto compact off'), `Compaction explanation missing:\n${full}`);
-    } else assert(full.includes(`context ${context}`), `Context state missing:\n${full}`);
+      assert(/\bcontext\b/.test(row), `Context missing:\n${full}`);
+      assert(!/context (unknown|unavailable)/.test(row), `Known context lost:\n${full}`);
+      assert(row.includes(compact ? 'until compact' : 'auto compact off'), `Compaction explanation missing:\n${full}`);
+    } else assert(row.includes(`context ${context}`), `Context state missing:\n${full}`);
+    if (wide) {
+      const { left, right } = assertGroups(row, host.width, /\bcontext\b|until compact|auto compact off/, 2, groups);
+      assert(left.startsWith(`GPT-6.1 Sol [${provider}]`), `Model is not in the left group: ${left}`);
+      assert(!/\bthinking\b/.test(right), `Thinking leaked into the context group: ${right}`);
+      if (host.width >= 100) assert(/\bthinking high\b/.test(left), `Thinking reservation missing from the model left group: ${left}`);
+      if (host.width < 140) assert(!/\d+%|[█░▏]/.test(right), `Context details appeared below 140 columns: ${right}`);
+      else if (context === 'known') assert(/\d+%/.test(right) && /\[[█░▏]+\]/.test(right), `Ample context group lost its percentage or bar: ${right}`);
+    } else {
+      assert(/^context\b/.test(row), `Narrow context is not at column 0: ${row}`);
+      if (/until compact|auto compact off/.test(row)) assertGroups(row, host.width, /until compact|auto compact off/, 3, groups);
+      assert(/\bthinking high\b/.test(lines[1]), `Thinking missing from the narrow model right group: ${lines[1]}`);
+      const modelGroups = assertGroups(lines[1], host.width, /\bthinking\b/, 2, groups);
+      assert.equal(modelGroups.right, 'thinking high', 'Narrow thinking must end the model row');
+    }
   }
-  assert.equal(/\bworking\s+\d+(?:s|m|h|d)/.test(full), working, `Working timer state is wrong:\n${full}`);
+  if (host.width < 140) assert(!traffic.test(full), `Traffic details appeared below 140 columns:\n${full}`);
+  if (metrics.test(lines[sessionRow])) {
+    const { left, right } = assertGroups(lines[sessionRow], host.width, metrics, sessionRow + 1, groups);
+    assert(left.includes(state.uuid), `UUID is not in the left group: ${left}`);
+    assert(!/\bname\b/.test(right), `Session name leaked into the right group: ${right}`);
+  }
+  if (wide) {
+    assert(/\$\d+\.\d+/.test(lines[sessionRow]), `Session right group lost cost:\n${full}`);
+    if (host.initial && context !== 'unavailable') assert(/\bhit\s+\d+%/.test(lines[sessionRow]), `Session right group lost cache hit rate:\n${full}`);
+  }
+  assert.equal(timer.test(lines[0]), working, `Working timer state is wrong on row 1:\n${full}`);
   assert(!/\b(?:last|elapsed)\s+\d+(?:s|m|h|d)/.test(full), `Settled elapsed time leaked:\n${full}`);
-  report.screens.push({ mode: host.mode, width: host.width, context, working, rows: lines });
   return lines;
 }
 async function resize(host, width, options) {
@@ -219,6 +286,14 @@ async function resize(host, width, options) {
   const text = await wait(host, (screen) => {
     let lines;
     try { lines = footer(screen, width); } catch { previous = ''; return false; }
+    // A stale four-row capture can look like three rows after enlargement.
+    // Fence on row positions before treating repeated captures as a repaint.
+    const project = host.cwd === repo ? 'dotfiles' : host.cwd.split('/').at(-1);
+    if (!lines[0].startsWith(project) || !lines[1].startsWith('GPT-6.1 Sol') ||
+      (width >= 80 && !/\bcontext\b/.test(lines[1]))) {
+      previous = '';
+      return false;
+    }
     const now = lines.join('\n');
     const stable = now === previous;
     previous = now;
@@ -258,7 +333,7 @@ async function lifecycle(mode) {
   const host = await start(mode);
   try {
     const first = capture(host);
-    const startupRows = assertFooter(host, first).join('\n');
+    const startupRows = assertFooter(host, first)[2];
     for (const value of ['in 30k', 'out 1.0k', 'cache 40k', '$0.036']) {
       assert(startupRows.includes(value), `Seeded usage or cost missing from footer: ${value}\n${startupRows}`);
     }
@@ -274,14 +349,20 @@ async function lifecycle(mode) {
       if (mode === 'regular') assert(capture(host).includes('No saved transcript is available for this session.'), 'Missing saved transcript warning');
       check(`${mode}: /session-ref refuses a file that no longer exists`);
     } finally { renameSync(unavailableFile, savedFile); }
-    for (const width of [100, 80, 60, 44, 36, 160]) await resize(host, width);
-    const settledCount = events(host).filter((e) => e.type === 'settled').length;
-    await command(host, 'SB_LIVE_TURN');
-    const active = await wait(host, (screen, list) => list.some((e) => e.type === 'response-start') && /working\s+\d+s/.test(screen), 'active timer', 4000);
-    assertFooter(host, active, { working: true });
-    await wait(host, (_screen, list) => list.filter((e) => e.type === 'settled').length > settledCount, 'deterministic turn settles');
-    const settled = await wait(host, (screen) => !/working\s+\d+(?:s|m|h|d)/.test(footer(screen, host.width).join('\n')), 'settled timer disappears');
-    assertFooter(host, settled);
+    for (const width of [140, 139, 100, 80, 79, 60, 44, 36, 160]) await resize(host, width);
+    for (const width of [160, 140, 100, 80, 79]) {
+      if (host.width !== width) await resize(host, width);
+      const settledCount = events(host).filter((e) => e.type === 'settled').length;
+      const responseCount = events(host).filter((e) => e.type === 'response-start').length;
+      await command(host, 'SB_LIVE_TURN');
+      const active = await wait(host, (screen, list) => list.filter((e) => e.type === 'response-start').length > responseCount && /working\s+\d+s/.test(screen), 'active timer', 4000);
+      assertFooter(host, active, { working: true });
+      check(`${mode}: ${width}-column active footer keeps the timer on row 1 with separated, anchored groups`);
+      await wait(host, (_screen, list) => list.filter((e) => e.type === 'settled').length > settledCount, 'deterministic turn settles');
+      const settled = await wait(host, (screen) => !/working\s+\d+(?:s|m|h|d)/.test(footer(screen, host.width).join('\n')), 'settled timer disappears');
+      assertFooter(host, settled);
+    }
+    await resize(host, 160);
     const records = readFileSync(current(host).session, 'utf8').trim().split('\n').map(JSON.parse);
     const usage = records.filter((e) => e.type === 'message' && e.message.role === 'assistant').at(-1).message.usage;
     assert.deepEqual([usage.input, usage.output, usage.cacheRead, usage.cost.total], [30000, 1000, 40000, 0.036]);

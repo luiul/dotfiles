@@ -35,6 +35,7 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Scope: chat replies, scratch files, docs, READMEs, tickets, commit messages. Code, identifiers, commands, and quoted text are exempt.
 - Do not hard-wrap prose in markdown files at a fixed column (no 80-char limit). Write flowing long lines: one bullet per line, one sentence or logical unit per line.
 - Always link to PRs and online resources. When you mention a PR, Jira ticket, Slack thread, doc, or any resource with a URL, include the full clickable URL (e.g. https://github.com/hellofresh/schema-registry/pull/4222), not just `schema-registry#4222` or `GLOA-338`.
+- In scratch files and Slack messages, write links in markdown format, [text](URL). Never put backticks inside the link text (the square brackets): they break the link. Keep backticks for code spans outside links, or drop them from the link text.
 
 ## Reporting Back
 

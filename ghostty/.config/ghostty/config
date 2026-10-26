@@ -30,6 +30,12 @@ keybind = cmd+shift+x=set_tab_title:
 # key through to the app (pi binds super+c to copy its fullscreen selection).
 keybind = performable:cmd+c=copy_to_clipboard
 
+# New windows with no previous surface (the first window after launch, the
+# quick terminal) start in home. Without this they inherit Ghostty's own
+# launchd cwd (/). Later windows are unaffected:
+# window-inherit-working-directory takes precedence.
+working-directory = home
+
 # Title: disable Ghostty's automatic shell-integration title. The zsh hook in
 # ~/.zsh_config/title.zsh sets it instead (repo root + branch, VS Code style).
 shell-integration-features = no-cursor,no-title

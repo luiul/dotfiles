@@ -15,7 +15,7 @@
  *
  * Toggle the footer with /statusbar. /session-ref also works with it disabled.
  *
- * While a turn runs, the runtime row shows a live "working <elapsed>" timer in canopy's
+ * While a turn runs, the checkout row shows a live "working <elapsed>" timer in canopy's
  * humanizeSince format (45s, 3m, 2h15m), driven by a 1s tick that only exists
  * between before_agent_start and agent_settled. The elapsed time is yellow
  * (warning), matching canopy's working state, and escalates to error (red)
@@ -38,6 +38,7 @@ const execFileAsync = promisify(execFile);
 
 const GIT_POLL_MS = 4000;
 const NARROW_WIDTH = 80;
+const DETAIL_WIDTH = 140;
 // Matches pi's compaction default; overridden from settings.json when present.
 const DEFAULT_RESERVE_TOKENS = 16384;
 
@@ -74,36 +75,49 @@ const statusText = (text: string): string => text
 	.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]/g, escape => /^\x1b\[[0-9;]*m$/.test(escape) ? escape : "")
 	.replace(/\x1b(?!\[)|[\x00-\x1a\x1c-\x1f\x7f-\x9f]/g, "");
 
-// Required fields reserve their minimum widths first. Expand them before choosing
-// optional fields, in priority order. Never cut a later field with final-line clipping.
-const fitRow = (segments: FooterSegment[], width: number): string => {
-	const ordered = segments.map((segment, index) => ({ ...segment, index }))
-		.filter(s => s.text).sort((a, b) => a.priority - b.priority || a.index - b.index);
+// Reserve required identity and state before fitting optional fields. Right groups
+// get their space before long left labels expand. The UUID's minimum is its full
+// width, so optional right metrics can never force it to shorten.
+const fitGroups = (left: FooterSegment[], right: FooterSegment[], width: number): string => {
+	const ordered = [left, right].flatMap((segments, side) => segments.map((segment, index) => ({ ...segment, side, index, fullWidth: visibleWidth(segment.text) })))
+		.filter(s => s.text).sort((a, b) => a.priority - b.priority || b.side - a.side || a.index - b.index);
 	const selected: { segment: typeof ordered[number]; width: number }[] = [];
 	let remaining = Math.max(0, width);
-	const minimum = (s: FooterSegment) => Math.min(visibleWidth(s.text), s.minWidth ?? visibleWidth(s.text));
-	for (const segment of ordered.filter(s => s.required)) {
+	const minimum = (s: typeof ordered[number]) => Math.min(s.fullWidth, s.minWidth ?? s.fullWidth);
+	const add = (segment: typeof ordered[number], size: number) => {
 		const gap = selected.length ? 2 : 0;
-		const min = minimum(segment);
-		if (remaining < min + gap) continue;
-		selected.push({ segment, width: min });
-		remaining -= min + gap;
-	}
-	for (const entry of selected) {
-		const extra = Math.min(remaining, visibleWidth(entry.segment.text) - entry.width);
-		entry.width += extra;
-		remaining -= extra;
-	}
-	for (const segment of ordered.filter(s => !s.required)) {
-		const gap = selected.length ? 2 : 0;
-		if (remaining < minimum(segment) + gap) continue;
-		const size = Math.min(visibleWidth(segment.text), remaining - gap);
+		if (remaining < size + gap) return false;
 		selected.push({ segment, width: size });
 		remaining -= size + gap;
-	}
-	return selected.sort((a, b) => a.segment.index - b.segment.index)
-		.map(({ segment, width: size }) => segment.render?.(size) ?? truncateToWidth(segment.text, size, "…"))
+		return true;
+	};
+	for (const segment of ordered.filter(s => s.required)) add(segment, minimum(segment));
+	const expand = (side: number) => {
+		for (const entry of selected.filter(s => s.segment.side === side)) {
+			const extra = Math.min(remaining, entry.segment.fullWidth - entry.width);
+			entry.width += extra;
+			remaining -= extra;
+		}
+	};
+	const optional = (side: number) => {
+		for (const segment of ordered.filter(s => !s.required && s.side === side)) {
+			const gap = selected.length ? 2 : 0;
+			if (remaining < minimum(segment) + gap) continue;
+			add(segment, Math.min(segment.fullWidth, remaining - gap));
+		}
+	};
+	expand(1);
+	optional(1);
+	expand(0);
+	optional(0);
+	const render = (side: number) => selected.filter(s => s.segment.side === side)
+		.sort((a, b) => a.segment.index - b.segment.index)
+		.map(({ segment, width: size }) => size >= segment.fullWidth ? segment.text : (segment.render?.(size) ?? truncateToWidth(segment.text, size, "…")))
 		.join("  ");
+	const l = render(0), r = render(1);
+	if (!l && !r && width > 0 && ordered.length) return truncateToWidth(ordered[0].text, width, "…");
+	if (!r) return l;
+	return l + " ".repeat(Math.max(0, width - visibleWidth(l) - visibleWidth(r))) + r;
 };
 
 // pi-blackhole's status segment keys its meters with single letters (bh O/P/X).
@@ -405,25 +419,34 @@ export default function (pi: ExtensionAPI) {
 							? m.id
 							: (m.name ?? m.id);
 					const think = thinkingTag();
-					const provider = m ? ` [${plain(m.provider)}]` : "";
-					const modelText = theme.fg("muted", plain(model) + provider);
+					const cleanModel = plain(model);
+					const cleanProvider = m ? plain(m.provider) : "";
+					const modelWidth = visibleWidth(cleanModel);
+					const provider = m ? ` [${cleanProvider}]` : "";
+					const providerWidth = visibleWidth(provider);
+					const modelText = theme.fg("muted", cleanModel + provider);
 					const modelSegment: FooterSegment = {
 						text: modelText, priority: 2, required: true,
-						minWidth: Math.min(visibleWidth(modelText), 10),
+						minWidth: Math.min(modelWidth + providerWidth, Math.max(0, width), 32),
 						render: size => {
-							const tagWidth = Math.min(visibleWidth(provider), Math.max(0, size - Math.min(3, visibleWidth(plain(model)))));
-							const tag = m ? ` [${truncateToWidth(plain(m.provider), Math.max(0, tagWidth - 3), "…")}]` : "";
-							return theme.fg("muted", truncateToWidth(plain(model), Math.max(0, size - visibleWidth(tag)), "…") + tag);
+							if (size >= modelWidth + providerWidth) return modelText;
+							if (size < 4) return truncateToWidth(modelText, size, "…");
+							const tagWidth = Math.min(providerWidth, Math.max(0, size - Math.min(3, modelWidth)));
+							const tag = m ? ` [${truncateToWidth(cleanProvider, Math.max(0, tagWidth - 3), "…")}]` : "";
+							return theme.fg("muted", truncateToWidth(cleanModel, Math.max(0, size - visibleWidth(tag)), "…") + tag);
 						},
 					};
 					const identity: FooterSegment[] = [
 						{ text: theme.fg("accent", theme.bold(plain(project))), priority: 0, required: true, minWidth: Math.min(12, visibleWidth(plain(project))) },
 						{ text: checkout ? label("worktree", checkout.worktree) : "", priority: 1, required: true, minWidth: 12 },
 						{ text: footerData.getGitBranch() ? label("branch", footerData.getGitBranch()!) : "", priority: 2, minWidth: 12 },
+						{ text: checkout?.subdirectory ? label("dir", checkout.subdirectory) : "", priority: 5, minWidth: 10 },
+					];
+					const gitStatus: FooterSegment[] = [
 						{ text: git.dirty > 0 ? label("changed", String(git.dirty), "warning") : "", priority: 3 },
 						{ text: git.ahead > 0 ? label("ahead", String(git.ahead)) : "", priority: 4 },
 						{ text: git.behind > 0 ? label("behind", String(git.behind)) : "", priority: 4 },
-						{ text: checkout?.subdirectory ? label("dir", checkout.subdirectory) : "", priority: 5, minWidth: 10 },
+						{ text: workingTag(), priority: 0, required: true },
 					];
 					// Live context size estimate and the model's full context window.
 					const contextTokens = usage?.tokens ?? null;
@@ -442,7 +465,6 @@ export default function (pi: ExtensionAPI) {
 							: theme.fg("dim", usage ? "context unknown" : "context unavailable"), priority: 1, required: true },
 						{ text: compaction.enabled ? (untilCompact != null ? label("until compact", fmtTokens(untilCompact), headroomColor) : "")
 							: theme.fg("dim", "auto compact off"), priority: 0, required: true },
-						{ text: workingTag(), priority: 0, required: true },
 					];
 					const contextDetails: FooterSegment[] = [
 						{ text: usage?.percent != null ? theme.fg("muted", `${Math.round(usage.percent)}%`) : "", priority: 8 },
@@ -466,18 +488,22 @@ export default function (pi: ExtensionAPI) {
 					};
 					const sessionName: FooterSegment = { text: name ? label("name", name) : "", priority: 6, minWidth: 10 };
 
+					const detail = width >= DETAIL_WIDTH;
+					const summaryMetrics = detail ? metrics : metrics.slice(0, 2);
+					const checkoutRow = fitGroups(identity, gitStatus, width);
+					const sessionRow = fitGroups([session, sessionName], [...extensions, ...summaryMetrics], width);
 					if (width < NARROW_WIDTH) {
 						return [
-							fitRow(identity, width),
-							fitRow([modelSegment, { text: think, priority: 6 }], width),
-							fitRow([...context, ...extensions, ...metrics, ...contextDetails], width),
-							fitRow([session, sessionName], width),
+							checkoutRow,
+							fitGroups([modelSegment], [{ text: think, priority: 3, required: true }], width),
+							fitGroups(context.slice(0, 1), context.slice(1), width),
+							sessionRow,
 						];
 					}
 					return [
-						fitRow(identity, width),
-						fitRow([modelSegment, { text: think, priority: 6 }, ...context, ...contextDetails], width),
-						fitRow([session, sessionName, ...extensions, ...metrics], width),
+						checkoutRow,
+						fitGroups([modelSegment, { text: think, priority: 3, required: true }], [...context, ...(detail ? contextDetails : [])], width),
+						sessionRow,
 					];
 				},
 			};

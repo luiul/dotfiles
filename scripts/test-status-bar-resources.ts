@@ -148,7 +148,7 @@ function harness(code: string) {
 				model: { id: "model-id", name: "Model Name", provider: "router" },
 				getContextUsage: () => ({ tokens: 30000, contextWindow: 128000, percent: 23.4375 }),
 			},
-			subscribers, history, notices, statuses, branchLabel: "main",
+			subscribers, history, notices, statuses, theme, branchLabel: "main",
 			get footer() { return footer; },
 			get renders() { return renders; },
 			get footerSets() { return footerSets; },
@@ -188,6 +188,7 @@ function harness(code: string) {
 	};
 }
 
+const { visibleWidth } = require("@earendil-works/pi-tui");
 const strip = (text: string) => text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
 const code = await compile(sourcePath);
 const baselineArg = process.argv.indexOf("--baseline");
@@ -422,7 +423,7 @@ if (baselineCode) {
 	await baseline.advance(12000);
 	await current.advance(12000);
 	check("TUI status polling cadence and timer count match baseline", () => {
-		assert.equal(current.calls.filter(c => c.args[0] === "status").length, baseline.calls.length);
+		assert.equal(current.calls.filter(c => c.args[0] === "status").length, baseline.calls.filter(c => c.args[0] === "status").length);
 		assert.equal(current.calls.filter(c => c.args[0] === "status").length, 4);
 		assert.equal(current.intervals().length, baseline.intervals().length);
 	});
@@ -440,7 +441,8 @@ if (baselineCode) {
 	check("wide footer groups checkout, runtime and session identity in three rows", () => {
 		const rows = state.footer.render(200).map(strip);
 		assert.equal(rows.length, 3);
-		assert.ok(rows[0].includes("dotfiles  worktree improve-status-bar  branch main  changed 2  ahead 2  behind 3"));
+		assert.ok(rows[0].includes("dotfiles  worktree improve-status-bar  branch main"));
+		assert.match(rows[0], / {2,}changed 2  ahead 2  behind 3$/);
 		assert.ok(rows[1].includes("GPT-6.1 Sol [ai-model-router]"));
 		assert.ok(rows[1].includes("context 30k/128k") && rows[1].includes("until compact 82k"));
 		assert.ok(rows[2].includes(state.ctx.sessionManager.getSessionId()));
@@ -453,6 +455,34 @@ if (baselineCode) {
 		assert.ok(text(60).includes("until compact 82k"));
 		assert.ok(text(60).includes(state.ctx.sessionManager.getSessionId()));
 	});
+	check("left identities and right state stay anchored at wide widths", () => {
+		for (const width of [80, 100, 120, 140, 160, 200]) {
+			const rows = state.footer.render(width).map(strip);
+			assert.ok(rows[0].startsWith("dotfiles"));
+			assert.ok(rows[1].startsWith("GPT-6.1 Sol [ai-model-router]"), `${width}: ${rows[1]}`);
+			assert.ok(rows[2].startsWith(`session ${state.ctx.sessionManager.getSessionId()}`));
+			assert.ok(rows.every((row: string) => visibleWidth(row) === width), `${width}: ${rows.join("\n")}`);
+			assert.match(rows[0], / {2,}changed 2  ahead 2  behind 3$/);
+			assert.ok(rows[1].indexOf("context") > rows[1].indexOf("[ai-model-router]") + 17);
+			assert.match(rows[2], / {2,}(plain status|\$0\.123)/);
+		}
+	});
+	check("detail metrics stay out of compact and medium layouts", () => {
+		for (const width of [36, 44, 60, 79, 80, 100, 120, 139]) {
+			const rendered = text(width);
+			assert.ok(!rendered.includes("in 1.0k") && !rendered.includes("out 2.0k") && !rendered.includes("cache 4.1k"));
+			assert.ok(!rendered.includes("[██"));
+		}
+		assert.ok(text(200).includes("in 1.0k") && text(200).includes("[██"));
+	});
+	check("narrow groups stay separate and keep the UUID on the final row", () => {
+		const rows = state.footer.render(60).map(strip);
+		assert.ok(rows[1].startsWith("GPT-6.1 Sol [ai-model-router]"));
+		assert.match(rows[1], / {2,}thinking high$/);
+		assert.ok(rows[2].startsWith("context 30k/128k"));
+		assert.match(rows[2], / {2,}until compact 82k$/);
+		assert.ok(rows[3].startsWith(`session ${state.ctx.sessionManager.getSessionId()}`));
+	});
 	await h.fire("before_agent_start", state);
 	await h.advance(3000);
 	check("working timer and headroom survive crowded runtime rows", () => {
@@ -461,7 +491,14 @@ if (baselineCode) {
 			assert.ok(text(width).includes("until compact 82k"), `${width}: ${text(width)}`);
 		}
 	});
-	const { visibleWidth } = require("@earendil-works/pi-tui");
+	check("working timer stays at the right edge of the checkout row", () => {
+		for (const width of [36, 44, 60, 79, 80, 100, 160, 200]) {
+			const rows = state.footer.render(width).map(strip);
+			assert.match(rows[0], /working 3s$/);
+			assert.equal(visibleWidth(rows[0]), width);
+			assert.ok(rows.slice(1).every((row: string) => !row.includes("working")));
+		}
+	});
 	check("every row fits its terminal width and never silently shortens UUID", () => {
 		for (const width of [0, 1, 10, 20, 35, 36, 43, 44, 45, 60, 79, 80, 100, 120, 160, 200]) {
 			const rows = state.footer.render(width);
@@ -477,6 +514,49 @@ if (baselineCode) {
 		assert.ok(rendered.includes("working 3s") && rendered.includes("until compact 82k"));
 		state.ctx.model = { id: "eu.anthropic.claude-sonnet-4-6", name: "Sonnet", provider: "amazon-bedrock" };
 		assert.ok(text(200).includes("eu.anthropic.claude-sonnet-4-6 [amazon-bedrock]"));
+	});
+	check("width fast-path does not retain theme or status text between renders", () => {
+		const before = state.footer.render(200);
+		const original = state.theme.fg;
+		state.theme.fg = (_color: string, value: string) => `\x1b[38;5;123m${value}\x1b[0m`;
+		state.footer.invalidate();
+		const after = state.footer.render(200);
+		assert.notEqual(after.join("\n"), before.join("\n"));
+		assert.deepEqual(after.map(strip), before.map(strip));
+		state.statuses.set("meter", "changed status text");
+		assert.ok(strip(state.footer.render(200).join("\n")).includes("changed status text"));
+		state.theme.fg = original;
+		state.statuses.set("meter", "plain status");
+	});
+	check("long model names keep thinking before visual context details", () => {
+		const saved = state.ctx.model;
+		state.ctx.model = { id: "long-model", name: "Very long model name ".repeat(40), provider: "ai-model-router" };
+		for (const width of [90, 139, 140, 200]) {
+			const rendered = text(width);
+			assert.ok(rendered.includes("thinking high"), `${width}: ${rendered}`);
+			assert.ok(rendered.includes("context 30k/128k") && rendered.includes("until compact 82k"));
+			assert.ok(state.footer.render(width).every((r: string) => visibleWidth(r) <= width));
+		}
+		state.ctx.model = { id: "eu.anthropic.claude-sonnet-4-6", name: "Sonnet", provider: "amazon-bedrock" };
+		assert.ok(text(90).includes("thinking high") && text(90).includes("[amazon-bedrock]"));
+		state.ctx.model = saved;
+	});
+	check("narrow model identity wins over thinking when both cannot fit", () => {
+		const saved = state.ctx.model;
+		state.ctx.model = { id: "eu.anthropic.claude-sonnet-4-6", name: "Sonnet", provider: "amazon-bedrock" };
+		for (const width of [20, 30, 31]) {
+			const row = strip(state.footer.render(width)[1]);
+			assert.ok(row.includes("…") && row.includes("[amazon-bedrock]"), `${width}: ${row}`);
+			assert.ok(!row.includes("thinking"));
+		}
+		state.ctx.model = saved;
+	});
+	check("extremely narrow required rows show truncation rather than blanks", () => {
+		for (const width of [1, 5, 9]) {
+			const rows = state.footer.render(width).map(strip);
+			assert.ok(rows.every((row: string) => row.length > 0 && visibleWidth(row) <= width));
+			assert.ok(rows[1].includes("…") && rows[2].includes("…"));
+		}
 	});
 	check("long providers shorten clearly across the 79/80 layout boundary", () => {
 		const model = state.ctx.model;
@@ -500,6 +580,16 @@ if (baselineCode) {
 		state.ctx.sessionManager.getSessionId = () => "87654321-1234-4321-abcd-112233445566";
 		assert.ok(text(80).includes("87654321-1234-4321-abcd-112233445566"));
 		assert.ok(!text(200).includes("12345678-abcd"));
+	});
+	check("long session names yield to right-side status and cost", () => {
+		const saved = state.ctx.sessionManager.getSessionName;
+		state.ctx.sessionManager.getSessionName = () => "session-title-".repeat(100);
+		const rows = state.footer.render(120).map(strip);
+		assert.ok(rows[2].startsWith(`session ${state.ctx.sessionManager.getSessionId()}`));
+		assert.ok(rows[2].includes("plain status") && rows[2].includes("$0.123") && rows[2].includes("hit 80%"));
+		assert.equal(visibleWidth(rows[2]), 120);
+		assert.ok(rows[2].includes("…"));
+		state.ctx.sessionManager.getSessionName = saved;
 	});
 	check("long names, branch and Unicode paths do not hide protected fields", () => {
 		state.ctx.sessionManager.getSessionName = () => "长名字🚀 ".repeat(60) + "\n\x1b[31minjected";
@@ -637,6 +727,66 @@ for (const identity of ["/repo/one\n/repo/one/.git\n/repo/one/.git\n", "/repo/li
 	});
 	await h.fire("session_shutdown", state);
 	await h.advance(4000);
+}
+
+{
+	const h = harness(code);
+	const state = h.context();
+	state.ctx.sessionManager.getSessionName = () => "";
+	state.statuses.clear();
+	h.output = "";
+	await h.fire("session_start", state);
+	check("empty checkout right group leaves identity unpadded", () => {
+		const rows = state.footer.render(160).map(strip);
+		assert.ok(rows[0].startsWith("one  worktree main  branch main"));
+		assert.equal(rows[0], rows[0].trimEnd());
+		assert.ok(visibleWidth(rows[0]) < 160);
+	});
+	check("UUID-only narrow row has no padding or optional traffic", () => {
+		const last = strip(state.footer.render(44).at(-1));
+		assert.equal(last, `session ${state.ctx.sessionManager.getSessionId()}`);
+	});
+	await h.fire("before_agent_start", state);
+	await h.advance(9000);
+	const before = strip(state.footer.render(100)[0]);
+	await h.advance(1000);
+	const after = strip(state.footer.render(100)[0]);
+	check("timer width changes move only the start of the right group", () => {
+		assert.ok(before.endsWith("working 9s") && after.endsWith("working 10s"));
+		assert.equal(visibleWidth(before), 100);
+		assert.equal(visibleWidth(after), 100);
+		assert.ok(before.startsWith("one  worktree main") && after.startsWith("one  worktree main"));
+	});
+	await h.fire("agent_settled", state);
+	check("settled checkout returns to an unpadded left group", () => {
+		const row = strip(state.footer.render(100)[0]);
+		assert.ok(!row.includes("working"));
+		assert.equal(row, row.trimEnd());
+	});
+	await h.fire("session_shutdown", state);
+}
+
+{
+	const h = harness(code);
+	const state = h.context();
+	await h.fire("session_start", state);
+	await h.fire("before_agent_start", state);
+	check("all widths stay bounded with crowded colored and Unicode groups", () => {
+		for (const size of [1, 5, 20]) {
+			state.ctx.model = { id: "model", name: "模型 🚀 ".repeat(size), provider: "company-model-router-".repeat(size) };
+			state.ctx.sessionManager.getSessionName = () => "session-title-".repeat(size);
+			state.branchLabel = "branch-".repeat(size);
+			state.statuses.set("meter", `\x1b[31m${"status-".repeat(size)}\x1b[0m`);
+			for (let width = 0; width <= 220; width++) {
+				const rows = state.footer.render(width);
+				assert.equal(rows.length, width < 80 ? 4 : 3);
+				assert.ok(rows.every((row: string) => visibleWidth(row) <= width), `size ${size}, width ${width}`);
+				if (width >= 36) assert.ok(strip(rows.at(-1)).includes(state.ctx.sessionManager.getSessionId()));
+				if (width >= 36) assert.ok(strip(rows[0]).endsWith("working 0s"));
+			}
+		}
+	});
+	await h.fire("session_shutdown", state);
 }
 
 console.log(`ALL PASS (${checks} checks)`);

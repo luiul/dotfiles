@@ -30,9 +30,9 @@ export default function (pi: ExtensionAPI) {
 	pi.registerProvider(provider, {
 		api: "sb-live-stream", baseUrl: "http://local.invalid", apiKey: "local-fixture",
 		models: [
-			{ id: "fixture", name: "GPT-6.1 Sol", reasoning: false, input: ["text"],
+			{ id: "fixture", name: "GPT-6.1 Sol", reasoning: true, input: ["text"],
 				cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 1 }, contextWindow: 128000, maxTokens: 4096 },
-			{ id: "unavailable", name: "GPT-6.1 Sol", reasoning: false, input: ["text"],
+			{ id: "unavailable", name: "GPT-6.1 Sol", reasoning: true, input: ["text"],
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 0, maxTokens: 4096 },
 		],
 		streamSimple(model, context, options) {

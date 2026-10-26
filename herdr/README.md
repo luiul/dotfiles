@@ -14,17 +14,27 @@ The native worktree keybindings are disabled. Native sidebar context-menu creati
 
 ## Coppice and agent commands
 
-Inside a Herdr pane, the wt post-switch hook calls `herdr-wt-open`. It opens new or reused linked checkouts in the calling session without changing focus. The helper uses `HERDR_SOCKET_PATH`, so it cannot silently target another session. Repeated calls preserve the workspace and its custom label. It never creates a Git checkout or starts a Herdr server.
+Use `cop herdr [repo]` from an interactive shell to create or reuse a worktree, finish wt setup, and open Pi in Herdr. The repo defaults to the current directory. Use `--branch NAME` or answer the branch prompt. Like `cop orca`, this explicit command focuses the verified Pi terminal and changes the calling shell to the checkout directory.
 
-Outside Herdr, wt and coppice keep their normal behavior. No Herdr workspace is opened. The plugin picker can select those checkouts later.
+Inside Herdr, `cop herdr` targets the calling session through `HERDR_SOCKET_PATH`. Outside Herdr, it targets the running default session. Use `--session NAME` to choose another running session. The command does not start a Herdr server. Reuse focuses an existing ready Pi instead of starting another one.
+
+```sh
+cop herdr
+cop herdr ~/projects/personal/example --branch feature-name
+cop herdr ~/projects/personal/example --branch feature-name --yes --session review
+```
+
+`cop new` and direct `wt switch` calls remain worktree-only, even inside Herdr. They run normal setup without opening workspaces or Pi. There is no global Herdr post-switch hook. The plugin picker still opens its own workspace through `herdr worktree open`.
+
+`herdr-wt-open REPO_PATH WORKTREE_PATH` remains a manual legacy helper. It opens an existing checkout without changing focus or starting Pi. It needs an explicit calling Herdr socket and preserves custom workspace labels. Normal wt setup and `cop herdr` do not need this helper.
 
 The plugin closes a workspace after successful removal through its own picker. Removal through coppice or wt does not automatically close a Herdr workspace. Close its workspace explicitly before removing the checkout. An automatic close could kill an agent, so no teardown hook does that.
 
-Worktree creation does not open VS Code. Cmd+E inside pi remains the manual editor shortcut. Canopy and understory retain Ghostty-only title-based navigation. This setup does not change Orca.
+Worktree creation does not open VS Code. Cmd+E inside pi remains the manual editor shortcut. Canopy and understory retain Ghostty-only title-based navigation.
 
 ## Limits
 
-The plugin opens a checkout at its root. It does not preserve a nested dbt project directory from the source pane. Change into that project before starting pi so its skills and manual Cmd+E use the intended scope. Upstream tracks this in https://github.com/devashish2203/herdr-worktrunk/issues/14.
+The plugin opens a checkout at its root. It does not preserve a nested dbt project directory from the source pane. Change into that project before starting pi so its skills and manual Cmd+E use the intended scope. `cop herdr` also starts Pi at the checkout root. Upstream tracks plugin directory handling in https://github.com/devashish2203/herdr-worktrunk/issues/14.
 
 No merge key is added. The plugin's merge action can stage and commit through wt, which conflicts with the agent commit review gate.
 
@@ -48,4 +58,4 @@ bash scripts/test-herdr-worktrunk.sh
 uv run scripts/test-worktree-no-editor.py
 ```
 
-The integration test starts a bounded named Herdr session in tmux. It tests the real keybinding, installed picker, real wt and cop creation/reuse, native workspace provenance, rendered sidebar labels, custom-label preservation, focus preservation, setup hooks, zero editor calls, and plugin removal. Only fzf selection is scripted for deterministic lifecycle checks. The separate interactive picker check uses real fzf. Test workspaces, sessions, and fixtures are cleaned up without changing live user workspaces.
+The integration test starts an isolated named Herdr session in tmux. Both test tmux sessions have registered owners, 300-second deadlines, and explicit cleanup. It tests the real keybinding, installed picker, native workspace provenance, setup hooks, custom-label preservation, focus preservation, and plugin removal. It verifies that `cop new` and direct wt creation/reuse open no Herdr workspaces, even inside Herdr. It also checks the manual legacy helper with spaced paths, the absence of a global registration hook, and zero editor calls. Only fzf selection is scripted for deterministic lifecycle checks. The separate interactive picker check uses real fzf. Test workspaces, sessions, and fixtures are cleaned up without changing live user workspaces. This script does not exercise `cop herdr` Pi launch.

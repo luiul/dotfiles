@@ -103,11 +103,8 @@ done
 # No inherited instructions is a valid setup result, not a hook failure.
 true
 '''
-# Both new and existing checkouts opened by wt or coppice appear in the calling
-# Herdr session, without moving focus. No server is started outside Herdr.
-# A stale server cannot block switching. Failures are reported in the hook log.
-[post-switch]
-herdr = 'if [ "$HERDR_ENV" = 1 ] && [ -n "$HERDR_SOCKET_PATH" ]; then herdr-wt-open {{ repo_path }} {{ worktree_path }} || true; fi'
+# Orchestrator workspaces are opened only by explicit coppice commands.
+# cop new and direct wt calls keep normal setup without opening Herdr or Orca.
 
 # Refuse to remove protected branches. pre-* hooks abort on non-zero exit.
 [pre-remove]

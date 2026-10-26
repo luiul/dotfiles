@@ -35,7 +35,7 @@ def main() -> None:
     source = ROOT / "worktrunk/.config/worktrunk/config.toml"
     config = tomllib.loads(source.read_text())
     assert set(config["post-start"]) == {"venv", "copy", "registry", "agents-md"}
-    assert config["post-switch"]["herdr"]
+    assert "post-switch" not in config, "Orchestrator opening belongs to explicit cop commands"
     assert config["pre-remove"]["protect"]
     assert config["post-remove"]["prune-empty-branch-dir"]
     assert not any("code -n" in value for value in config["post-start"].values())

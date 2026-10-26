@@ -21,7 +21,7 @@ PICKER_PANE_COUNT = 2
 
 
 def main() -> None:
-    """Check picker, external creation, grouping, reuse, and safe removal."""
+    """Check picker lifecycle, worktree-only commands, and the manual legacy helper."""
     herdr = shutil.which("herdr")
     wt = shutil.which("wt")
     cop = shutil.which("cop")
@@ -38,6 +38,9 @@ def main() -> None:
         config_dir = home / ".config/worktrunk"
         config_dir.mkdir(parents=True)
         shutil.copy(ROOT / "worktrunk/.config/worktrunk/config.toml", config_dir / "config.toml")
+        config = tomllib.loads((config_dir / "config.toml").read_text())
+        assert "herdr" not in config.get("post-switch", {}), "A global Herdr post-switch hook is still configured"
+        assert "herdr-wt-open" not in json.dumps(config), "The manual helper is still used by a wt hook"
         editor_calls = home / "editor-calls"
         (bin_dir / "code").write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$EDITOR_CALLS"\nexit 99\n')
         (bin_dir / "fzf").write_text('#!/bin/sh\ncat >/dev/null\nprintf "enter\\n%s\\n" "plugin-fixture"\n')
@@ -71,6 +74,7 @@ def main() -> None:
         (repo / ".env").write_text("FIXTURE_ONLY=1\n")
         parent = api("workspace", "create", "--cwd", str(repo), "--label", "herdr-smoke", "--no-focus")
         wid = parent["workspace"]["workspace_id"]
+        owned_groups = [wid]
         env["HERDR_WORKSPACE_ID"] = wid
         env["HERDR_PANE_ID"] = parent["root_pane"]["pane_id"]
         env["HERDR_TAB_ID"] = parent["tab"]["tab_id"]
@@ -92,8 +96,15 @@ def main() -> None:
             message = f"No open sidebar workspace for {branch}"
             raise AssertionError(message)
 
+        def assert_closed(branch: str):
+            row = next(item for item in worktrees() if item["branch"] == branch)
+            assert not row.get("open_workspace_id"), f"Worktree-only command opened a workspace for {branch}"
+            return row
+
         tmux = shutil.which("tmux")
+        reap_strays = shutil.which("reap-strays")
         assert tmux
+        assert reap_strays
         client = f"ag-herdr-client-{os.getpid()}"
         client_log = home / "client.log"
         command = "env -u HERDR_ENV -u HERDR_SOCKET_PATH -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID "
@@ -103,6 +114,8 @@ def main() -> None:
         command += " 2>" + shlex.quote(str(client_log)) + "; sleep 60"
         run(tmux, "new-session", "-d", "-s", client, "-c", str(repo), "-x", "140", "-y", "40", command)
         try:
+            run(reap_strays, "--register-tmux", client, "--owner", str(os.getpid()),
+                "--deadline", os.environ["HERDR_WT_TEST_DEADLINE"])
             # Drive the actual configured keybinding, then cancel the real fzf picker.
             time.sleep(1)
             run(tmux, "send-keys", "-t", client, "C-b", "G")
@@ -142,30 +155,32 @@ def main() -> None:
                 item["workspace_id"] for item in api("workspace", "list")["workspaces"] if item["focused"]
             )
             run(cop, "new", str(repo), "--branch", "cop-fixture", "--yes")
-            wait_open("cop-fixture")
+            assert_closed("cop-fixture")
             run(wt, "switch", "--create", "wt-fixture", "--no-cd", "--yes", "--format", "json")
-            wait_open("wt-fixture")
-            # Switching to a checkout created outside Herdr must register it too.
+            assert_closed("wt-fixture")
+            run(wt, "switch", "wt-fixture", "--no-cd", "--yes", "--format", "json")
+            assert_closed("wt-fixture")
+            # Reusing an outside checkout inside Herdr must remain worktree-only.
             env.pop("HERDR_ENV")
             run(wt, "switch", "--create", "external-fixture", "--no-cd", "--yes", "--format", "json")
-            external = next(item for item in worktrees() if item["branch"] == "external-fixture")
-            assert not external.get("open_workspace_id")
+            assert_closed("external-fixture")
             env["HERDR_ENV"] = "1"
             run(cop, "new", str(repo), "--branch", "external-fixture", "--yes")
-            wait_open("external-fixture")
+            assert_closed("external-fixture")
             after_focus = next(
                 item["workspace_id"] for item in api("workspace", "list")["workspaces"] if item["focused"]
             )
-            assert before_focus == after_focus, "External creation stole focus"
+            assert before_focus == after_focus, "Worktree-only creation or reuse stole focus"
             assert not editor_calls.exists(), "An editor was launched"
-            print("PASS: installed picker creates/reuses via wt; cop and agent wt register without focus changes")
+            print("PASS: installed picker creates/reuses via wt; cop new and direct wt never open Herdr workspaces")
             print("PASS: configured paths, setup hooks, and custom labels remain intact; zero editor calls")
             time.sleep(0.5)
             screen = run(tmux, "capture-pane", "-t", client, "-p").stdout
             assert "custom-name" in screen
-            assert "cop-fixture" in screen
-            assert "wt-fixture" in screen
-            print("PASS: linked worktree names render in the real Herdr sidebar")
+            for branch in ("cop-fixture", "wt-fixture", "external-fixture"):
+                assert_closed(branch)
+                assert branch not in screen, f"Worktree-only checkout appeared in the sidebar: {branch}"
+            print("PASS: only the plugin-opened linked checkout renders in the real Herdr sidebar")
             # Exercise the plugin's removal path on a clean fixture via real wt and Herdr.
             (bin_dir / "fzf").write_text('#!/bin/sh\ncat >/dev/null\nprintf "%s\\n" "plugin-fixture"\n')
             run("bash", str(plugin_root / "remove.sh"))
@@ -173,49 +188,44 @@ def main() -> None:
             assert not any(item["workspace_id"] == row["open_workspace_id"]
                            for item in api("workspace", "list")["workspaces"])
             print("PASS: real plugin removal uses wt and closes only the removed test workspace")
-            # Exercise the exact registration hook with spaces in both path arguments.
-            # Other hooks have their own established quoting conventions; isolate this hook.
+            # The legacy helper remains an explicit manual action, not a wt hook.
+            # Isolate it from other setup hooks' established quoting conventions.
             spaced_repo = home / "space projects" / "space repo"
             spaced_repo.mkdir(parents=True)
             run("git", "init", "-q", "-b", "main", cwd=spaced_repo)
             run("git", "commit", "-q", "--allow-empty", "-m", "fixture", cwd=spaced_repo)
             spaced_config = home / "spaced.toml"
-            hooks = tomllib.loads((config_dir / "config.toml").read_text())["post-switch"]
-            spaced_config.write_text(
-                'worktree-path = "../space checkout"\n[post-switch]\nherdr = ' + json.dumps(hooks["herdr"]) + "\n",
-            )
+            spaced_config.write_text('worktree-path = "../space checkout"\n')
             run(wt, "--config", str(spaced_config), "switch", "--create", "spaced-fixture",
                 "--no-cd", "--yes", "--format", "json", cwd=spaced_repo)
-            deadline = time.monotonic() + 20
-            spaced_id = None
-            spaced_parent_id = None
-            while time.monotonic() < deadline:
-                spaced_result = api("worktree", "list", "--cwd", str(spaced_repo))
-                spaced_parent_id = spaced_result["source"].get("source_workspace_id")
-                spaced_row = next(item for item in spaced_result["worktrees"] if item["branch"] == "spaced-fixture")
-                spaced_id = spaced_row.get("open_workspace_id")
-                if spaced_id:
-                    break
-                time.sleep(0.1)
-            assert spaced_id, "Space-containing paths failed sidebar registration"
-            api("workspace", "close", spaced_id)
-            if spaced_parent_id:
-                api("workspace", "close", spaced_parent_id)
+            spaced_row = next(item for item in api("worktree", "list", "--cwd", str(spaced_repo))["worktrees"]
+                              if item["branch"] == "spaced-fixture")
+            assert not spaced_row.get("open_workspace_id"), "Direct wt opened the spaced checkout"
+            spaced_parent = api(
+                "workspace", "create", "--cwd", str(spaced_repo), "--label", "spaced-smoke", "--no-focus",
+            )
+            spaced_parent_id = spaced_parent["workspace"]["workspace_id"]
+            owned_groups.append(spaced_parent_id)
+            run(str(ROOT / "herdr/.local/bin/herdr-wt-open"), str(spaced_repo), spaced_row["path"])
+            spaced_row = next(item for item in api("worktree", "list", "--cwd", str(spaced_repo))["worktrees"]
+                              if item["branch"] == "spaced-fixture")
+            assert spaced_row.get("open_workspace_id"), "Manual helper failed with space-containing paths"
+            api("workspace", "close", spaced_row["open_workspace_id"])
+            api("workspace", "close", spaced_parent_id)
             run(wt, "--config", str(spaced_config), "remove", "spaced-fixture", "--foreground", "--yes",
                 cwd=spaced_repo)
-            print("PASS: exact wt registration hook handles repo and checkout paths containing spaces")
+            print("PASS: manual legacy helper handles spaced repo/checkout paths; no global registration hook")
             for branch in ("cop-fixture", "wt-fixture", "external-fixture"):
-                target = wait_open(branch)
-                # Close only owned test shells before removing their checkout.
-                api("workspace", "close", target["open_workspace_id"])
+                assert_closed(branch)
                 run(wt, "remove", branch, "--foreground", "--yes")
             api("workspace", "close", wid)
         finally:
             run(tmux, "kill-session", "-t", client, check=False)
-            # Remove only the fixture's workspace group if a check failed.
+            # Remove only owned fixture groups if a check failed.
             items = api("workspace", "list")["workspaces"]
-            if any(item["workspace_id"] == wid for item in items):
-                api("workspace", "close", wid, "--group")
+            for group in owned_groups:
+                if any(item["workspace_id"] == group for item in items):
+                    api("workspace", "close", group, "--group")
 
 
 if __name__ == "__main__":

@@ -1,10 +1,9 @@
 #!/bin/bash
-# E2E test for compact tool calls (one spacer plus one content row, zen.ts).
+# E2E test for the zen v2 extension (one-line compact tool calls, zen.ts).
 #
 # Runs real pi instances in a detached tmux session on a SEEDED session
-# (thinking, successful and failed bash calls, a long multiline command,
-# a read range, an MCP proxy call, and text; crafted jsonl, no LLM needed)
-# with only the zen extension loaded (--no-extensions
+# (thinking + one successful bash call + one failed bash call + text; crafted
+# jsonl, no LLM needed) with only the zen extension loaded (--no-extensions
 # -e), then asserts against the rendered pane:
 #   1. clean start, no extension errors
 #   2. compact by default: the successful call is exactly one line, its
@@ -29,8 +28,7 @@
 # Run from the repo root: scripts/test-zen-extension.sh
 
 set -u
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-EXT="$ROOT/pi/.pi/agent/extensions/zen.ts"
+EXT="$(cd "$(dirname "$0")/.." && pwd)/pi/.pi/agent/extensions/zen.ts"
 SESSION="ag-zen-e2e-$$"
 DIR=$(mktemp -d "${HOME}/.zen-e2e-XXXXXX")   # NOT under /tmp: the tracker
                                                # hard-excludes temp dirs
@@ -51,44 +49,9 @@ CAP=""
 capture() { CAP=$(tmux capture-pane -t "$SESSION" -p); }
 check_contains() { capture; if echo "$CAP" | grep -qF -- "$2"; then ok "$1"; else bad "$1"; fi; }
 check_not_contains() { capture; if echo "$CAP" | grep -qF -- "$2"; then bad "$1"; else ok "$1"; fi; }
-check_not_matches() { capture; if printf '%s\n' "$CAP" | grep -qiE -- "$2"; then bad "$1"; else ok "$1"; fi; }
-check_compact_geometry() {
-	local width="$1"
-	tmux capture-pane -t "$SESSION" -p > "$DIR/geometry.txt"
-	# Inspect actual pane rows, not counts inferred from substring matches.
-	if uv run --no-project python - "$DIR/geometry.txt" "$width" <<'PYEOF'
-import re, sys, unicodedata
-lines = open(sys.argv[1]).read().splitlines()
-width = int(sys.argv[2])
-patterns = [r'^\$ ls -la', r'^\$ .*✗ cat:', r'^\$ printf ZENLONG-CMD', r'^read ', r'^mcp browser_snapshot']
-positions = []
-for pattern in patterns:
-    found = [i for i, line in enumerate(lines) if re.search(pattern, line.strip())]
-    if len(found) != 1:
-        raise SystemExit(f'{pattern}: expected one row, got {len(found)}')
-    row = found[0]
-    if row == 0 or lines[row - 1].strip():
-        raise SystemExit(f'{pattern}: missing empty spacer row')
-    columns = sum(0 if unicodedata.combining(c) else 2 if unicodedata.east_asian_width(c) in 'WF' else 1 for c in lines[row])
-    if columns > width:
-        raise SystemExit(f'{pattern}: width {columns} exceeds {width}')
-    positions.append(row)
-if any(b - a != 2 for a, b in zip(positions, positions[1:])):
-    raise SystemExit(f'expected two physical rows per adjacent call, got positions {positions}')
-PYEOF
-	then ok "compact fixtures have two rows and fit width $width"
-	else bad "compact fixtures have two rows and fit width $width"
-	fi
-}
 send() { tmux send-keys -t "$SESSION" "$1" Enter; }
 
 cleanup() {
-	if [ -f "$DIR/watchdogs" ]; then
-		while IFS= read -r pid; do
-			pkill -P "$pid" 2>/dev/null || true
-			kill "$pid" 2>/dev/null || true
-		done < "$DIR/watchdogs"
-	fi
 	tmux kill-session -t "$SESSION" 2>/dev/null
 	if [ "$HAD_CONFIG" = 1 ]; then
 		mv "$BACKUP" "$CONFIG" 2>/dev/null
@@ -98,10 +61,6 @@ cleanup() {
 	rm -rf "$DIR" "$SESSDIR"
 }
 trap cleanup EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
-# Bound every detached test session even if the parent shell is killed.
-WATCHDOG="(sleep 240; tmux kill-session -t '$SESSION' 2>/dev/null) >/dev/null 2>&1 & echo \$! >> '$DIR/watchdogs';"
 
 # Back up the real zen config (the toggle persists by design).
 if [ -f "$CONFIG" ]; then HAD_CONFIG=1; cp "$CONFIG" "$BACKUP"; fi
@@ -127,13 +86,7 @@ lines = [
  {"type": "message", "id": "r1", "parentId": "a2", "timestamp": ts(4), "message": {"role": "toolResult", "toolCallId": "tc1", "content": [{"type": "text", "text": "total 8\n-rw-r--r--  1 luis  staff   64 Oct 26 00:00 ZENOUT-MARKER.txt"}], "isError": False}},
  msg("a3", "r1", 5, [{"type": "toolCall", "id": "tc2", "name": "bash", "arguments": {"command": "cat missing.txt"}}], "toolUse"),
  {"type": "message", "id": "r2", "parentId": "a3", "timestamp": ts(6), "message": {"role": "toolResult", "toolCallId": "tc2", "content": [{"type": "text", "text": "cat: missing.txt: No such file or directory"}], "isError": True}},
- msg("a-long", "r2", 7, [{"type": "toolCall", "id": "tc-long", "name": "bash", "arguments": {"command": "printf ZENLONG-CMD 日本語 " + "long-segment " * 16 + "\necho ZENMULTILINE-TAIL"}}], "toolUse"),
- {"type": "message", "id": "r-long", "parentId": "a-long", "timestamp": ts(8), "message": {"role": "toolResult", "toolCallId": "tc-long", "content": [{"type": "text", "text": "ZENLONG-OUTPUT\nsecond output line"}], "details": {"truncation": {"truncated": True, "truncatedBy": "lines", "outputLines": 2, "totalLines": 200, "maxLines": 2}, "fullOutputPath": "/tmp/zen-full-output.txt"}, "isError": False}},
- msg("a-read", "r-long", 9, [{"type": "toolCall", "id": "tc-read", "name": "read", "arguments": {"path": cwd + "/" + "nested/" * 12 + "ZENRANGE.txt", "offset": 120, "limit": 61}}], "toolUse"),
- {"type": "message", "id": "r-read", "parentId": "a-read", "timestamp": ts(10), "message": {"role": "toolResult", "toolCallId": "tc-read", "content": [{"type": "text", "text": "ZENREAD-OUTPUT\nsecond read line"}], "isError": False}},
- msg("a-mcp", "r-read", 11, [{"type": "toolCall", "id": "tc-mcp", "name": "mcp", "arguments": {"tool": "browser_snapshot", "args": {"filename": "/tmp/ZENMCP-snapshot.md"}}}], "toolUse"),
- {"type": "message", "id": "r-mcp", "parentId": "a-mcp", "timestamp": ts(12), "message": {"role": "toolResult", "toolCallId": "tc-mcp", "content": [{"type": "text", "text": "ZENMCP-OUTPUT\nsecond snapshot line"}], "isError": False}},
- msg("a4", "r-mcp", 13, [{"type": "thinking", "thinking": "The file was missing, an error. I should report the failure clearly and offer the successful listing."}, {"type": "text", "text": "Hello! The listing worked and shows a marker file. The second command failed because missing.txt does not exist."}], "stop"),
+ msg("a4", "r2", 7, [{"type": "thinking", "thinking": "The file was missing, an error. I should report the failure clearly and offer the successful listing."}, {"type": "text", "text": "Hello! The listing worked and shows a marker file. The second command failed because missing.txt does not exist."}], "stop"),
 ]
 open(p, "w").write("\n".join(json.dumps(l) for l in lines) + "\n")
 PYEOF
@@ -141,8 +94,8 @@ PYEOF
 start_pi() {
 	# start_pi <extra args...>
 	tmux kill-session -t "$SESSION" 2>/dev/null
-	tmux new-session -d -s "$SESSION" -x 120 -y 70
-	tmux send-keys -t "$SESSION" "cd $DIR && $WATCHDOG PI_TUI_WRITE_LOG=$DIR/tui-write.log pi --offline --no-extensions $* --session $SEED" Enter
+	tmux new-session -d -s "$SESSION" -x 120 -y 44
+	tmux send-keys -t "$SESSION" "cd $DIR && pi --no-extensions $* --session $SEED" Enter
 	sleep 10
 }
 
@@ -157,7 +110,7 @@ say "zen v2 extension E2E (session $SESSION, dir $DIR)"
 # ─── 1 + 2: clean start, compact by default ────────────────────────────────
 start_pi "-e $EXT --zen"
 if tmux list-sessions 2>/dev/null | grep -q "$SESSION"; then ok "session alive"; else bad "session alive"; fi
-check_not_matches "no startup errors" 'Extension.*(error|failed|cannot)|TypeError|ReferenceError'
+check_not_contains "no startup errors" 'Extension.*(error|failed|cannot)|TypeError|ReferenceError'
 check_contains "successful call visible as one line (\$ ls -la)" '$ ls -la'
 check_not_contains "successful call output hidden while compact" "ZENOUT-MARKER"
 check_contains "success suffix on the line (✓)" "✓"
@@ -166,28 +119,11 @@ check_not_contains "thinking content hidden" "The user wants a file listing"
 check_contains "failed call visible as one line (\$ cat missing.txt)" '$ cat missing.txt'
 check_contains "error text on the failed line" "✗ cat: missing.txt: No such file or directory"
 check_contains "conversation text intact" "Hello! The listing worked"
-check_contains "read range and tail-fitted filename visible" "ZENRANGE.txt:120–180"
-check_contains "MCP proxy operation visible" "mcp browser_snapshot"
-check_contains "structured truncation warning visible" "truncated"
-check_not_contains "multiline command tail hidden while compact" "ZENMULTILINE-TAIL"
-check_not_contains "MCP output hidden while compact" "ZENMCP-OUTPUT"
-check_compact_geometry 120
-for width in 80 40; do
-	tmux resize-window -t "$SESSION" -x "$width" -y 100
-	sleep 2
-	check_compact_geometry "$width"
-	check_contains "filename and range retained at width $width" "ZENRANGE.txt:120–180"
-done
-tmux resize-window -t "$SESSION" -x 120 -y 70
-sleep 2
 
 # ─── 3: ctrl+o expands natively, and collapses back ─────────────────────────
 tmux send-keys -t "$SESSION" C-o
 sleep 2
 check_contains "ctrl+o expands the success block" "ZENOUT-MARKER"
-check_contains "ctrl+o retains multiline command tail" "ZENMULTILINE-TAIL"
-check_contains "ctrl+o expands MCP output" "ZENMCP-OUTPUT"
-check_contains "ctrl+o retains truncation warning" "Truncated: showing 2 of 200 lines"
 tmux send-keys -t "$SESSION" C-o
 sleep 2
 check_not_contains "ctrl+o again collapses the block" "ZENOUT-MARKER"
@@ -216,34 +152,25 @@ start_pi "-e $EXT --no-zen"
 sleep 2
 tmux capture-pane -t "$SESSION" -p | strip_volatile > "$DIR/cap-zen-off.txt"
 tmux kill-session -t "$SESSION" 2>/dev/null
-tmux new-session -d -s "$SESSION" -x 120 -y 70
-tmux send-keys -t "$SESSION" "cd $DIR && $WATCHDOG pi --no-extensions --session $SEED" Enter
+tmux new-session -d -s "$SESSION" -x 120 -y 44
+tmux send-keys -t "$SESSION" "cd $DIR && pi --no-extensions --session $SEED" Enter
 sleep 10
 tmux capture-pane -t "$SESSION" -p | strip_volatile > "$DIR/cap-bare.txt"
 if diff -u "$DIR/cap-bare.txt" "$DIR/cap-zen-off.txt" > "$DIR/parity.diff" 2>&1; then
 	ok "zen off = bare pi, line for line"
 else
 	bad "zen off = bare pi (see $DIR/parity.diff)"
-	uv run --no-project python - "$DIR/parity.diff" <<'PYEOF'
-import sys
-print(''.join(open(sys.argv[1]).readlines()[:30]), end='')
-PYEOF
+	head -30 "$DIR/parity.diff"
 fi
 
 # ─── 8: one live agent turn (optional, one small LLM call) ─────────────────
 if [ "${ZEN_E2E_LIVE:-0}" = 1 ]; then
 	start_pi "-e $EXT"
-	send "use the bash tool to run exactly: echo zen-live-e2e; sleep 2; echo zen-live-finished. Then answer with one short sentence."
+	send "use the bash tool to run 'echo zen-live-e2e', then answer with one short sentence"
 	sleep 45
 	check_contains "live call visible as one line" '$ echo zen-live-e2e'
 	check_contains "live call got a status suffix" "✓"
 	check_contains "live answer appears" "zen-live-e2e"
-	for repeat in 1 2 3; do
-		before=$(wc -c < "$DIR/tui-write.log")
-		sleep 2
-		after=$(wc -c < "$DIR/tui-write.log")
-		if [ "$before" = "$after" ]; then ok "live idle check $repeat: zero terminal writes"; else bad "live idle check $repeat: terminal still redraws"; fi
-	done
 	if tmux list-sessions 2>/dev/null | grep -q "$SESSION"; then ok "session alive after the live turn"; else bad "session alive after the live turn"; fi
 else
 	say "live turn skipped (set ZEN_E2E_LIVE=1 to run)"

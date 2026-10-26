@@ -39,7 +39,6 @@ const {
 	condenseArgs,
 	compactCallText,
 	NATIVE_ONE_LINE_TOOLS,
-	singleLine,
 	makeResolver,
 } = M;
 
@@ -81,11 +80,11 @@ check("saveFilterOn roundtrip", saveFilterOn(false) === true && loadFilterOn() =
 
 console.log("formatting helpers");
 check("stripAnsi removes escapes", stripAnsi("\x1b[1mplain\x1b[0m") === "plain");
-check("visibleWidth counts terminal columns", visibleWidth("日本語") === 6);
+check("visibleWidth counts code points", visibleWidth("日本語") === 3);
 check("visibleWidth strips ansi", visibleWidth(`\x1b[1m${"x".repeat(10)}\x1b[0m`) === 10);
 check("truncateVisible keeps short", truncateVisible("abc", 10) === "abc");
-check("truncateVisible cuts long", stripAnsi(truncateVisible("abcdef", 4)) === "abc…");
-check("truncateVisible budget 1", stripAnsi(truncateVisible("abc", 1)) === "…");
+check("truncateVisible cuts long", truncateVisible("abcdef", 4) === "abc…");
+check("truncateVisible budget 1", truncateVisible("abc", 1) === "…");
 check("formatDuration undefined", formatDuration(undefined) === "");
 check("formatDuration ms", formatDuration(42) === "42ms");
 check("formatDuration seconds", formatDuration(4200) === "4.2s");
@@ -125,7 +124,7 @@ check("suffix error truncated", stripAnsi(
 		infoFromResult({ content: [{ type: "text", text: "x".repeat(200) }] }, { isError: true, durationMs: 5 }),
 		theme,
 	),
-).length < 215);
+).length < 60);
 
 // ─── per-tool call lines ──────────────────────────────────────────────────────
 
@@ -259,14 +258,14 @@ const mkCtx = (extra: Record<string, unknown> = {}) => ({
 {
 	const ctx = mkCtx({ expanded: true });
 	const call = wrapped.renderCall({ command: "git status" }, theme, ctx);
-	check("expanded renderCall frames native object", call?.children?.[0]?.tag === "native-call", call);
+	check("expanded renderCall delegates", call?.tag === "native-call", call);
 	const res = wrapped.renderResult(
 		{ content: [{ type: "text", text: "x" }] },
 		{ expanded: true, isPartial: false },
 		theme,
 		ctx,
 	);
-	check("expanded renderResult joins native frame", res.render(80).length === 0 && call.children[1]?.tag === "native-result", res);
+	check("expanded renderResult delegates", res?.tag === "native-result", res);
 	const ctxP = mkCtx();
 	const resP = wrapped.renderResult(
 		{ content: [{ type: "text", text: "partial" }] },
@@ -274,7 +273,7 @@ const mkCtx = (extra: Record<string, unknown> = {}) => ({
 		theme,
 		ctxP,
 	);
-	check("partial renderResult delegates inside public frame", resP?.children?.[0]?.tag === "native-result", resP);
+	check("partial renderResult delegates", resP?.tag === "native-result", resP);
 }
 
 // Native throws: fail-open fallbacks, never undefined.
@@ -297,16 +296,13 @@ const mkCtx = (extra: Record<string, unknown> = {}) => ({
 		mkCtx(),
 	);
 	check("native result throw → plain text fallback", res && typeof res.render === "function");
-	const expandedCtx = mkCtx({ expanded: true });
-	const expandedCall = w.renderCall({ command: "x" }, theme, expandedCtx);
 	const expanded = w.renderResult(
 		{ content: [{ type: "text", text: "out" }] },
 		{ expanded: true, isPartial: false },
 		theme,
-		expandedCtx,
+		mkCtx(),
 	);
-	check("native throw expanded → plain text, has output", expanded.render(80).length === 0 &&
-		stripAnsi(expandedCall.render(80).join("\n")).includes("out"));
+	check("native throw expanded → plain text, has output", stripAnsi((expanded?.render?.(80) ?? []).join("\n")).includes("out"));
 }
 
 // Multi-line tool (write): zen's own compact line.
@@ -344,42 +340,6 @@ const mkCtx = (extra: Record<string, unknown> = {}) => ({
 	);
 	check("generic expanded result shares call Text", (expanded?.render?.(80) ?? []).length === 0 &&
 		stripAnsi(expandedCall.render(80).join("\n")).includes("result text"));
-}
-
-console.log("density summaries");
-{
-	check("preview removes terminal controls and line breaks", singleLine("one\n\u001b[31mtwo\u001b[0m\tthree\u009b2J") === "one two three");
-	check("zero-width truncation is empty", truncateVisible("abc", 0) === "");
-	check("wide-character truncation fits columns", visibleWidth(truncateVisible("日本語abc", 5)) <= 5);
-	const metadata = infoFromResult({ content: [{ type: "text", text: "done" }], details: { truncation: { truncated: true } } }, { isError: false });
-	check("generic nested objects do not serialize large values", condenseArgs({ nested: { data: "x".repeat(100000) } }) === "nested: object");
-	check("generic arrays use bounded item summary", condenseArgs({ values: Array(1000).fill("x") }) === "values: 1000 items");
-	check("structured truncation is visible", stripAnsi(suffixFor(metadata, theme)).includes("truncated"));
-	check("metadata-only change is detected", infoChanged(okInfo, { ...okInfo, warning: "truncated" }));
-	check("saved full output is visible", infoFromResult({ content: [], details: { fullOutputPath: "/tmp/log" } }, { isError: false }).warning === "full output");
-	check("error preview sanitizes ANSI", infoFromResult({ content: [{ type: "text", text: "\u001b[31mfailed\u001b[0m" }] }, { isError: true }).errLine === "failed");
-	const samples = [
-		["read", { path: "/tmp/deep/folder/日本語/fixture.ts", offset: 120, limit: 61 }],
-		["bash", { command: "printf '%s' \"" + "argument ".repeat(20) + "\"\nprintf next" }],
-		["mcp", { tool: "browser_snapshot", args: { filename: "/tmp/capture" } }],
-		["write", { path: "/tmp/folder/fixture.ts", content: "a\nb" }],
-	] as const;
-	for (const [tool, args] of samples) {
-		const ctx = mkCtx({ args });
-		const w = resolverOn(tool, () => native);
-		w.renderCall(args, theme, ctx);
-		w.renderResult({ content: [{ type: "text", text: "done" }] }, { expanded: false, isPartial: false }, theme, ctx);
-		const row = w.renderCall(args, theme, ctx);
-		for (const width of [1, 2, 12, 24, 40, 80]) {
-			const lines = row.render(width);
-			check(`${tool} one physical preview row at ${width}`, lines.length === 1 && lines.every((line: string) => visibleWidth(line) <= width));
-		}
-		const line = stripAnsi(row.render(80)[0]);
-		if (tool === "read") check("relative path and read range kept", line.includes("fixture.ts:120–180"));
-		if (tool === "mcp") check("MCP operation is visible", line.includes("mcp browser_snapshot"));
-		if (tool === "bash") check("multiline command omission is visible", line.includes("…"));
-	}
-	await sleep(10);
 }
 
 console.log("native final result cleanup");

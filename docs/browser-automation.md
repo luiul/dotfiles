@@ -10,7 +10,7 @@ Setup for letting Pi agents drive a real browser with logged-in sessions. Defaul
 | playwriter extension (default Beta profile) | Web Store install, Luis's primary INTERACTIVE surface (installed 2026-10-20, survived a crash relaunch on 2026-10-21) | `install:Brave:<key>` in the default Beta profile `~/Library/Application Support/BraveSoftware/Brave-Browser-Beta` |
 | playwriter extension (automation profile) | Loaded UNPACKED from the npm package via `--load-extension` at browser launch (the Web Store install in THIS profile kept getting flagged as corrupted and removed, twice on 2026-10-04). The surface for agent and clean-room work | `/opt/homebrew/lib/node_modules/playwriter/dist/extension`, loaded into the Brave Beta automation profile only |
 | Relay daemon | WebSocket bridge between CLI and extension | `localhost:19988`, auto-starts on first CLI command, no manual service |
-| pi MCP entry | `playwriter` server in `~/.pi/agent/mcp-adapter.json`, proxy mode (`directTools: false`), lazy | Live file + snapshot at `pi/.pi/agent/mcp-adapter.json` |
+| pi MCP configuration | Live configuration currently has `kb` and `playwright`, not `playwriter`. Playwriter runs through its CLI. If an MCP entry is approved later, keep proxy mode (`directTools: false`) | Live file at `~/.pi/agent/mcp-adapter.json`; dotfiles copy is a snapshot |
 | Skill | Full playwriter CLI reference, loaded on demand | `~/pi-skills/pi-native/playwriter/SKILL.md`, also indexed in context-mode as source `playwriter-skill` |
 | Playwright MCP | `@playwright/mcp@0.0.83` driving Brave Beta with the same profile | Unchanged, entry in `mcp-adapter.json` |
 | Stable Brave | The daily browser. Deliberately has NO playwriter extension | Off limits for agents (user decision 2026-10-04) |
@@ -23,6 +23,21 @@ Setup for letting Pi agents drive a real browser with logged-in sessions. Defaul
 - Beta-only: the stable Brave extension was installed, verified working (HelloFresh Gmail from an agent-created tab), then removed on user request. Do not reinstall or route agents to stable Brave unless Luis explicitly asks. Work sessions (HelloFresh Google account) are NOT reachable; personal Gmail (aceitunosoriano@gmail.com) is logged in inside the Beta profile.
 - Two surfaces since 2026-10-20 (user decision 2026-10-21, "option A"): the default Beta profile with the Web Store extension is the primary for Luis's own interactive use; the automation profile with the unpacked extension stays the surface for agent and clean-room work. A plain `playwriter session new` binds to whichever extension is connected; when only the default-profile Beta runs, that is the daily browser, so prefer the automation profile for tasks that must not share its cookies or tabs.
 - Two Beta instances can run side by side (each `--user-data-dir` is its own instance), and macOS lists both as "Brave Browser Beta". Dock focus can land on the wrong one; a window without the Playwriter icon is usually the other instance, not a broken extension. Identify instances by pid: `ps aux | grep "MacOS/Brave Browser Beta" | grep -v Helper` (note: `pgrep -x` fails because the process name is truncated to 15 chars). The slack-reader managed browser (`~/.pi/agent/data/slack-session`) is a common third party; an aborted read can leave it running, and `slack-reader reset` cleans it up.
+
+## Slack reader, a separate browser path
+
+Slack reads use [slack-reader](https://github.com/luiul/slack-reader), not Playwriter's shared browser tabs or the retired source copy in `hellofresh/slack-hf-read`.
+The live `slack-hf-read` and `slack-hf-session-login` commands are compatibility shims into `~/projects/personal/slack-reader`.
+
+- General browser automation: Playwriter CLI, installed version 0.9.0, with the default or automation Brave Beta profile.
+- Slack: Playwright Core in Node, with the dedicated `~/.pi/agent/data/slack-session` profile and `127.0.0.1:9223` debugging endpoint.
+- Do not share profiles, copy credentials, or open Slack tabs in Playwriter as a reader fallback.
+- Pi reads only user-supplied permalinks. Normal reads use `slack-reader read '<url>' --limit 1`.
+- `await-login` verifies manual recovery and clears the reader's safety pause. It is not needed before every read and closes the managed window by default.
+- This separation preserves Slack's owned lock, auth pause, exact-message checks, and bounded window cleanup. Playwriter remains the default for other browser work.
+
+Chrome's [non-default profile requirement](https://developer.chrome.com/blog/remote-debugging-port) permits direct debugging of a dedicated profile. It does not force this reader to use an extension bridge.
+Neither Playwriter nor a dedicated profile guarantees protection from Slack Enterprise session revocation.
 
 ## Usage
 

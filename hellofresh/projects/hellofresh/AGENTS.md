@@ -227,24 +227,20 @@ If no authorized MCP read path is available, use `slack-reader` (`~/projects/per
 
 Fallback is for an unavailable integration or unsupported read operation, not a way around access controls. On MCP auth loss, access denial, rate limiting, or suspected account-wide revocation, stop and report the error. Do not switch clients or retry credentials to work around it. Keep the browser's persistent auth pause and explicit recovery rules.
 
-**Normal workflow is link-only.** The user supplies a Slack permalink. Use it with the MCP's exact-message or thread read tool, checking the linked timestamp. If the authorized MCP is unavailable, use `slack-reader read '<url>' --limit 1`. Do not browse the sidebar or search when a link is supplied. Exact reads of thread replies pass live verification; exact reads of in-channel parent messages can fail with `ui_changed` when the virtualized list does not render them (use `replies` for thread content). A `ui_changed` result means no message was read, not permission to use credential replay.
+**Normal workflow is permalink-only.** Read only the link the user supplies, using the approved MCP exact-message tool or `slack-reader read '<url>' --limit 1`. Do not browse channels, history, or search, and do not substitute a thread or nearby message when the exact linked message is missing. Channel and DM permalinks use the browser-only `/messages/` route; thread permalinks use the thread route. Both require the exact rendered timestamp. A `ui_changed` result means the exact message was not read, not permission to use another read path or credential replay.
 
 | Command | Purpose |
 |---|---|
 | `slack-reader read '<url>' --limit 1` | Exact linked message only, fails closed if not rendered |
 | `slack-reader status` | Local diagnostics only, no Slack traffic |
 | `slack-reader pause` | Stop reads across Pi runs |
-| `slack-reader channels --limit N` | Rendered joined channels only |
-| `slack-reader history <channel_id> --limit N [--after YYYY-MM-DD] [--before YYYY-MM-DD]` | Rendered history only |
-| `slack-reader replies <channel_id> <thread_ts> --limit N` | Rendered thread messages only |
-| `slack-reader search '<query>' --limit N` | Rendered search results only; currently fails closed on the ia4 search UI (slack-reader issue 3) |
-| `slack-reader doctor` | Point-in-time UI verification, not recovery |
-| `slack-reader await-login` | Passive explicit login verification, clears pause on success |
+| `slack-reader login` | Open the managed window for manual SSO |
+| `slack-reader await-login` | Verify manual sign-in, clear the safety pause, close the managed window by default |
 | `slack-reader reset` | Terminate the validated managed browser and clear stale singletons/hints |
 
 Limits range from 1 through 100. Use channel IDs from Slack URLs. Convert a permalink's `p<digits>` timestamp by inserting a decimal before its last six digits. Results use `schema_version:1`, `source:"headed_ui"`, `data`, and `coverage`. Treat `coverage.complete:false` as partial. There are no cursor guarantees or automatic retries. Dates filter rendered history only, and `--before` is exclusive.
 
-**Recovery:** Confirm desktop Slack is signed in first. Run `slack-reader login` (or the `slack-hf-session-login` shim) to start or adopt the managed headed profile for manual SSO, then `slack-reader await-login` to verify the workspace; the window closes itself once verified. **Reads are self-contained:** `read`, `history`, `replies`, `channels`, `search`, and `doctor` open the managed window on demand and close it when the command finishes, success or failure, so no window lingers between uses (a cold read costs about 20 seconds; export `SLACK_READER_KEEP_OPEN=1` to keep the window across a batch of commands). The helper never launches a hidden headless browser. If anything is wedged, run `slack-reader reset` (terminates only a validated managed browser and cleans stale singletons), then `login` again. Do not close daily Brave or unrelated tabs.
+**Recovery:** Confirm desktop Slack is signed in. Run `slack-reader login` for manual SSO, then `slack-reader await-login` to verify the workspace and clear the safety pause. This is recovery, not a prerequisite for every read. Verification closes the managed window by default but does not request Slack sign-out or prove session persistence. Reads open and close that window on demand. Startup time varies with browser and Slack loading. For a short batch, set `SLACK_READER_KEEP_OPEN=1` on verification and each read, then run `slack-reader reset` for cleanup. Never add keepalives. Do not close regular Brave or unrelated tabs. The dedicated Slack profile is separate from Playwriter's profiles.
 
 Auth loss or sign-in redirection persists a shared pause. Do not retry reads or loop login attempts. Only explicit successful login verification clears the pause. The shared owned lock covers both reads and recovery. Do not remove a lock manually while its owner may be alive. `status` reports local lock and pause information without testing Slack credentials.
 

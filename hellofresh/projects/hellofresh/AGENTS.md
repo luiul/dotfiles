@@ -1,6 +1,6 @@
 # HelloFresh Project Instructions
 
-These instructions apply to every repo under `~/projects/hellofresh` (a flat list of repo checkouts). When a repo has its own context file, the repo-specific guidance wins on conflicts.
+These instructions apply to HelloFresh work in every directory, including linked worktrees. Repo-specific guidance can refine local details, but cannot relax approval gates or impact-data privacy rules.
 
 ## Planning & Tracking
 
@@ -40,6 +40,14 @@ Use the format: `type/TICKET-description`
 - Description: lowercase, words separated by hyphens
 - Ask for the Jira ticket. Always include it in the branch name: Mergeable validates the branch against the Jira API and fails ticket-less branches at HEADREF, which blocks merge (seen on global-ops#419; ticket-less #246 never merged).
 - Examples: `feature/GLOA-1234-add-login`, `hotfix/GLOA-567-fix-null-pointer` (lowercase words separated by hyphens, no underscores)
+
+## Parallel Work and Completion
+
+- Use separate wt-managed source worktrees for concurrent agents. Preserve each task's reviewed commits. Never stage, stash, reset, or overwrite another worker's checkout.
+- Implementation approval does not approve commits or publication. After explicit approval, push the ticket branch and create a draft PR. Do not use the personal `repo-guard publish` command for HelloFresh work.
+- Report review readiness, commit, feature-branch publication, PR state, merge, and deployment separately. A published feature branch is not merged or deployed.
+- Before removing a worktree, stop or hand off its worker and use wt or coppice. The global removal guard requires a clean target and fresh remote preservation proof. A merged squash PR needs exact head and merge evidence, not patch similarity alone. Offline or uncertain evidence means retain the checkout.
+- Other unfinished worktrees do not block a completed target. Native orchestrator deletion and disabled hooks bypass the guard. Use those only after explicit scoped discard approval.
 
 ## Pull Requests
 
@@ -274,6 +282,6 @@ The internal KB is exposed only as an HTTP MCP endpoint (`hellofresh-kb`, `.../m
 
 **Do not consult the HelloDev KB / `kb_*` MCP tools eagerly.** Only query it when I explicitly ask (e.g. "check HelloDev", "ask the KB", "search the knowledge base"). For everything else, prefer the repo checkout, the CLIs/REST recipes above, and what is already in context. Do not reach for these tools on your own initiative just because a question is HelloFresh-related.
 
-- pi reaches it via [`pi-mcp-adapter`](https://pi.dev/packages/pi-mcp-adapter) (the `kb` server in `~/dotfiles/pi/.pi/agent/mcp-adapter.json`), which registers each MCP tool directly, prefixed `kb_` (e.g. `kb_search_internal_knowledge_base`). Run `/mcp` in pi to list bridged servers/tools. The endpoint is reachable on the corporate network without a token.
+- Pi reaches the KB through [`pi-mcp-adapter`](https://pi.dev/packages/pi-mcp-adapter), with the `kb` server in `~/dotfiles/pi/.pi/agent/mcp-adapter.json`. The server uses proxy mode (`directTools:false`), not direct tool registration. Use the MCP gateway to inspect or call tools only after an explicit KB request. Run `/mcp` to list bridged servers. The endpoint is reachable on the corporate network without a token.
 
 Note: this MCP serves the KB content, not the Backstage docs portal at `hellodev.hellofresh.io`. That portal is a JS SPA behind OAuth; `curl` only returns the app shell, and `/api/techdocs/*` is auth-gated. For docs that exist in a local repo checkout, read the repo copy instead.

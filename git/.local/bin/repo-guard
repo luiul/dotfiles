@@ -1,0 +1,376 @@
+#!/usr/bin/env node
+'use strict';
+// No suffix: Node loads this executable as CommonJS. Importing it never runs the CLI.
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawn } = require('node:child_process');
+const { randomUUID } = require('node:crypto');
+
+const active = new Set();
+let interrupted = false;
+const runner = `
+const {spawn}=require('node:child_process');
+const [cmd,args,timeout]=JSON.parse(process.argv[1]);
+// Only this living group leader signals its own group, never a recycled parent-side PID.
+const stop=()=>process.kill(-process.pid,'SIGKILL');
+setInterval(()=>{},1000);
+setTimeout(stop,timeout);
+process.on('disconnect',stop);
+process.on('message',message=>{if(message.stop)stop()});
+process.on('uncaughtException',stop);
+const child=spawn(cmd,args,{stdio:['ignore','inherit','inherit'],env:process.env});
+child.on('error',e=>process.send({error:e.message}));
+child.on('close',(code,signal)=>process.send({code,signal}));
+`;
+function milliseconds(name, fallback) {
+  const n = Number(process.env[name] || fallback);
+  if (!Number.isInteger(n) || n < 50 || n > 120000) throw new Error(`Invalid ${name} (50 to 120000 ms)`);
+  return n;
+}
+function run(cmd, args, cwd, { timeout = 10000, env = {}, allowFailure = false } = {}) {
+  if (interrupted) return Promise.reject(new Error('Interrupted'));
+  return new Promise((resolve, reject) => {
+    let stdout = '', stderr = '', outcome, failure;
+    const child = spawn(process.execPath, ['-e', runner, JSON.stringify([cmd, args, timeout])], {
+      cwd, detached: true, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', GIT_OPTIONAL_LOCKS: '0', ...env },
+    });
+    const stop = () => { if (child.connected) child.send({ stop: true }, () => {}); };
+    active.add(stop);
+    const timer = setTimeout(() => { failure = new Error(`${cmd} timed out after ${timeout} ms`); stop(); }, timeout);
+    const collect = (stream, key) => stream.on('data', bytes => {
+      if (key === 'out') stdout += bytes; else stderr += bytes;
+      if (stdout.length + stderr.length > 4 * 1024 * 1024) { failure = new Error(`${cmd} output limit exceeded`); stop(); }
+    });
+    collect(child.stdout, 'out'); collect(child.stderr, 'err');
+    child.on('message', result => { outcome = result; stop(); });
+
+    child.on('error', error => { failure = error; stop(); });
+    child.on('close', () => {
+      clearTimeout(timer); active.delete(stop);
+      if (failure) return reject(failure);
+      if (!outcome || outcome.error) return reject(new Error(outcome?.error || (interrupted ? 'Interrupted' : `${cmd} timed out or runner stopped`)));
+      const result = { stdout, stderr, code: outcome.code };
+      if (result.code !== 0 && !allowFailure) return reject(new Error(`${cmd} failed (${result.code}): ${stderr.trim().slice(0, 1500)}`));
+      resolve(result);
+    });
+  });
+}
+const git = async (cwd, args, options) => (await run('git', ['--no-pager', ...args], cwd, options)).stdout.trim();
+async function ancestor(cwd, a, b) {
+  const r = await run('git', ['merge-base', '--is-ancestor', a, b], cwd, { allowFailure: true });
+  if (r.code === 0) return true;
+  if (r.code === 1) return false;
+  throw new Error('Cannot prove commit ancestry');
+}
+function parseDirty(raw) {
+  const records = raw.split('\0'), result = [];
+  for (let i = 0; i < records.length; i++) {
+    if (!records[i]) continue;
+    const status = records[i].slice(0, 2), file = records[i].slice(3);
+    result.push({ path: file, status });
+    if (/[RC]/.test(status)) i++;
+  }
+  return result;
+}
+function helloFresh(root, url) {
+  return /(?:^|[/:])hellofresh(?:[/:]|$)/i.test(root) || /(?:[/:])hellofresh\//i.test(url || '');
+}
+function parseV2(raw) {
+  const records = raw.split('\0'), headers = {}, dirty = [];
+  for (let i = 0; i < records.length; i++) {
+    const row = records[i];
+    if (row.startsWith('# branch.')) { const end = row.indexOf(' ' , 2); headers[row.slice(2, end)] = row.slice(end + 1); }
+    else if (row.startsWith('? ')) dirty.push({ path: row.slice(2), status: '??' });
+    else if (/^[12u] /.test(row)) {
+      const fields = row[0] === '1' ? 8 : row[0] === '2' ? 9 : 10;
+      let offset = 0;
+      for (let j = 0; j < fields; j++) offset = row.indexOf(' ', offset) + 1;
+      // Submodule changes may appear only in the S<c><m><u> field.
+      const parts = row.split(' '), xy = parts[1].replaceAll('.', ' ');
+      dirty.push({ path: row.slice(offset), status: xy.trim() ? xy : ' M' });
+      if (row[0] === '2') i++;
+    }
+  }
+  return { headers, dirty };
+}
+async function status(cwd) {
+  // Parallel queries share a total deadline and each has parent-death cleanup.
+  const deadline = Date.now() + 4000;
+  const query = (args, allowFailure = false) => run('git', args, cwd, { timeout: Math.max(1, deadline - Date.now()), allowFailure });
+  const [paths, state, cached, origin, index] = await Promise.all([
+    query(['rev-parse', '--show-toplevel', '--path-format=absolute', '--git-common-dir', '--absolute-git-dir']),
+    query(['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all', '--ignore-submodules=none']),
+    query(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], true),
+    query(['config', '--get', 'remote.origin.url'], true),
+    query(['ls-files', '--full-name', '-v', '-z']),
+  ]);
+  const [rootPath, commonPath, gitDir] = paths.stdout.trim().split('\n');
+  const root = fs.realpathSync(rootPath), commonDir = fs.realpathSync(commonPath);
+  const { headers, dirty } = parseV2(state.stdout);
+  for (const record of index.stdout.split('\0')) {
+    if (/^[a-zS] /.test(record)) dirty.push({ path: record.slice(2), status: `index:${record[0]}` });
+  }
+  const head = headers['branch.oid'];
+  if (!/^[a-f0-9]{40,64}$/.test(head || '')) throw new Error('No committed HEAD');
+  const branch = headers['branch.head'] === '(detached)' ? null : headers['branch.head'];
+  const upstream = headers['branch.upstream'] || null;
+  const counts = /^\+(\d+) -(\d+)$/.exec(headers['branch.ab'] || '');
+  const ahead = counts ? Number(counts[1]) : null, behind = counts ? Number(counts[2]) : null;
+  const cachedDefault = cached.code === 0 ? cached.stdout.trim() : null;
+  const defaultBranch = cachedDefault?.startsWith('refs/remotes/origin/') ? cachedDefault.slice(20) : null;
+  const isHelloFresh = helloFresh(`${root}/${commonDir}`, origin.code === 0 ? origin.stdout.trim() : null);
+  const operation = ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'REBASE_HEAD', 'BISECT_LOG', 'rebase-merge', 'rebase-apply', 'sequencer'].some(file => fs.existsSync(path.join(gitDir, file)));
+  let publication = 'unknown';
+  for (const ref of [defaultBranch && `refs/remotes/origin/${defaultBranch}`, isHelloFresh && branch && `refs/remotes/origin/${branch}`].filter(Boolean)) {
+    const proof = await query(['merge-base', '--is-ancestor', head, ref], true);
+    if (proof.code === 0) { publication = 'cached'; break; }
+  }
+  return { root, commonDir, branch, head, dirty, upstream, ahead, behind, defaultBranch, isHelloFresh, publication, operation };
+}
+async function identity(pid) {
+  const r = await run('ps', ['-p', String(pid), '-o', 'lstart='], undefined, { allowFailure: true, env: { TZ: 'UTC', LC_ALL: 'C', LANG: 'C' } });
+  if (r.code === 1 && !r.stdout.trim()) return null;
+  if (r.code !== 0 || !r.stdout.trim()) throw new Error('Cannot establish process start identity');
+  return r.stdout.trim();
+}
+const lockPath = s => path.join(s.commonDir, 'repo-guard.lock');
+async function acquire(s) {
+  const dir = lockPath(s), owner = { pid: process.pid, start: await identity(process.pid), token: randomUUID() };
+  try { fs.mkdirSync(dir, { mode: 0o700 }); } catch (e) {
+    if (e.code === 'EEXIST') throw new Error('Repository busy: repo-guard.lock exists. No automatic recovery.');
+    throw e;
+  }
+  try { fs.writeFileSync(path.join(dir, 'owner.json'), JSON.stringify(owner), { flag: 'wx', mode: 0o600 }); }
+  catch (e) { fs.rmdirSync(dir); throw e; }
+  return () => teardown(dir, ownerInFile => {
+    if (ownerInFile.token !== owner.token) throw new Error('Lock ownership changed');
+  });
+}
+async function teardown(dir, validate) {
+  const claim = path.join(dir, 'teardown');
+  // Both release and recovery claim the same old directory before touching its owner.
+  const fd = fs.openSync(claim, 'wx', 0o600);
+  let removed = false, claimedDir = dir;
+  try {
+    const owner = JSON.parse(fs.readFileSync(path.join(dir, 'owner.json'), 'utf8'));
+    if (!Number.isInteger(owner.pid) || owner.pid < 1 || !owner.start || !owner.token) throw new Error('Malformed lock. Manual inspection needed.');
+    const result = await validate(owner);
+    claimedDir = `${dir}.teardown-${randomUUID()}`;
+    fs.renameSync(dir, claimedDir);
+    fs.unlinkSync(path.join(claimedDir, 'owner.json'));
+    fs.unlinkSync(path.join(claimedDir, 'teardown')); fs.rmdirSync(claimedDir);
+    removed = true;
+    return result;
+  } finally {
+    fs.closeSync(fd);
+    const heldClaim = path.join(claimedDir, 'teardown');
+    if (!removed && fs.existsSync(heldClaim)) fs.unlinkSync(heldClaim);
+  }
+}
+async function unlock(s) {
+  return teardown(lockPath(s), async owner => {
+    if (await identity(owner.pid) === owner.start) throw new Error('Lock owner is still alive');
+    return { unlocked: true, owner };
+  });
+}
+async function stable(s) {
+  const now = await status(s.root);
+  if (now.head !== s.head || now.branch !== s.branch || now.dirty.length || now.operation) throw new Error('Source changed, is dirty, or has an operation in progress');
+  return now;
+}
+function checkIndex(s) {
+  if (s.dirty.some(file => file.status.startsWith('index:'))) throw new Error('Unsupported index flags (assume-unchanged or skip-worktree). No flags were cleared.');
+}
+function clean(s) {
+  checkIndex(s);
+  if (s.dirty.length || s.operation) throw new Error('Dirty checkout or operation in progress');
+}
+const networkOptions = () => ({ timeout: milliseconds('REPO_GUARD_NETWORK_TIMEOUT_MS', 30000) });
+async function originSnapshot(s, pushing = false, originRoot = s.root) {
+  const urls = async push => (await git(s.root, ['remote', 'get-url', ...(push ? ['--push'] : []), '--all', 'origin'])).split('\n');
+  const [fetch, push, config] = await Promise.all([
+    urls(false), pushing ? urls(true) : null,
+    git(s.root, ['config', '--null', '--get-regexp', '^(remote\\.origin\\.(url|pushurl)|url\\..*\\.(insteadof|pushinsteadof))$']),
+  ]);
+  if (fetch.length !== 1 || !fetch[0] || (pushing && (push.length !== 1 || push[0] !== fetch[0]))) throw new Error('Origin must have one fetch destination and one identical push destination');
+  // Filesystem URLs resolve relative to the source checkout, not the integration.
+  // URI and scp-style transports retain their effective destination spelling.
+  const destination = !path.isAbsolute(fetch[0]) && !/^[a-z][a-z0-9+.-]*:\/\//i.test(fetch[0]) && !/^[^/]+:/.test(fetch[0])
+    ? path.resolve(originRoot, fetch[0]) : fetch[0];
+  // Effective destinations must not undergo a second rewrite as explicit URLs.
+  for (const record of config.split('\0').filter(Boolean)) {
+    const end = record.indexOf('\n'), key = record.slice(0, end), prefix = record.slice(end + 1);
+    const rewrite = /^url\.(.*)\.(insteadof|pushinsteadof)$/i.exec(key);
+    if (rewrite && (pushing || rewrite[2].toLowerCase() === 'insteadof') && destination.startsWith(prefix) && `${rewrite[1]}${destination.slice(prefix.length)}` !== destination) throw new Error('Origin URL has an ambiguous chained rewrite');
+  }
+  return { destination, originRoot, pushing, config };
+}
+async function sameOrigin(s, frozen) {
+  if (JSON.stringify(await originSnapshot(s, frozen.pushing, frozen.originRoot)) !== JSON.stringify(frozen)) throw new Error('Origin configuration changed during the guarded operation');
+}
+async function fetchBranch(s, branch, frozen) {
+  await sameOrigin(s, frozen);
+  await git(s.root, ['check-ref-format', `refs/heads/${branch}`]);
+  await git(s.root, ['fetch', '--no-tags', '--no-recurse-submodules', '--no-write-fetch-head', frozen.destination, `+refs/heads/${branch}:refs/remotes/origin/${branch}`], networkOptions());
+  await sameOrigin(s, frozen);
+  return git(s.root, ['rev-parse', '--verify', `refs/remotes/origin/${branch}`]);
+}
+async function liveDefault(s, frozen) {
+  frozen ||= await originSnapshot(s);
+  await sameOrigin(s, frozen);
+  const out = await git(s.root, ['ls-remote', '--symref', frozen.destination, 'HEAD'], networkOptions());
+  const match = /^ref: refs\/heads\/(.+)\tHEAD$/m.exec(out);
+  if (!match) throw new Error('Origin actual default branch is unknown');
+  const branch = match[1], head = await fetchBranch(s, branch, frozen);
+  await git(s.root, ['symbolic-ref', 'refs/remotes/origin/HEAD', `refs/remotes/origin/${branch}`]);
+  return { branch, head, origin: frozen };
+}
+async function primary(s) {
+  const records = (await run('git', ['worktree', 'list', '--porcelain', '-z'], s.root)).stdout.split('\0');
+  const first = records.find(line => line.startsWith('worktree '));
+  if (!first) throw new Error('Primary worktree is unknown');
+  return fs.realpathSync(first.slice(9));
+}
+function githubRepo(url) {
+  const m = /github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/i.exec(url || '');
+  if (!m) throw new Error('No supported GitHub repository for PR proof');
+  return m[1];
+}
+async function mergedProof(s, target) {
+  const repo = githubRepo(await git(s.root, ['config', '--get', 'remote.origin.url']));
+  const [owner, name] = repo.split('/');
+  const query = 'query($owner:String!,$name:String!,$branch:String!){repository(owner:$owner,name:$name){nameWithOwner pullRequests(first:100,headRefName:$branch,states:MERGED){nodes{state headRefOid mergeCommit{oid} baseRefName baseRepository{nameWithOwner} headRepository{nameWithOwner}}}}}';
+  const out = await run('gh', ['api', 'graphql', '-f', `query=${query}`, '-F', `owner=${owner}`, '-F', `name=${name}`, '-F', `branch=${s.branch}`], s.root, networkOptions());
+  const result = JSON.parse(out.stdout), repository = result.data?.repository;
+  if (result.errors || repository?.nameWithOwner?.toLowerCase() !== repo.toLowerCase()) throw new Error('PR repository proof is unknown');
+  for (const pr of repository.pullRequests?.nodes || []) {
+    if (pr.state === 'MERGED' && pr.headRefOid === s.head && pr.baseRefName === target.branch && pr.baseRepository?.nameWithOwner?.toLowerCase() === repo.toLowerCase() && pr.headRepository?.nameWithOwner?.toLowerCase() === repo.toLowerCase() && /^[a-f0-9]{40,64}$/.test(pr.mergeCommit?.oid || '') && await ancestor(s.root, pr.mergeCommit.oid, target.head)) return 'merged-pr';
+  }
+  throw new Error('No merged PR proves this exact HEAD on the actual default branch');
+}
+async function checkRemove(s) {
+  clean(s);
+  if (s.root === await primary(s) || ['main', 'master', 'live'].includes(s.branch)) throw new Error('Protected branch or primary worktree');
+  const target = await liveDefault(s);
+  if (s.branch === target.branch) throw new Error('Protected actual default branch');
+  let proof;
+  if (await ancestor(s.root, s.head, target.head)) proof = 'default-ancestry';
+  else if (s.isHelloFresh && s.branch) {
+    const remote = await git(s.root, ['ls-remote', '--heads', target.origin.destination, `refs/heads/${s.branch}`], networkOptions());
+    if (remote) {
+      const published = await fetchBranch(s, s.branch, target.origin);
+      if (!await ancestor(s.root, s.head, published)) throw new Error('Exact HEAD is not published on the feature branch');
+      proof = 'feature-ancestry';
+    } else proof = await mergedProof(s, target);
+  } else throw new Error('Exact HEAD is not published on the fresh origin default branch');
+  await stable(s); await sameOrigin(s, target.origin);
+  return { allowed: true, root: s.root, head: s.head, defaultBranch: target.branch, proof, warnings: ['Ignored files are outside this check. They may be lost on removal. No ignored files were swept.'] };
+}
+async function refreshPrimary(s, target) {
+  checkIndex(s);
+  const root = await primary(s), p = await status(root);
+  checkIndex(p);
+  if (p.branch !== target.branch || p.dirty.length || p.operation || !await ancestor(root, p.head, target.head)) return { refreshed: false, primary: root, reason: 'Primary is dirty, not on the actual default, or cannot fast-forward' };
+  await stable(p);
+  await sameOrigin(p, target.origin);
+  await git(root, ['merge', '--no-overwrite-ignore', '--ff-only', '--no-edit', target.head]);
+  const after = await status(root);
+  if (after.head !== target.head || after.branch !== target.branch || after.dirty.length || after.operation) throw new Error('Primary changed during refresh. Inspect it; nothing was reset.');
+  return { refreshed: true, primary: root, head: after.head };
+}
+async function publish(s, verify) {
+  if (s.isHelloFresh) throw new Error('HelloFresh publication uses feature branches and PRs, not this command');
+  clean(s);
+  const frozen = await originSnapshot(s, true);
+  const target = await liveDefault(s, frozen);
+  await stable(s);
+  const storage = path.join(s.commonDir, 'repo-guard-integrations');
+  fs.mkdirSync(storage, { recursive: true, mode: 0o700 });
+  const dir = fs.mkdtempSync(path.join(storage, 'publish-'));
+  const integration = path.join(dir, 'integration'), config = path.join(dir, 'wt.toml');
+  fs.writeFileSync(config, 'skip-shell-integration-prompt = true\n', { mode: 0o600 });
+  const branch = `repo-guard/${randomUUID()}`;
+  try {
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.startsWith('WORKTRUNK_')).map(([key]) => [key, undefined]));
+    Object.assign(env, { WORKTRUNK_AGENT: '1', WORKTRUNK_SYSTEM_CONFIG_PATH: config, WORKTRUNK_PROJECT_CONFIG_PATH: config });
+    await run('wt', ['--config', config, '-C', s.root, 'switch', '--create', branch, `--base=${target.head}`, '--path', integration, '--no-cd', '--no-hooks', '--yes', '--format', 'json'], s.root, { env, timeout: 30000 });
+    await git(integration, ['merge', '--ff', '--no-edit', s.head]);
+    const candidate = await git(integration, ['rev-parse', 'HEAD']);
+    if (!await ancestor(integration, s.head, candidate)) throw new Error('Integration does not contain the frozen source');
+    clean(await status(integration));
+    await run('/bin/sh', ['-c', verify], integration, { timeout: milliseconds('REPO_GUARD_VERIFY_TIMEOUT_MS', 120000) });
+    const checked = await status(integration);
+    if (checked.head !== candidate || checked.branch !== branch) throw new Error('Verification changed candidate HEAD or branch');
+    clean(checked); await stable(s);
+    await sameOrigin(s, frozen); await sameOrigin(checked, frozen);
+    // Exactly one normal push to the frozen destination. Never retry or force.
+    await git(integration, ['push', '--porcelain', frozen.destination, `${candidate}:refs/heads/${target.branch}`], networkOptions());
+    const fresh = await liveDefault(s, frozen);
+    if (fresh.branch !== target.branch || !await ancestor(s.root, candidate, fresh.head)) throw new Error('Push outcome is unknown: fresh default does not contain the candidate');
+    await stable(s);
+    // Publication never refreshes primary. That needs an explicit separate command.
+    // Only this owned clean checkout is removed. Avoid recursive guard hooks.
+    await stable(checked);
+    await run('wt', ['--config', config, '-C', s.root, 'remove', integration, '--no-delete-branch', '--foreground', '--no-hooks', '--yes', '--format', 'json'], s.root, { env, timeout: 30000 });
+    await git(s.root, ['update-ref', '-d', `refs/heads/${branch}`, candidate]);
+    fs.unlinkSync(config); fs.rmdirSync(dir);
+    return { published: true, candidate, source: s.head, defaultBranch: target.branch, integration: null, integrationBranch: null, cleanup: 'removed', refreshed: false, reason: 'Explicit refresh pending' };
+  } catch (error) {
+    error.integration = integration; error.integrationBranch = branch;
+    throw error;
+  }
+}
+function parse(argv) {
+  const args = { command: null, cwd: process.cwd(), json: false, approved: false };
+  while (argv.length) {
+    const flag = argv.shift();
+    if (flag === '--json') args.json = true;
+    else if (flag === '--approved') args.approved = true;
+    else if (flag === '--cwd' || flag === '--verify') {
+      const value = argv.shift();
+      if (!value || value.startsWith('--')) throw new Error(`Missing value for ${flag}`);
+      args[flag.slice(2)] = value;
+    } else if (!flag.startsWith('-') && !args.command) args.command = flag;
+    else throw new Error(`Unknown argument: ${flag}`);
+  }
+  if (!['status', 'check-remove', 'publish', 'refresh', 'unlock'].includes(args.command)) throw new Error('Usage: repo-guard status|check-remove|publish|refresh|unlock [--cwd path] [--json]');
+  if (['publish', 'refresh', 'unlock'].includes(args.command) && !args.approved) throw new Error('Explicit --approved is needed (friction, not authorization)');
+  if (args.command === 'publish' && !args.verify?.trim()) throw new Error('publish needs --verify <shell command>');
+  if (args.command !== 'publish' && args.verify) throw new Error('--verify is only valid for publish');
+  return args;
+}
+async function main(argv = process.argv.slice(2)) {
+  let args, release;
+  try {
+    args = parse([...argv]);
+    const before = await status(args.cwd);
+    let result;
+    if (args.command === 'status') result = before;
+    else if (args.command === 'unlock') result = await unlock(before);
+    else {
+      release = await acquire(before);
+      const s = await status(before.root);
+      if (args.command === 'check-remove') result = await checkRemove(s);
+      else if (args.command === 'publish') result = await publish(s, args.verify);
+      else { checkIndex(s); result = await refreshPrimary(s, await liveDefault(s)); }
+    }
+    if (release) { const finish = release; release = null; await finish(); }
+    console.log(args.json ? JSON.stringify(result) : JSON.stringify(result, null, 2));
+    return 0;
+  } catch (error) {
+    if (release) {
+      const finish = release; release = null;
+      try { await finish(); } catch (cleanupError) { error.message += `; lock release failed: ${cleanupError.message}`; }
+    }
+    const result = { allowed: false, error: error.message, ...(error.integration ? { integration: error.integration, integrationBranch: error.integrationBranch } : {}) };
+    if (args?.json || argv.includes('--json')) console.log(JSON.stringify(result));
+    else console.error(`repo-guard: ${error.message}${error.integration ? `\nIntegration retained: ${error.integration}` : ''}`);
+    return 1;
+  }
+}
+module.exports = { main, status, parseDirty, parseV2, helloFresh, run, identity, acquire, unlock, parse };
+if (require.main === module) {
+  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { interrupted = true; for (const stop of active) stop(); });
+  main().then(code => { process.exitCode = code; }).catch(error => { console.error(`repo-guard: ${error.message}`); process.exitCode = 1; });
+}

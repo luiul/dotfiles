@@ -26,6 +26,18 @@ A linked git working tree checked out alongside the main repo. In this setup, wo
 
 Source: `pi/.pi/agent/AGENTS.md`, Worktrees section.
 
+## publication
+
+Preservation of approved commits on the intended remote branch, verified against fresh remote history. Local commits and cached remote refs alone do not prove publication. Personal work publishes to the remote default branch; HelloFresh work uses ticket branches and draft PRs.
+
+Source: `docs/dev-setup-overview.md`.
+
+## live deployment
+
+Updating the intended live checkout and verifying its files and running behavior. Publication and live deployment are separate. Dirty live checkouts defer deployment until their changes are reconciled.
+
+Source: `docs/dev-setup-overview.md`.
+
 ## compact tool calls
 
 The `zen` extension's compact view of tool calls in pi's transcript. Successful and failed calls stay visible as one line with a status suffix. Click or `ctrl+o` expands tool output. Zen uses the public `pi.registerToolRenderer` API and delegates to native renderers when expanded or turned off. Thinking uses pi's native `hideThinkingBlock` setting. This view replaces the retired split extension and zen v1's transcript filter.

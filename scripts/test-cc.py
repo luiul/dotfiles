@@ -9,11 +9,12 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "raycast/.config/raycast/scripts/cc.sh"
+SCRIPT = ROOT / "ghostty/.local/bin/ghostty-cc"
 TITLE = "🎛 cc"
 
 
@@ -46,12 +47,21 @@ def unit_tests() -> None:
     karabiner = json.loads((ROOT / "karabiner/karabiner.json").read_text())
     rules = karabiner["profiles"][0]["complex_modifications"]["rules"]
     manipulators = [m for r in rules for m in r["manipulators"]]
-    marker = next(m for m in manipulators if m["from"]["key_code"] == "c")
+    marker = next(m for m in manipulators if m["from"] == {
+        "key_code": "c", "modifiers": {"mandatory": ["command", "shift"]},
+    })
     assert marker["from"]["modifiers"] == {"mandatory": ["command", "shift"]}
     assert marker["conditions"] == [
         {"type": "frontmost_application_if", "bundle_identifiers": [r"^com\.mitchellh\.ghostty$"]},
     ]
-    assert marker["to"] == [{"shell_command": "$HOME/.config/raycast/scripts/cc.sh mark"}]
+    assert marker["to"] == [{"shell_command": "$HOME/.local/bin/ghostty-cc mark"}]
+    opener = next(m for m in manipulators if m["from"] == {
+        "key_code": "c", "modifiers": {"mandatory": ["command", "control", "option", "shift"]},
+    })
+    assert "conditions" not in opener, "super+c must work from any app"
+    assert opener["to"] == [{"shell_command": "$HOME/.local/bin/ghostty-cc"}]
+    assert all("optional" not in m["from"]["modifiers"] for m in (marker, opener))
+    assert not (ROOT / "raycast/.config/raycast/scripts/cc.sh").exists()
     caps = next(m for m in manipulators if m["from"]["key_code"] == "caps_lock")
     assert caps["to"] == [{"key_code": "left_shift", "modifiers": ["left_command", "left_control", "left_option"]}]
     with tempfile.TemporaryDirectory(prefix="test-cc-") as directory:
@@ -115,7 +125,7 @@ printf '%s\\n' "$STUB_RESULT"
     print("PASS: shortcut routing, copy binding, AppleScript compilation, errors, stale lock, concurrent calls")
 
 
-def live_tests() -> None:
+def live_tests() -> None:  # noqa: PLR0912
     """Restore existing cc tabs and focus, and close only windows created by this test."""
     assert apple("return running") == "true", "Start Ghostty before --live"
     original_window = apple("return id of front window")
@@ -226,7 +236,21 @@ error "Missing test tab"''')
                 f"of tab id {quote(extra)} of window id {quote(second)}",
             )
             assert not marked()
-            run("/bin/bash", SCRIPT, env=env)
+            children = []
+            try:
+                for _ in range(4):
+                    children.append(  # noqa: PERF401, track each caller for cleanup
+                        subprocess.Popen(["/bin/bash", str(SCRIPT)], env=env,
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True),
+                    )
+                for child in children:
+                    stdout, stderr = child.communicate(timeout=15)
+                    assert child.returncode == 0, stdout + stderr
+            finally:
+                for child in children:
+                    if child.poll() is None:
+                        child.kill()
+                        child.wait(timeout=5)
             new_marks = marked()
             assert len(new_marks) == 1
             opened, opened_tab, _ = new_marks[0]
@@ -246,7 +270,7 @@ error "Missing test tab"''')
                 assert marked() == new_marks
                 assert len(tabs()) == count + 1
                 assert apple("return id of front window") == opened
-            print("PASS: no cc creates one home window; repeated focus does not create duplicates")
+            print("PASS: concurrent missing-target calls create one home window; repeated focus does not duplicate it")
             apple(f"close window window id {quote(opened)}")
             created.remove(opened)
             run("/bin/bash", SCRIPT, env=env)
@@ -276,6 +300,9 @@ end repeat""")
             focus(original_tab)
             assert apple("return id of front window") == original_window
             assert {t[0] for t in tabs()} == original_windows
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline and {t[1] for t in marked()} != set(saved):
+                time.sleep(0.05)
             assert {t[1] for t in marked()} == set(saved)
     print("PASS: original windows, cc designation, and focused tab restored; test windows closed")
 

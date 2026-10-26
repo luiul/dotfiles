@@ -142,10 +142,10 @@ zmodload -F zsh/files b:zf_rm 2>/dev/null
 # The new window MUST land in the ONE running Ghostty instance. The old
 # `open -na` spawned a second Ghostty process per call, which broke the
 # Switch window switcher (one app, two processes: windows split between
-# them) and super+c (cc.sh finds the command center via `tell application
+# them) and super+c (ghostty-cc finds the command center via `tell application
 # "Ghostty"`, which resolves to only one of the running instances; from the
-# other one the cc window looks missing and cc.sh opens an unclaimed home
-# window as a duplicate). Ghostty 1.3's AppleScript dictionary opens windows
+# other one the cc tab looks missing and ghostty-cc opens a duplicate). Ghostty
+# 1.3's AppleScript dictionary opens windows
 # in the running instance instead: `new window with configuration` accepts
 # `initial working directory` and `command`. Only when Ghostty is not
 # running at all does `open -a` (never `-n`: that flag is what spawned the

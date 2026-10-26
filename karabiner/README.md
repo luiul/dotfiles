@@ -8,10 +8,12 @@ the `rectangle` package works.
 
 ## Command center shortcut
 
-`cmd+shift+c` calls `~/.config/raycast/scripts/cc.sh mark` when Ghostty is frontmost.
+`cmd+shift+c` calls `~/.local/bin/ghostty-cc mark` when Ghostty is frontmost.
 It marks the current tab and clears any previous command center designation.
-Caps Lock remains the `super` modifier, with `super+c` handled by Raycast.
-See `raycast/README.md` for setup and tests.
+`super+c` (Caps Lock + C) calls `~/.local/bin/ghostty-cc` from any app.
+It focuses the marked tab, or creates and marks a new window if none exists.
+Caps Lock still maps to Command, Control, Option, and Shift.
+See `ghostty/README.md` for setup and tests.
 
 ## VS Code shortcut
 

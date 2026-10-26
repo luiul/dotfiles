@@ -14,13 +14,26 @@
                                 },
                                 "to": [
                                     {
-                                        "shell_command": "$HOME/.config/raycast/scripts/cc.sh mark"
+                                        "shell_command": "$HOME/.local/bin/ghostty-cc mark"
                                     }
                                 ],
                                 "conditions": [
                                     {
                                         "type": "frontmost_application_if",
                                         "bundle_identifiers": ["^com\\.mitchellh\\.ghostty$"]
+                                    }
+                                ]
+                            },
+                            {
+                                "description": "Focus or create the Ghostty command center with super+c.",
+                                "type": "basic",
+                                "from": {
+                                    "key_code": "c",
+                                    "modifiers": { "mandatory": ["command", "control", "option", "shift"] }
+                                },
+                                "to": [
+                                    {
+                                        "shell_command": "$HOME/.local/bin/ghostty-cc"
                                     }
                                 ]
                             },

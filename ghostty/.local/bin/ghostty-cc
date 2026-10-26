@@ -1,13 +1,6 @@
 #!/bin/bash
 
-# @raycast.schemaVersion 1
-# @raycast.title Focus Command Center
-# @raycast.mode silent
-# @raycast.icon 🎛
-# @raycast.packageName Command Center
-# @raycast.description Focus the Ghostty command center, or create one if it is missing.
-
-# Karabiner calls `cc.sh mark`; Raycast calls `cc.sh`.
+# Karabiner calls `ghostty-cc mark` or `ghostty-cc` directly.
 # A locked tab title survives shell title changes and remains visible in background tabs.
 TITLE="🎛 cc"
 MODE="${1:-focus}"

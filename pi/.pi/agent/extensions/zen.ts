@@ -35,16 +35,13 @@
  * The one-line status suffix: the call and result renderers share the
  * per-block `context.state` object (the same mechanism pi's bash timer
  * uses). renderResult stores {ok, durationMs, errLine} there once a
- * final result arrives and schedules ONE deferred invalidate
- * (setTimeout 0, avoiding synchronous re-entry into updateDisplay);
- * the extra pass lets renderCall append the suffix to the call line.
- * Writes happen only on change, so the sequence terminates in two
- * passes (unit-tested).
+ * final result arrives and updates the shared compact row before Pi paints.
+ * No deferred or synchronous invalidate is needed for the suffix.
  *
  * Per-tool call lines use cached summaries in compact mode. Commands flatten
  * line breaks; paths are relative where possible and shorten from the tail.
  * Narrow error rows drop timing before error detail. Expanded rendering delegates
- * to native components. Bash and PowerShell retain native running timer lifecycle.
+ * to native components. Collapsed calls do not start native running timers.
  *
  * Toggle: `/zen [on|off]` or ctrl+alt+t, persisted in ~/.pi/agent/zen.json
  * (`filter`, default on). Off returns `next()` unchanged for new blocks
@@ -60,11 +57,11 @@
  * never throws into pi's render path.
  *
  * Overhead: collapsed layout is cached by argument values, theme colors,
- * final status and width. Partial results still delegate to native,
- * including one final cleanup pass. Unknown expanded output uses one framed
+ * final status and width. Collapsed partial results stay hidden. Native renderers
+ * used while expanded receive one final cleanup pass. Unknown expanded output uses one framed
  * Text like Pi's fallback; registered generic tools keep native fallback slots.
  * Benchmark actual components with scripts/bench-zen-renderers.ts, including
- * shared state and deferred invalidation.
+ * shared state and native cleanup.
  *
  * Scope: interactive fullscreen TUI. In other modes renderers are never
  * invoked, so the extension is inert by construction.
@@ -180,7 +177,7 @@ export function infoFromResult(
 	};
 }
 
-/** Whether new info differs from stored info (drives the deferred invalidate). */
+/** Whether new info differs from stored info. */
 export function infoChanged(prev: ZenInfo | undefined, next: ZenInfo): boolean {
 	return (
 		prev === undefined || prev.ok !== next.ok || prev.durationMs !== next.durationMs || prev.errLine !== next.errLine ||
@@ -203,7 +200,7 @@ export function suffixFor(info: ZenInfo | undefined, theme: any): string {
 
 // ─── per-tool call-line formatting (pure; exported for unit tests) ───────────
 
-/** Native shell calls need their lifecycle renderer while running. */
+/** Built-in tools with short call summaries. */
 export const NATIVE_ONE_LINE_TOOLS = new Set(["bash", "powershell", "read", "ls", "find", "grep"]);
 
 /** Sanitize only the preview. Original arguments and output stay untouched. */
@@ -266,7 +263,7 @@ function stateOf(ctx: any): Record<string, any> {
 	return typeof state === "object" && state !== null ? state : {};
 }
 
-/** Store final status once and request its first suffix repaint. */
+/** Update the existing compact row before the current paint. */
 function storeFinalInfo(result: any, ctx: any, state: any): void {
 	const truncated = !!(result.details?.truncation?.truncated || result.details?.matchLimitReached ||
 		result.details?.resultLimitReached || result.details?.linesTruncated);
@@ -284,13 +281,7 @@ function storeFinalInfo(result: any, ctx: any, state: any): void {
 	const info = infoFromResult(result, ctx);
 	if (!infoChanged(state[INFO_KEY], info)) return;
 	state[INFO_KEY] = info;
-	setTimeout(() => {
-		try {
-			ctx.invalidate?.();
-		} catch {
-			/* block may be gone */
-		}
-	}, 0);
+	state[STATE_KEY]?.finish(info);
 }
 
 /** A shared zero-row component for collapsed results. */
@@ -383,6 +374,11 @@ function compactRow(tool: string): any {
 				this.pad = ctx.outputPad ?? 1;
 				this.bg = ctx.isPartial ? "toolPendingBg" : ctx.isError ? "toolErrorBg" : "toolSuccessBg";
 			}
+		},
+		finish(info: ZenInfo) {
+			this.info = info;
+			this.bg = info.ok ? "toolSuccessBg" : "toolErrorBg";
+			this.width = -1;
 		},
 		render(width: number): string[] {
 			if (this.width === width) return this.lines;
@@ -507,11 +503,15 @@ const isCompactResult = (options: { expanded?: boolean }) => filterOn && !(optio
 /** Wrap a tool's native renderers with zen's compact behavior. */
 function wrapNative(toolName: string, native: { renderCall?: any; renderResult?: any; renderShell?: string }): any {
 	const self = native.renderShell === "self";
+	// A native renderer may keep its own timer after expansion. Let its final
+	// pass stop that timer, but do not repaint hidden native details meanwhile.
+	const nativeContext = (ctx: any, state: any, lastComponent: any) => ({
+		...ctx, lastComponent,
+		invalidate: () => { if (state.zenNativeVisible) ctx.invalidate?.(); },
+	});
 	const nativeResult = (result: any, options: any, theme: any, ctx: any, state: any) => {
-		const component = safeNative(native.renderResult, result, options, theme, {
-			...ctx,
-			lastComponent: state[RESULT_KEY],
-		}) ?? (native.renderResult ? plainTextResult(result, theme) : fallbackResult(result, options, theme, ctx, state));
+		const component = safeNative(native.renderResult, result, options, theme,
+			nativeContext(ctx, state, state[RESULT_KEY])) ?? (native.renderResult ? plainTextResult(result, theme) : fallbackResult(result, options, theme, ctx, state));
 		state[RESULT_KEY] = component;
 		return component;
 	};
@@ -521,17 +521,14 @@ function wrapNative(toolName: string, native: { renderCall?: any; renderResult?:
 		renderCall(args: any, theme: any, ctx: any) {
 			rememberInvalidate(ctx);
 			const state = stateOf(ctx);
-			if (!isCompact(ctx)) {
-				const call = safeNative(native.renderCall, args, theme, { ...ctx, lastComponent: state[CALL_KEY] }) ??
+			state.zenNativeVisible = !isCompact(ctx);
+			if (state.zenNativeVisible) {
+				if (ctx.isPartial) state.zenPartialResult = true;
+				const call = safeNative(native.renderCall, args, theme, nativeContext(ctx, state, state[CALL_KEY])) ??
 					new Text(registeredCallText(toolName, args, theme, ctx.expanded), 0, 0);
 				state[CALL_KEY] = call;
 				state.zenCacheDetail = NATIVE_ONE_LINE_TOOLS.has(toolName) || toolName === "write" || toolName === "edit";
 				return self ? call : nativeFrame(call, theme, ctx, state);
-			}
-			// Native shell renderers own their running timer; retain their lifecycle.
-			if ((toolName === "bash" || toolName === "powershell") && ctx.isPartial) {
-				state.zenPartialResult = true;
-				state[CALL_KEY] = safeNative(native.renderCall, args, theme, { ...ctx, lastComponent: state[CALL_KEY] });
 			}
 			const row = state[STATE_KEY] ??= compactRow(toolName);
 			row.update(args, theme, ctx, state);
@@ -539,38 +536,27 @@ function wrapNative(toolName: string, native: { renderCall?: any; renderResult?:
 		},
 		renderResult(result: any, options: { expanded: boolean; isPartial: boolean }, theme: any, ctx: any) {
 			const state = stateOf(ctx);
-			if (!isCompactResult(options) || options.isPartial) {
-				// Off, expanded, or still running: native result rendering.
+			if (!isCompactResult(options)) {
+				state.zenNativeVisible = true;
+				// Off or expanded: native result rendering.
 				// A throw falls back to plain text (fail-open), never
 				// undefined: pi's updateDisplay would addChild(undefined).
 				state.zenPartialResult = options.isPartial;
 				const component = nativeResult(result, options, theme, ctx, state);
-				if (!isCompactResult(options)) {
-					if (self || !state.zenFrame || state.zenFrameExpanded !== ctx.expanded) return component;
-					state.zenFrame?.addChild(component);
-					return emptyResult();
-				}
-				if (self) return component;
-				// Keep the native live preview, with its original result padding.
-				const frame = state.zenLiveFrame ??= new Box(ctx.outputPad ?? 1, 0);
-				frame.setPaddingX(ctx.outputPad ?? 1);
-				frame.setBgFn((line: string) => theme.bg("toolPendingBg", line));
-				frame.clear();
-				frame.addChild(component);
-				return frame;
+				if (self || !state.zenFrame || state.zenFrameExpanded !== ctx.expanded) return component;
+				state.zenFrame?.addChild(component);
+				return emptyResult();
 			}
+			state.zenNativeVisible = false;
+			if (options.isPartial) return emptyResult();
 			if (state.zenPartialResult) {
 				// Let the native final pass release resources started by a partial
 				// render. Keep its result slot separate from our empty component.
 				nativeResult(result, options, theme, ctx, state);
 				state.zenPartialResult = false;
 			}
-			// Compact, final result: one line. Success shows nothing below
-			// the call line; failure puts its first line on the call line
-			// via the suffix. Store the info, then ONE deferred invalidate
-			// lets renderCall repaint with the suffix (no synchronous
-			// re-entry into updateDisplay; terminates because the second
-			// pass stores identical info).
+			// The call component is already in Pi's container. Update it now,
+			// so status and background land together without another repaint.
 			storeFinalInfo(result, ctx, state);
 			return emptyResult();
 		},

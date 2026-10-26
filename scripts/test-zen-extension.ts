@@ -9,8 +9,8 @@
 //   definitions without renderCall get generic renderers.
 // - Wrapper behavior against FAKE native renderers: compact one-line call
 //   (decorated suffix), collapsed success renders zero rows, error text
-//   lands on the call line, the deferred invalidate fires exactly once
-//   (two-pass termination), off/expanded/partial delegate to native, and
+//   lands on the existing call line without invalidation. Off and expanded
+//   views delegate to native. Collapsed partial results stay hidden.
 //   native throws fall back (fail-open), never returning undefined.
 // - Registry: renderers remember per-block invalidate closures; the
 //   session_start/session_tree/compaction handlers clear them.
@@ -80,7 +80,7 @@ check("saveFilterOn roundtrip", saveFilterOn(false) === true && loadFilterOn() =
 
 console.log("formatting helpers");
 check("stripAnsi removes escapes", stripAnsi("\x1b[1mplain\x1b[0m") === "plain");
-check("visibleWidth counts code points", visibleWidth("日本語") === 3);
+check("visibleWidth counts terminal columns", visibleWidth("日本語") === 6);
 check("visibleWidth strips ansi", visibleWidth(`\x1b[1m${"x".repeat(10)}\x1b[0m`) === 10);
 check("truncateVisible keeps short", truncateVisible("abc", 10) === "abc");
 check("truncateVisible cuts long", truncateVisible("abcdef", 4) === "abc…");
@@ -119,12 +119,9 @@ check(
 	stripAnsi(errSuffix) === " ✗ cat: missing.txt: No such file or directory (2.1s)",
 	errSuffix,
 );
-check("suffix error truncated", stripAnsi(
-	suffixFor(
-		infoFromResult({ content: [{ type: "text", text: "x".repeat(200) }] }, { isError: true, durationMs: 5 }),
-		theme,
-	),
-).length < 60);
+check("error summary bounded before width fitting", infoFromResult(
+	{ content: [{ type: "text", text: "x".repeat(400) }] }, { isError: true },
+).errLine.length === 200);
 
 // ─── per-tool call lines ──────────────────────────────────────────────────────
 
@@ -191,8 +188,7 @@ const mkCtx = (extra: Record<string, unknown> = {}) => ({
 	...extra,
 });
 
-// Compact success: collapsed result renders zero rows; suffix appears on the
-// call line after the deferred invalidate (two-pass termination).
+// Compact success updates the existing call row before the first final paint.
 {
 	invalidateCalls = 0;
 	const ctx = mkCtx();
@@ -208,19 +204,16 @@ const mkCtx = (extra: Record<string, unknown> = {}) => ({
 	);
 	check("collapsed success zero result rows", (result?.render?.(80) ?? []).length === 0);
 	check("no suffix before completion", !stripAnsi(lines1[0]).includes("✓"), lines1[0]);
-	await sleep(10);
-	check("deferred invalidate fired once", invalidateCalls === 1, invalidateCalls);
-	// Pass 2: same component state, same final result → no new invalidate,
-	// suffix now present on the call line.
+	const line2 = stripAnsi(call.render(80)[0]);
+	check("suffix on the original call before another pass", line2.includes("✓ (0.4s)"), line2);
+	check("final status does not invalidate", invalidateCalls === 0, invalidateCalls);
 	const call2 = wrapped.renderCall({ command: "git status" }, theme, ctx);
-	const line2 = stripAnsi(call2.render(80)[0]);
-	check("suffix on call line after pass 2", line2.includes("✓ (0.4s)"), line2);
 	// The decorator renders the native line narrower so the suffix fits:
 	// the total visible width must not exceed the requested width.
 	const narrow = call2.render(12);
 	check("suffix stays inside the requested width", visibleWidth(narrow[0]) <= 12 && stripAnsi(narrow[0]).includes("✓"), narrow[0]);
 	await sleep(10);
-	check("second identical pass schedules nothing", invalidateCalls === 1, invalidateCalls);
+	check("second identical pass schedules nothing", invalidateCalls === 0, invalidateCalls);
 }
 
 // Error: first error line lands on the call line.
@@ -234,8 +227,7 @@ const mkCtx = (extra: Record<string, unknown> = {}) => ({
 		theme,
 		{ ...ctx, isError: true, durationMs: 2100 },
 	);
-	await sleep(10);
-	const line = stripAnsi(wrapped.renderCall({ command: "cat missing.txt" }, theme, ctx).render(80)[0]);
+	const line = stripAnsi(call.render(80)[0]);
 	check("error suffix on call line", line.includes("✗ cat: missing.txt: No such file or directory (2.1s)"), line);
 }
 
@@ -254,18 +246,18 @@ const mkCtx = (extra: Record<string, unknown> = {}) => ({
 	check("off renderResult is native object", res?.tag === "native-result", res);
 }
 
-// Expanded and partial: delegation.
+// Expanded delegates; collapsed partial output stays hidden.
 {
 	const ctx = mkCtx({ expanded: true });
 	const call = wrapped.renderCall({ command: "git status" }, theme, ctx);
-	check("expanded renderCall delegates", call?.tag === "native-call", call);
+	check("expanded renderCall frames native component", call?.children?.[0]?.tag === "native-call", call);
 	const res = wrapped.renderResult(
 		{ content: [{ type: "text", text: "x" }] },
 		{ expanded: true, isPartial: false },
 		theme,
 		ctx,
 	);
-	check("expanded renderResult delegates", res?.tag === "native-result", res);
+	check("expanded renderResult joins native frame", call?.children?.[1]?.tag === "native-result" && res.render(80).length === 0);
 	const ctxP = mkCtx();
 	const resP = wrapped.renderResult(
 		{ content: [{ type: "text", text: "partial" }] },
@@ -273,7 +265,7 @@ const mkCtx = (extra: Record<string, unknown> = {}) => ({
 		theme,
 		ctxP,
 	);
-	check("partial renderResult delegates", resP?.tag === "native-result", resP);
+	check("collapsed partial result has zero rows", resP.render(80).length === 0);
 }
 
 // Native throws: fail-open fallbacks, never undefined.
@@ -360,12 +352,14 @@ console.log("native final result cleanup");
 		},
 	};
 	const w = makeResolver(() => true)("bash", () => cleanupNative);
-	const ctx = mkCtx();
+	const ctx = mkCtx({ expanded: true, isPartial: true });
 	w.renderCall({ command: "stream" }, theme, ctx);
-	w.renderResult({ content: [{ type: "text", text: "partial" }] }, { expanded: false, isPartial: true }, theme, ctx);
+	w.renderResult({ content: [{ type: "text", text: "partial" }] }, { expanded: true, isPartial: true }, theme, ctx);
+	const compactCtx = { ...ctx, expanded: false, isPartial: false };
+	w.renderCall({ command: "stream" }, theme, compactCtx);
 	const result = { content: [{ type: "text", text: "done" }] };
-	const final = w.renderResult(result, { expanded: false, isPartial: false }, theme, { ...ctx, durationMs: 500 });
-	w.renderResult(result, { expanded: false, isPartial: false }, theme, { ...ctx, durationMs: 500, lastComponent: final });
+	const final = w.renderResult(result, { expanded: false, isPartial: false }, theme, { ...compactCtx, durationMs: 500 });
+	w.renderResult(result, { expanded: false, isPartial: false }, theme, { ...compactCtx, durationMs: 500, lastComponent: final });
 	check("native final cleanup runs exactly once", finalCalls === 1);
 	check("native final cleanup reuses partial component", reusedPartial);
 	check("cleanup result stays hidden", final.render(80).length === 0);

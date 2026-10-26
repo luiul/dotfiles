@@ -106,15 +106,16 @@ Unit tests use real files and Git repositories. Component tests cover widths, Un
 Key behaviors:
 
 - Built on pi's public `pi.registerToolRenderer` API (extensions.md, "Tool rendering"). Zen never walks the transcript layout, never touches component internals, and replaces no renderer: its resolver wraps the native ones and delegates when expanded. Pi's own `read` renderer uses the same compact pattern for skills and docs files (one-line call, empty result while collapsed), so this is a native design, not a hack.
-- Per-tool call lines: tools whose native collapsed call is already one line (bash, powershell, read, ls, find, grep) keep pi's own formatting via delegation, with the suffix appended at reduced width (native renderers pad to the full width; appending after a full-width render would push the suffix past the pane edge — measured and fixed). Tools with multi-line native calls (write, edit) get zen's own compact line (`write <path> (N lines)`, `edit <path> (N edits)`). Unknown and MCP tools get a generic one-liner (bold name, condensed args).
-- The status suffix rides the shared per-block `rendererState` (the same mechanism the native bash timer uses): the result renderer stores {ok, durationMs, errLine} once the final result arrives and schedules one deferred invalidate (`setTimeout 0`, no synchronous re-entry into `updateDisplay`); the next pass appends the suffix to the call line. Writes happen only on change, so the sequence terminates in two passes (unit-tested).
+- Per-tool call lines use cached, width-safe summaries. Commands flatten line breaks. Paths keep filename tails and read ranges. Write and edit summaries show their line or edit counts. Unknown and MCP tools use a compact name and argument summary.
+- The status suffix uses shared per-block renderer state. The result renderer updates the existing compact row before Pi paints. Status and background appear together without a deferred invalidate or another render request.
 - Thinking is fully native: the `hideThinkingBlock` setting collapses it, `ctrl+t` peeks per message. Zen v1's thinking code is gone.
 - Toggling: `/zen off` returns `next()` unchanged for new blocks and delegates through the wrappers for existing ones, so the off state is byte-exact native (E2E-verified by a line-for-line parity diff against bare pi). `/zen on` refreshes existing blocks through a registry of per-block `invalidate` closures (public `context.invalidate`), cleared on `session_start`, `session_tree`, and `compaction`.
 - Fail-open: every native delegation is wrapped; if a pi upgrade changes a renderer's shape, pi's own `updateDisplay` catch falls back to its built-in rendering. Never returns `undefined` into pi's `addChild`.
-- Streaming cleanup: after a partial native result, Zen runs the final native result renderer once before hiding its output. This lets the renderer stop its timer without Zen reading private timer fields. The native result component stays separate from the compact empty result.
-- Completed reads reuse native call formatting when path, range, working directory, and theme colors are unchanged. Argument and theme changes rebuild the call. The suffix decorator and empty result are reused.
+- Streaming: collapsed calls keep one content row plus Pi's separator during argument updates, execution, partial output, and completion. Output previews appear only when expanded or Zen is off. Inline images remain visible and are owned by Pi.
+- Native cleanup: collapsed calls do not start hidden native rendering or shell timers. A native renderer used while expanded receives one final cleanup pass after collapse. Its invalidation callback cannot request hidden paints. Zen does not read private timer fields.
+- Compact summaries reuse their layout when argument values, width, working directory, theme colors, and status are unchanged. Expansion restores full native details.
 - Generic output keeps two native fallback shapes: registered tools use call and result slots; unknown tools use one framed `Text`. Expanded and toggle-off views are checked against both native shapes, including terminal escape cleanup and image labels.
-- Performance checks use actual Pi components, shared renderer state, deferred invalidation, and the same Node runtime as Pi. In seven rotated trials, completed reads took 4.28 µs versus 11.69 µs for bare Pi. Expanded unknown output took 26.06 µs versus 25.10 µs; registered generic output took 69.96 µs versus 69.11 µs. Real TUI startup and streaming remained comparable, with run variation. Three idle checks showed no terminal writes after streaming tools finished. Measurements: https://github.com/luiul/dotfiles/issues/75, https://github.com/luiul/dotfiles/issues/76, and https://github.com/luiul/dotfiles/issues/77.
+- Performance checks compare the saved baseline, candidate, and bare Pi using the same Node runtime and rotated trials. The benchmark covers cached, invalidated, streaming, expanded, Zen-off, and first-paint paths. The local tmux fixture checks intermediate frames, terminal writes, start latency, and idle activity. Measurements and acceptance criteria: https://github.com/luiul/dotfiles/issues/93.
 - Scope: interactive TUI. In other modes the renderers are never invoked, so the extension is inert by construction. Transcript search finds all blocks (nothing is hidden).
 
 Commands and keys: `/zen [on|off]`, shortcut `ctrl+alt+t` (`ctrl+shift+t` is taken by `app.session.tree`). The state persists in `~/.pi/agent/zen.json` (default on); `--zen` / `--no-zen` force it for one session without persisting.
@@ -122,11 +123,12 @@ Commands and keys: `/zen [on|off]`, shortcut `ctrl+alt+t` (`ctrl+shift+t` is tak
 Verification from the repository root:
 
 ```sh
-bun scripts/test-zen-extension.ts  # 76 checks with fake native renderers
-bun scripts/test-zen-components.ts # 29 checks with real Pi components
-scripts/test-zen-extension.sh      # real Pi E2E in tmux, seeded with no LLM
-node scripts/bench-zen-renderers.ts 2000 7 # actual components, rotated trials
-scripts/bench-zen-startup.sh startup bare zen1 # startup wall clock, forced Zen on
+bun scripts/test-zen-extension.ts
+bun scripts/test-zen-components.ts
+node scripts/test-zen-live.mjs     # local streaming provider, real Pi in tmux
+scripts/test-zen-extension.sh      # seeded transcript checks, no model calls
+ZEN_BENCH_BASELINE=/path/to/baseline.ts node scripts/bench-zen-renderers.ts 150 7
+scripts/bench-zen-startup.sh startup bare zen1
 ```
 
 The E2E asserts: compact start (success one line with suffix, failure one line with error text, native thinking label), native `ctrl+o` expand and collapse, `/zen` off restoring the native transcript, `/zen` on again, `/reload` keeping compact mode, and a line-for-line parity diff between a `--no-zen` capture and a bare-pi capture of the same seeded session. Design and decision history: https://github.com/luiul/dotfiles/issues/67.

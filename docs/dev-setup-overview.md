@@ -90,11 +90,11 @@ Worktree: keep.
 Progress: saved in /absolute/source/worktree.
 ```
 
-Use `Task complete. No required steps remain.` only when all required work is finished. Review approval, publication, and requested deployment all count as required steps. A safe pause is not completion.
+Use `Task complete. No required steps remain.` only when all required work is finished. Review approval, publication, requested deployment, and cleanup of the task's temporary worktree and branch all count as required steps. A safe pause is not completion.
 
 Use a separate `Next steps:` heading for required actions and decisions. Use `Open ideas:` for optional out-of-scope suggestions. Omit empty sections. Optional ideas do not block completion.
 
-After verified publication and any requested deployment, report the published commit. Worktree removal needs a fresh removal check, a stopped or handed-off worker, and an ignored-file review. Never imply that deleting unpublished work is safe.
+After verified publication and any requested deployment, report the published commit. The agent then removes the task's temporary worktree and branch through wt, without leaving that cleanup to the user. This needs a fresh removal check, a stopped or handed-off worker, and an ignored-file review. Preserve unique ignored data before removal. Verify the path, branch, and registration are gone. Do not remove other workers' checkouts or imply that deleting unpublished work is safe.
 
 ## Remove a worktree
 

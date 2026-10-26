@@ -19,7 +19,8 @@ check(global.includes('Never use mixed or soft reset'), 'live HEAD shortcuts are
 check(global.includes('dirt, hidden index flags, or incoming ignored-file collisions defer deployment'), 'dirty or hidden live work defers deployment');
 check(global.includes('Publication never updates the primary checkout'), 'publication cannot activate live configuration');
 check(global.includes('`Task complete. No required steps remain.` only when all required work is finished') && global.includes('Waiting for approval or being safe to close is not completion') && global.includes('`Task incomplete: <pending steps>`'), 'explicit completion and pending statements cannot imply a safe pause is finished');
-check(global.includes('Agent: safe to close') && global.includes('Worktree: keep, review/publication/deployment pending'), 'safe pause remains distinct from task completion');
+check(global.includes('Agent: safe to close') && global.includes('Worktree: keep, review/publication/deployment/cleanup pending'), 'safe pause remains distinct from task completion');
+check(global.includes("cleanup of the task's temporary worktree and branch") && global.includes('Do not leave required cleanup to Luis') && global.includes('Report `Worktree: removed`'), 'temporary task cleanup is required before completion');
 check(repo.includes('`Task complete. No required steps remain.` only when all required work is finished'), 'repo rules cannot claim completion prematurely');
 check(global.includes('`Next steps:` lists required in-scope actions') && global.includes('`Open ideas:` lists optional out-of-scope suggestions') && !global.includes('Prefix out-of-scope ideas'), 'required actions and optional ideas have separate headings');
 check(guide.includes('Task incomplete: review, publication, and deployment pending.'), 'guide pending-work example does not claim completion');

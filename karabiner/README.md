@@ -13,6 +13,15 @@ It marks the current tab and clears any previous command center designation.
 Caps Lock remains the `super` modifier, with `super+c` handled by Raycast.
 See `raycast/README.md` for setup and tests.
 
+## VS Code shortcut
+
+`cmd+e` calls `~/.local/bin/ghostty-open-vscode` when Ghostty is frontmost.
+It opens the focused split's current directory in VS Code, or focuses its existing window.
+It uses the exact directory, not the git repo root, and works at a shell prompt or inside Pi.
+Stow the `ghostty` package to install the helper, then restore the Karabiner config below.
+Run `uv run scripts/test-ghostty-open-vscode.py` to check the shortcut and helper.
+Add `--live` to test a temporary Ghostty split and an isolated VS Code window.
+
 ## Restore on a new machine
 
 ```sh

@@ -22,6 +22,7 @@ keybind = global:control+command+shift+option+r=toggle_quick_terminal
 # receiving keyboard input (Ghostty's default `main`, which follows the
 # active window).
 quick-terminal-screen = mouse
+# Karabiner handles cmd+e: open the focused split's current directory in VS Code.
 # Karabiner handles cmd+shift+c: mark this tab as cc and clear the previous one.
 # Empty argument clears the locked title and restores automatic titles.
 keybind = cmd+shift+x=set_tab_title:

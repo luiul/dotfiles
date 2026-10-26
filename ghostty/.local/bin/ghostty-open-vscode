@@ -1,0 +1,23 @@
+#!/bin/bash
+# Open the focused Ghostty split's directory, matching Pi's cmd+e shortcut.
+
+fail() {
+  printf '%s\n' "$1" >&2
+  osascript -e 'display notification "Could not open the Ghostty directory in VS Code." with title "Ghostty"'
+  exit 1
+}
+
+cwd=$(osascript <<'APPLESCRIPT'
+tell application "Ghostty"
+	if not running or not frontmost then error "Ghostty is not focused."
+	return working directory of focused terminal of selected tab of front window
+end tell
+APPLESCRIPT
+) || fail "Could not read the focused Ghostty directory."
+
+[[ "$cwd" = /* && -d "$cwd" ]] || fail "Ghostty did not report a local directory."
+
+# Karabiner runs outside the shell, so its PATH may not include the code CLI.
+code=$(command -v code) || code="/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
+[[ -x "$code" ]] || fail "The VS Code CLI is not installed."
+"$code" "$cwd" || fail "The VS Code CLI failed."

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://pi.dev/schemas/settings.schema.json",
+  "packages": [
+    {
+      "source": "npm:pi-hermes-memory",
+      "extensions": []
+    }
+  ]
+}

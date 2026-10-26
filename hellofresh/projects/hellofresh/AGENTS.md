@@ -12,6 +12,16 @@ Three tiers:
 
 Task gate: discuss the plan or spec in chat first. Tracker creation only after the user approves or explicitly asks. Never re-litigate what an approved task settled. Use in-repo markdown only for code-adjacent docs (READMEs, setup notes, glossaries) and working notes that are not ticket-worthy.
 
+## Ticket Creation
+
+Start a fresh Pi session in `~/projects/hellofresh` for each request, then run `/skill:create-hellofresh-ticket`. The global skill lives in [pi-skills](https://github.com/luiul/pi-skills), not in an implementation repo. It checks duplicates, drafts in chat, waits for approval, creates through Harvest, verifies Jira and Harvest, and returns a handoff.
+
+The central workspace disables the Hermes extension through its trusted `.pi/settings.json` and Blackhole's observational memory workers through `.pi/pi-blackhole-config.json`. It does not save durable ticket memories through these extensions. Normal Pi session history, Context Mode, and Blackhole compaction and recall remain enabled, and saved sessions can later be indexed elsewhere. This is not a no-storage or privacy mode. If memory tools are still present in central intake, start a fresh session and accept project trust before continuing. Do not use memory-enabled subagents for intake or save ticket details through another memory tool.
+
+This package override applies only when Pi starts at `~/projects/hellofresh`. Implementation repos keep Hermes enabled. Start a separate fixing session in the relevant repo with the Jira URL. That agent owns investigation, updates, PRs, deployment checks, and closure. Do not continue the intake session for implementation.
+
+The old `ticket-manager` workspace is retired. Keep its remote repository, memories, and session history as records. Ticket creation does not require entering another checkout, writing a scratch file, or changing a sprint.
+
 ## Ubiquitous Language
 
 - The shared org glossary lives at `docs/glossary.md` next to this file. A repo under this directory may keep its own `docs/glossary.md`, which wins for that repo.

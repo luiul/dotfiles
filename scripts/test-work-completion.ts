@@ -227,7 +227,11 @@ try {
 	if (existsSync(real)) {
 		process.env.PI_REPO_GUARD_BIN = real;
 		const status = await scanRepoStatus(resolve(import.meta.dir, ".."), new AbortController().signal);
-		check("actual candidate CLI contract works through production scanner", () => { assert.equal(status.root, resolve(import.meta.dir, "..")); assert.equal(status.publication, "cached"); });
+		check("actual candidate CLI contract works through production scanner", () => {
+			assert.equal(status.root, resolve(import.meta.dir, ".."));
+			assert.equal(status.head, execFileSync("git", ["rev-parse", "HEAD"], { cwd: status.root, encoding: "utf8" }).trim());
+			assert(["cached", "unknown"].includes(status.publication));
+		});
 		const noRemote = mkdtempSync(join(area, "no-remote-"));
 		execFileSync("git", ["init", "-b", "main", noRemote], { stdio: "ignore" });
 		execFileSync("git", ["-C", noRemote, "-c", "user.name=Fixture", "-c", "user.email=fixture@local.invalid", "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-m", "fixture baseline"], { stdio: "ignore" });

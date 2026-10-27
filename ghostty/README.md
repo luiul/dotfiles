@@ -12,6 +12,8 @@ Karabiner calls the helpers in this stow package directly. Raycast is not needed
 The command center uses the locked title `🎛 cc`.
 It overrides shell title changes and covers every split in the tab.
 The helper searches all tabs, so switching tabs does not hide the command center.
+It also recognizes Ghostty's `🔔 ` title prefix after a bell.
+If the title is briefly missing, the helper retries for one second before it creates a window.
 Closing the marked tab removes its designation.
 
 ## Setup
@@ -30,6 +32,7 @@ Keep Raycast installed if you use it for other tasks.
 `ghostty-cc` focuses the marked tab or creates one when missing.
 Both actions use Ghostty's AppleScript dictionary, not keystrokes or the accessibility window list.
 A process lock serializes calls to prevent duplicate windows.
+The helper captures stable terminal IDs before activation or title changes, since Ghostty can reorder its window list.
 Each successful call writes `marked`, `focused`, or `opened` to `~/.cache/cc.log`.
 
 `ghostty-open-vscode` reads the focused split's current directory from Ghostty.
@@ -38,8 +41,8 @@ It works at a shell prompt and inside Pi.
 
 ## Tests
 
-- `uv run scripts/test-cc.py` checks both cc mappings, helper errors, and concurrent calls.
-- `uv run scripts/test-cc.py --live` also tests temporary windows in the running Ghostty app.
+- `uv run scripts/test-cc.py` checks both cc mappings, exact and bell-decorated titles, helper errors, and concurrent calls.
+- `uv run scripts/test-cc.py --live` also tests temporary windows, bell titles, and delayed title discovery in the running Ghostty app.
 - `uv run scripts/test-ghostty-open-vscode.py --live` tests a temporary split and an isolated VS Code window.
 
 Live tests restore the original cc designation and focus, and close their temporary windows.

@@ -71,7 +71,21 @@ def unit_tests() -> None:
         source = SCRIPT.read_text().split("<<'APPLESCRIPT'\n", 1)[1].split("\nAPPLESCRIPT\n", 1)[0]
         src = home / "cc.applescript"
         src.write_text(source)
+        assert "focus focused terminal of t" not in source, "Activation must not reuse a positional tab reference"
+        assert "focus terminal id targetTerminalID" in source
         run("/usr/bin/osacompile", "-o", home / "cc.scpt", src)
+        # Test the real AppleScript matcher, not a Python copy of its logic.
+        matcher = source.split("on run argv", 1)[0]
+        matcher += f"""on run
+if not my isCommandCenter({quote(TITLE)}, {quote(TITLE)}) then error "Plain title did not match"
+if not my isCommandCenter({quote('🔔 ' + TITLE)}, {quote(TITLE)}) then error "Bell title did not match"
+repeat with candidate in {{{quote('prefix ' + TITLE)}, {quote(TITLE + ' suffix')}, {quote('🔔 other')}, ""}}
+if my isCommandCenter(candidate as text, {quote(TITLE)}) then error "Unrelated title matched"
+end repeat
+return "matched"
+end run
+"""
+        assert run("/usr/bin/osascript", "-e", matcher).stdout.strip() == "matched"
         binary = home / "bin"
         binary.mkdir()
         stub = binary / "osascript"
@@ -122,7 +136,10 @@ printf '%s\\n' "$STUB_RESULT"
                     child.kill()
                     child.wait(timeout=5)
         assert not (cache / "cc.lock").exists()
-    print("PASS: shortcut routing, copy binding, AppleScript compilation, errors, stale lock, concurrent calls")
+    print(
+        "PASS: shortcut routing, exact and bell titles, copy binding, AppleScript compilation, "
+        "errors, stale lock, concurrent calls",
+    )
 
 
 def live_tests() -> None:  # noqa: PLR0912
@@ -138,13 +155,17 @@ def live_tests() -> None:  # noqa: PLR0912
     )
     prefix = "test-cc-" + uuid.uuid4().hex
     saved = apple(f"""set saved to {{}}
+set savedTerminals to {{}}
 repeat with w in windows
 repeat with t in tabs of w
-if name of t is {quote(TITLE)} then
+if name of t is {quote(TITLE)} or name of t is {quote('🔔 ' + TITLE)} then
 set end of saved to id of t
-perform action ("set_tab_title:" & {quote(prefix + "-saved")}) on focused terminal of t
+set end of savedTerminals to id of focused terminal of t
 end if
 end repeat
+end repeat
+repeat with terminalID in savedTerminals
+perform action ("set_tab_title:" & {quote(prefix + "-saved")}) on terminal id (terminalID as text)
 end repeat
 set AppleScript's text item delimiters to "\\n"
 return saved as text""").splitlines()
@@ -167,10 +188,14 @@ return rows""")
         apple(f'''repeat with w in windows
 repeat with t in tabs of w
 if id of t is {quote(tab_id)} then
+set targetTerminalID to id of focused terminal of t
 activate
-focus focused terminal of t
+focus terminal id targetTerminalID
 repeat 30 times
+if frontmost and id of selected tab of front window is {quote(tab_id)} then
+delay 0.2
 if frontmost and id of selected tab of front window is {quote(tab_id)} then return
+end if
 delay 0.1
 end repeat
 error "Test tab did not become focused."
@@ -191,7 +216,7 @@ error "Missing test tab"''')
     with tempfile.TemporaryDirectory(prefix="test-cc-live-") as directory:
         env = {**os.environ, "HOME": directory}
         try:
-            _first, first_tab = window()
+            first, first_tab = window()
             second, second_tab = window()
             focus(first_tab)
             run("/bin/bash", SCRIPT, "mark", env=env)
@@ -230,6 +255,64 @@ error "Missing test tab"''')
             assert apple("return id of selected tab of front window") == extra
             print("PASS: cc in background tab 1 or 2 is focused without opening a window")
             print("PASS: focus activates Ghostty from another app; marking outside Ghostty fails safely")
+
+            # Use Ghostty's real title API to pin its bell decoration deterministically.
+            # Ringing a real bell depends on terminal focus and bell suppression settings.
+            apple(
+                f'perform action "set_tab_title:🔔 {TITLE}" on focused terminal '
+                f"of tab id {quote(extra)} of window id {quote(second)}",
+            )
+            focus(first_tab)
+            run("/bin/bash", SCRIPT, env=env)
+            assert len(tabs()) == count, "A bell title opened a duplicate window"
+            assert apple("return id of selected tab of front window") == extra
+            focus(first_tab)
+            run("/bin/bash", SCRIPT, "mark", env=env)
+            assert [t[1] for t in marked()] == [first_tab]
+            assert apple(f"return name of tab id {quote(extra)} of window id {quote(second)}") != "🔔 " + TITLE
+            print("PASS: bell-decorated cc is focused and reassigned without a duplicate window")
+            apple(
+                f'perform action "set_tab_title:" on focused terminal '
+                f"of tab id {quote(first_tab)} of window id {quote(first)}",
+            )
+
+            # Reproduce a title lookup that briefly misses an existing command center.
+            # The setter waits until the helper holds its lock, then publishes the title.
+            apple(
+                f'perform action "set_tab_title:{prefix}-pending" on focused terminal '
+                f"of tab id {quote(extra)} of window id {quote(second)}",
+            )
+            focus(first_tab)
+            setter = subprocess.Popen(
+                ["/bin/bash", "-c", """
+for ((attempt = 0; attempt < 200; attempt++)); do
+  if [[ -f "$1/.cache/cc.lock" ]]; then
+    sleep 0.3
+    exec /usr/bin/osascript -e "$2"
+  fi
+  sleep 0.01
+done
+exit 1
+""", "test-cc-title", directory,
+                 'tell application "Ghostty" to perform action "set_tab_title:' + TITLE + '" '
+                 f"on focused terminal of tab id {quote(extra)} of window id {quote(second)}"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            try:
+                run("/bin/bash", SCRIPT, env=env)
+                stdout, stderr = setter.communicate(timeout=10)
+                assert setter.returncode == 0, stdout + stderr
+                assert len(tabs()) == count, "A delayed title lookup opened a duplicate window"
+                assert apple("return id of selected tab of front window") == extra
+                assert [t[1] for t in marked()] == [extra]
+                assert (Path(directory) / ".cache/cc.log").read_text().splitlines()[-1].endswith("focused")
+            finally:
+                if setter.poll() is None:
+                    setter.kill()
+                    setter.wait(timeout=5)
+            print("PASS: delayed cc title is retried without opening a duplicate window")
 
             apple(
                 f'perform action "set_tab_title:" on focused terminal '
@@ -292,11 +375,15 @@ error "Missing test tab"''')
             for win in created:
                 apple(f"if exists window id {quote(win)} then close window window id {quote(win)}")
             for tab in saved:
-                apple(f"""repeat with w in windows
+                apple(f"""set savedTerminalID to missing value
+repeat with w in windows
 repeat with t in tabs of w
-if id of t is {quote(tab)} then perform action ("set_tab_title:" & {quote(TITLE)}) on focused terminal of t
+if id of t is {quote(tab)} then set savedTerminalID to id of focused terminal of t
 end repeat
-end repeat""")
+end repeat
+if savedTerminalID is not missing value then
+perform action ("set_tab_title:" & {quote(TITLE)}) on terminal id savedTerminalID
+end if""")
             focus(original_tab)
             assert apple("return id of front window") == original_window
             assert {t[0] for t in tabs()} == original_windows

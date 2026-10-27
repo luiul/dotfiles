@@ -17,6 +17,11 @@ if ((attempt == 100)); then exit 1; fi
 trap 'rm -f "$LOCK"' EXIT
 
 if result=$(osascript - "$MODE" "$TITLE" "$HOME" <<'APPLESCRIPT'
+-- Ghostty can prepend a bell indicator even when the tab title is locked.
+on isCommandCenter(tabTitle, ccTitle)
+	return tabTitle is ccTitle or tabTitle is ("🔔 " & ccTitle)
+end isCommandCenter
+
 on run argv
 	set mode to item 1 of argv
 	set ccTitle to item 2 of argv
@@ -24,17 +29,24 @@ on run argv
 	tell application "Ghostty"
 		if mode is "mark" then
 			if not running or not frontmost then error "Ghostty is not focused."
-			set targetTab to selected tab of front window
+			set targetWindowID to id of front window
+			set targetTabID to id of selected tab of front window
+			set targetTerminalID to id of focused terminal of selected tab of front window
 			-- Mark first so a failed action cannot erase the previous designation.
-			perform action ("set_tab_title:" & ccTitle) on focused terminal of targetTab
-			if name of targetTab is not ccTitle then error "Could not mark the tab."
+			perform action ("set_tab_title:" & ccTitle) on terminal id targetTerminalID
+			if not my isCommandCenter(name of tab id targetTabID of window id targetWindowID, ccTitle) then error "Could not mark the tab."
+			set previousTabs to {}
 			repeat with w in windows
 				repeat with t in tabs of w
-					if id of t is not id of targetTab and name of t is ccTitle then
-						perform action "set_tab_title:" on focused terminal of t
-						if name of t is ccTitle then error "Could not clear the previous tab."
+					if id of t is not targetTabID and my isCommandCenter(name of t, ccTitle) then
+						set end of previousTabs to {id of w, id of t, id of focused terminal of t}
 					end if
 				end repeat
+			end repeat
+			-- Changing titles can reorder windows. Resolve each saved ID afresh.
+			repeat with previousTab in previousTabs
+				perform action "set_tab_title:" on terminal id (item 3 of previousTab)
+				if my isCommandCenter(name of tab id (item 2 of previousTab) of window id (item 1 of previousTab), ccTitle) then error "Could not clear the previous tab."
 			end repeat
 			return "marked"
 		end if
@@ -49,14 +61,20 @@ on run argv
 			if (count of windows) is 0 then error "Ghostty did not open a window."
 		end if
 		-- Window titles hide background tabs. Search all tabs, including restored ones.
-		repeat with w in windows
-			repeat with t in tabs of w
-				if name of t is ccTitle then
-					activate
-					focus focused terminal of t
-					return "focused"
-				end if
+		-- Allow title updates and restored tabs to settle before creating a window.
+		repeat with attempt from 1 to 11
+			repeat with w in windows
+				repeat with t in tabs of w
+					if my isCommandCenter(name of t, ccTitle) then
+						-- Activation can reorder windows, invalidating positional references.
+						set targetTerminalID to id of focused terminal of t
+						activate
+						focus terminal id targetTerminalID
+						return "focused"
+					end if
+				end repeat
 			end repeat
+			if attempt < 11 then delay 0.1
 		end repeat
 		if wasRunning then
 			set w to new window with configuration {initial working directory:homeDir}
@@ -66,9 +84,10 @@ on run argv
 		end if
 		set targetTab to selected tab of w
 		perform action ("set_tab_title:" & ccTitle) on focused terminal of targetTab
-		if name of targetTab is not ccTitle then error "Could not mark the new tab."
+		if not my isCommandCenter(name of targetTab, ccTitle) then error "Could not mark the new tab."
+		set targetTerminalID to id of focused terminal of targetTab
 		activate
-		focus focused terminal of targetTab
+		focus terminal id targetTerminalID
 		return "opened"
 	end tell
 end run

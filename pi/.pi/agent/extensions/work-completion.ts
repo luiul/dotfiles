@@ -72,8 +72,15 @@ function summary(state: SavedState): string {
 	const present = s.dirty.filter((d) => state.baseline.dirty.some((b) => b.path === d.path)).length;
 	if (s.operation) return `Work pending: Git operation in progress. ${s.dirty.length} changed. /work-status`;
 	if (s.dirty.length) return `Work pending: ${s.dirty.length} changed (${present} present at start). Review/commit needed. /work-status`;
-	return "Publication unchecked: run repo-guard check-remove before removal. /work-status";
+	if (s.ahead !== null && s.ahead > 0) return `Work pending: ${s.ahead} local commit(s) ahead of cached upstream. /work-status`;
+	if (s.behind !== null && s.behind > 0) return `Worktree clean; ${s.behind} commit(s) behind cached upstream. /work-status`;
+	if (s.publication === "cached" && s.ahead === 0 && s.behind === 0) return "Worktree clean; matches cached upstream. /work-status";
+	return "Worktree clean; publication unknown. /work-status";
 }
+const pendingWork = (state: SavedState) => state.lastStatus.operation || state.lastStatus.dirty.length > 0 ||
+	(state.lastStatus.ahead !== null && state.lastStatus.ahead > 0);
+const removalReminder = (s: RepoStatus) => s.branch && s.branch !== s.defaultBranch && !["main", "master", "live"].includes(s.branch) ?
+	"\nBefore removing this checkout, run repo-guard check-remove for fresh proof and inspect ignored files." : "";
 function restore(ctx: ExtensionContext, root: string, sessionId: string): SavedState | undefined {
 	for (const entry of [...ctx.sessionManager.getBranch()].reverse()) {
 		if (entry.type !== "custom" || entry.customType !== entryType) continue;
@@ -101,7 +108,8 @@ export default function workCompletion(pi: ExtensionAPI, scan = scanRepoStatus) 
 		token.generation === generation && token.sessionId === ctx.sessionManager.getSessionId() && token.cwd === ctx.cwd;
 	function paint(ctx: ExtensionContext, text: string) {
 		if (!owns(ctx)) return;
-		ctx.ui.setWidget(key, (_tui, theme) => ({ render: (width) => [truncateToWidth(theme.fg("warning", text), width)], invalidate() {} }));
+		const color = text.startsWith("Work status unavailable") || (state && pendingWork(state)) ? "warning" : "dim";
+		ctx.ui.setWidget(key, (_tui, theme) => ({ render: (width) => [truncateToWidth(theme.fg(color, text), width)], invalidate() {} }));
 		if (!owns(ctx)) return;
 		ctx.ui.setStatus(key, state && !text.startsWith("Work status unavailable") ?
 			`Work: ${state.lastStatus.dirty.length} changed; /work-status` : "Work status unavailable; /work-status");
@@ -137,9 +145,10 @@ export default function workCompletion(pi: ExtensionAPI, scan = scanRepoStatus) 
 				if (reason === "command") {
 					ctx.ui.notify(`${plain(current.root)} (${plain(current.branch ?? "detached HEAD")})\n` +
 						`Dirty: ${state.baseline.dirty.length} at start, ${current.dirty.length} now. Session change observed: ${state.changedObserved ? "yes" : "no"} (not attribution).\n` +
-						`Publication: ${current.publication}. Ahead: ${current.ahead ?? "unknown"}, behind: ${current.behind ?? "unknown"}. Deployment not checked.\n` + summary(state), "info");
+						`Publication: ${current.publication}. Ahead: ${current.ahead ?? "unknown"}, behind: ${current.behind ?? "unknown"}. Fresh publication and deployment not checked.\n` +
+						summary(state) + removalReminder(current), "info");
 				} else if (reason === "settled" && previous && statusSignature(previous) !== statusSignature(current)) {
-					ctx.ui.notify(summary(state), "warning");
+					ctx.ui.notify(summary(state), pendingWork(state) ? "warning" : "info");
 				}
 			} catch {
 				if (!owns(ctx, token) || token.controller.signal.aborted) return;
@@ -177,7 +186,7 @@ export default function workCompletion(pi: ExtensionAPI, scan = scanRepoStatus) 
 		state = undefined;
 	});
 	pi.registerCommand("work-status", {
-		description: "Show local work state and unchecked publication",
+		description: "Show local checkout state and cached upstream metadata",
 		handler: (_args, ctx) => refresh(ctx, "command"),
 	});
 }

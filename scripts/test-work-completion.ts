@@ -80,7 +80,8 @@ check("explicit command reports metadata without submission or dialog", () => {
 	assert.match(h.notices.at(-1)!.text, /\/repo \(task\)/);
 	assert.match(h.notices.at(-1)!.text, /Dirty: 1 at start, 2 now/);
 	assert.match(h.notices.at(-1)!.text, /Publication: cached/);
-	assert.match(h.notices.at(-1)!.text, /Deployment not checked/);
+	assert.match(h.notices.at(-1)!.text, /Fresh publication and deployment not checked/);
+	assert.match(h.notices.at(-1)!.text, /Before removing this checkout/);
 	assert.equal(h.entries.length, 2);
 });
 check("widget is exactly one width-safe line, including very narrow widths", () => {
@@ -98,16 +99,41 @@ check("reload restores original baseline and changedObserved, with no duplicate 
 h.now = base({ head: "b", dirty: [] }); await h.fire("agent_settled", { aborted: true });
 check("aborted run with changed HEAD remains advisory and never claims fresh publication", () => {
 	assert.equal(h.last().baseline.head, "a"); assert.equal(h.last().lastStatus.head, "b");
-	assert.match(h.line(), /Publication unchecked/); assert(!/pushed|deployed|published/.test(h.line()));
+	assert.match(h.line(), /Worktree clean; matches cached upstream/); assert(!/pushed|deployed|published/.test(h.line()));
+	assert.equal(h.notices.at(-1)!.level, "info");
 });
 h.now = base({ head: "b", upstream: null, ahead: null, behind: null, publication: "unknown" });
 await h.fire("agent_settled"); await h.command();
 check("unknown upstream stays unknown instead of asserting publication", () => {
 	assert.match(h.notices.at(-1)!.text, /Publication: unknown. Ahead: unknown, behind: unknown/);
-	assert.match(h.line(), /check-remove before removal/);
+	assert.match(h.line(), /Worktree clean; publication unknown/);
+	assert.match(h.notices.at(-1)!.text, /check-remove for fresh proof/);
 });
 h.now = base({ head: "b", ahead: 3 }); await h.fire("agent_settled");
-check("clean ahead branch still requires a removal publication check", () => assert.match(h.line(), /Publication unchecked/));
+check("clean ahead branch shows local commits without fresh publication claims", () => {
+	assert.match(h.line(), /3 local commit\(s\) ahead of cached upstream/);
+	assert.equal(h.notices.at(-1)!.level, "warning");
+});
+h.now = base({ head: "b", behind: 2 }); await h.fire("agent_settled");
+check("clean behind checkout is informational, not an uncommitted-work warning", () => {
+	assert.match(h.line(), /2 commit\(s\) behind cached upstream/);
+	assert.equal(h.notices.at(-1)!.level, "info");
+});
+const primaryCheckout = new Harness(); primaryCheckout.now = base({ branch: "main", upstream: "origin/main" });
+await primaryCheckout.fire("session_start"); await primaryCheckout.command();
+check("clean primary checkout has neutral cached status and no removal instruction", () => {
+	assert.match(primaryCheckout.line(), /Worktree clean; matches cached upstream/);
+	assert(!/Publication unchecked|check-remove/.test(primaryCheckout.line()));
+	assert(!primaryCheckout.notices.at(-1)!.text.includes("Before removing"));
+	assert.match(primaryCheckout.notices.at(-1)!.text, /Fresh publication and deployment not checked/);
+});
+for (const branch of ["master", "live", "trunk", null]) {
+	const protectedCheckout = new Harness();
+	protectedCheckout.now = base({ branch, defaultBranch: branch === "trunk" ? "trunk" : "main" });
+	await protectedCheckout.fire("session_start"); await protectedCheckout.command();
+	check(`protected or detached checkout ${branch} never suggests removal`, () =>
+		assert(!protectedCheckout.notices.at(-1)!.text.includes("Before removing")));
+}
 h.now = base({ operation: true }); await h.fire("agent_settled");
 check("Git operation is visible but not blocked", () => assert.match(h.line(), /operation in progress/));
 await h.fire("session_tree");
@@ -141,7 +167,7 @@ const foreign = cleanup.ctx(); foreign.sessionManager = { ...foreign.sessionMana
 await cleanup.handlers.get("session_shutdown")!({}, foreign);
 check("headless and SDK child shutdown cannot clear parent widget or footer", () => {
 	assert.equal(cleanup.widgets.length, ownedWidgets); assert.equal(cleanup.statuses.length, ownedStatuses);
-	assert.match(cleanup.line(), /Publication unchecked/);
+	assert.match(cleanup.line(), /Worktree clean; matches cached upstream/);
 });
 await cleanup.fire("session_shutdown");
 check("owned shutdown clears widget and footer with fresh context, without scan or dialog", () => {

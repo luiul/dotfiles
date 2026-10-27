@@ -46,7 +46,9 @@ Orca and Canopy show Pi agent activity. Pi no longer sends desktop notifications
 
 `work-completion.ts` shows local checkout state at session start and settlement. `/work-status` refreshes it explicitly. The original baseline persists in custom session entries across reload and resume.
 
-The reminder distinguishes preexisting dirty paths from later observed changes, without claiming authorship. Remote refs are cached evidence, never fresh publication proof. It makes no network calls, runs no polling timer or watcher, and never commits, pushes, submits a prompt, or blocks shutdown. SDK, RPC, and print sessions remain silent.
+The reminder distinguishes preexisting dirty paths from later observed changes, without claiming authorship. Dirty files, Git operations, and local commits ahead of cached upstream show pending work. A clean checkout that matches cached upstream shows a neutral status, not a permanent publication warning. `/work-status` still says fresh publication and deployment were not checked. It gives the removal-check reminder only for task branches, not protected default checkouts.
+
+Remote refs are cached evidence, never fresh publication proof. The extension makes no network calls, runs no polling timer or watcher, and never commits, pushes, submits a prompt, or blocks shutdown. SDK, RPC, and print sessions remain silent.
 
 Publication and removal checks belong to `repo-guard`. See [the workflow](../../../../docs/dev-setup-overview.md).
 

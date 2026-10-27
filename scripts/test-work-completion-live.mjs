@@ -33,7 +33,7 @@ writeFileSync(guard, `import fs from 'node:fs'; import path from 'node:path';
 fs.appendFileSync(process.env.WC_GUARD_CALLS,JSON.stringify(process.argv.slice(2))+'\\n');
 if(JSON.stringify(process.argv.slice(2,5))!==JSON.stringify(['status','--json','--cwd'])) throw Error('status only');
 const root=process.argv[5];
-console.log(JSON.stringify({root,commonDir:path.join(root,'.git'),branch:'main',head:'fixture-head',dirty:['old.txt',...(fs.existsSync(path.join(root,'new.txt'))?['new.txt']:[])].map(path=>({path,status:' M'})),upstream:null,ahead:null,behind:null,defaultBranch:'main',isHelloFresh:false,publication:'unknown',operation:false}));\n`);
+console.log(JSON.stringify({root,commonDir:path.join(root,'.git'),branch:'main',head:'fixture-head',dirty:(fs.existsSync(path.join(root,'clean-state'))?[]:['old.txt',...(fs.existsSync(path.join(root,'new.txt'))?['new.txt']:[])]).map(path=>({path,status:' M'})),upstream:null,ahead:null,behind:null,defaultBranch:'main',isHelloFresh:false,publication:'unknown',operation:false}));\n`);
 const bin = join(root, 'bin'); mkdirSync(bin);
 const gitShim = join(bin, 'git');
 writeFileSync(gitShim, `#!/bin/sh\nprintf '%s\\n' "$*" >> "$WC_GIT_CALLS"\nfor arg in "$@"; do\n  case "$arg" in commit|push|fetch|pull|ls-remote|clone) exit 97;; esac\ndone\nexec ${q(git)} "$@"\n`, { mode: 0o755 });
@@ -132,27 +132,58 @@ async function behavior(label, script) {
     });
     const responses = events(h).filter((e) => e.type === 'response').length;
     await command(h, '/work-status');
-    await wait(h, (s) => /Deployment not checked/.test(s), 'explicit notice');
+    await wait(h, (s) => /Fresh publication and deployment not\s+checked/.test(s), 'explicit notice');
     check(`${label}: command shows root, branch, baseline counts and unknown publication without model call`, () => {
       const s = capture(h); assert.match(s, /Dirty: 1 at start, 2 now/); assert.match(s, /Publication: unknown/);
       assert.match(s, /\(main\)/);
       const notice = events(h).filter((e) => e.type === 'ui-notify').at(-1).args[0];
       assert(notice.includes(h.dir), 'The UI notice must include the untruncated source root');
       assert.equal(events(h).filter((e) => e.type === 'response').length, responses);
+      assert(!notice.includes('Before removing'), 'Primary checkout must not suggest removal');
     });
+    if (script === guard) writeFileSync(join(h.dir, 'clean-state'), 'fixture clean state\n');
+    else {
+      rmSync(join(h.dir, 'new.txt'));
+      writeFileSync(join(h.dir, 'old.txt'), 'baseline\n');
+    }
+    await prompt(h, 'WC_NO_EDIT');
+    await wait(h, (s) => /Worktree clean; publication unknown/.test(s), 'clean settlement');
+    check(`${label}: clean settlement replaces the warning with neutral unknown-publication status`, () => {
+      assert(!capture(h).includes('Publication unchecked:'));
+      const notice = events(h).filter((e) => e.type === 'ui-notify').at(-1);
+      assert.match(notice.args[0], /Worktree clean; publication unknown/);
+      assert.equal(notice.args[1], 'info');
+      assert.equal(last(h).lastStatus.dirty.length, 0);
+    });
+    await command(h, '/work-status');
+    await wait(h, (s) => /Dirty: 1 at start, 0 now/.test(s), 'clean explicit status');
+    check(`${label}: clean primary still discloses unchecked publication without removal warning`, () => {
+      const notice = events(h).filter((e) => e.type === 'ui-notify').at(-1).args[0];
+      assert.match(notice, /Fresh publication and deployment not checked/);
+      assert(!notice.includes('Before removing') && !notice.includes('Publication unchecked:'));
+    });
+    if (script === guard) rmSync(join(h.dir, 'clean-state'));
+    else {
+      writeFileSync(join(h.dir, 'old.txt'), h.preexisting);
+      writeFileSync(join(h.dir, 'new.txt'), 'test change\n');
+    }
+    await prompt(h, 'WC_NO_EDIT');
+    await wait(h, (s) => /Work pending: 2 changed/.test(s), 'dirty state restored');
+    const restoredAppends = events(h).filter((e) => e.type === 'append').length;
+    const restoredResponses = events(h).filter((e) => e.type === 'response').length;
     const ready = events(h).filter((e) => e.type === 'ready').length;
     await command(h, '/reload');
     await wait(h, (_s, list) => list.filter((e) => e.type === 'ready').length > ready, 'reload');
     check(`${label}: reload restores original baseline and changedObserved without duplicate append`, () => {
       assert.equal(last(h).baseline.dirty.length, 1); assert.equal(last(h).changedObserved, true);
-      assert.equal(events(h).filter((e) => e.type === 'append').length, appends);
+      assert.equal(events(h).filter((e) => e.type === 'append').length, restoredAppends);
       assert.match(capture(h), /2 changed \(1 present at start\)/);
     });
     await command(h, '/wc-live-draft');
     await wait(h, (_s, list) => list.some((e) => e.type === 'draft-after'), 'draft');
     check(`${label}: status leaves editor draft and model request count unchanged`, () => {
       assert.equal(events(h).find((e) => e.type === 'draft-after').text, 'DRAFT keep this text');
-      assert.equal(events(h).filter((e) => e.type === 'response').length, responses);
+      assert.equal(events(h).filter((e) => e.type === 'response').length, restoredResponses);
     });
     tmux('send-keys', '-t', h.name, 'C-u');
     tmux('resize-window', '-t', h.name, '-x', '40', '-y', '24');

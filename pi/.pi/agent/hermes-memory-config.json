@@ -1,6 +1,9 @@
 {
-  "reviewTransport": "subprocess",
-  "llmModelOverride": "ai-model-router/gpt-5.6-luna",
+  "reviewTransport": "direct",
+  "llmModelOverride": "ai-model-router/zai-org/GLM-5.3-Flash",
+  "llmFallbackModels": [
+    "ai-model-router/gpt-6-luna"
+  ],
   "llmThinkingOverride": "off",
   "childExtensionPaths": [
     "/Users/luis.aceituno/.pi/agent/extensions/aws-sso-refresh.ts"

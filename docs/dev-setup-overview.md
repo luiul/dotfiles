@@ -37,7 +37,8 @@ Creation hooks:
 - Link an existing `.venv` from the main checkout.
 - Copy other ignored setup files with `wt step copy-ignored`.
 - Register the repo for Coppice and understory.
-- Link inherited agent instructions into the owner directory.
+
+Pi's `scoped-agent-context` extension reads inherited instructions from the primary checkout's parent ancestry. It uses Git identity, not the remote owner. Repo-local instructions stay native. Worktrunk does not create instruction links in shared owner or branch directories. Known legacy HelloFresh owner links are excluded from new model requests without changing those links on disk.
 
 Project hooks repair missing dbt dependencies or checkout-specific environment paths where configured. No creation hook opens an editor or an orchestrator.
 
@@ -51,7 +52,7 @@ repo-guard publish --approved --verify 'your combined-tree test command'
 
 The guard serializes publication per Git common directory. Different repos can publish concurrently. It fetches the actual remote default branch, combines committed work in an isolated wt-managed integration checkout, runs the supplied checks, and pushes without force. It does not stage source files, rewrite source commits, or refresh the primary checkout.
 
-Integration uses a private wt configuration with setup hooks disabled. It does not inherit the usual `.venv`, ignored-file copying, registry, or agent-instruction links. The verification command must supply safe setup or use checks that need none. Never copy secrets or live settings into a fixture just to make a test pass.
+Integration uses a private wt configuration with setup hooks disabled. It does not inherit the usual `.venv`, ignored-file copying, or registry setup. Pi resolves inherited instructions separately. The verification command must supply safe setup or use checks that need none. Never copy secrets or live settings into a fixture just to make a test pass.
 
 A conflict, failed check, changed source, or rejected push stops publication. Recovery checkouts stay under the Git common directory, not temporary storage. Inspect the reported path and resolve the problem before retrying. Do not choose one side of a conflict wholesale to make a push succeed. A successful verified publication removes only its own clean integration checkout.
 
@@ -129,6 +130,9 @@ node scripts/test-repo-guard.mjs
 bun scripts/test-work-completion.ts
 node scripts/test-work-completion-live.mjs
 uv run scripts/test-worktree-no-editor.py
+bun scripts/test-scoped-agent-context.ts
+node scripts/test-scoped-agent-context-live.mjs
+node scripts/test-hermes-review.mjs
 ```
 
 These tests use disposable repos, local bare remotes, private configuration, and bounded tmux sessions. They must not publish to real remotes or remove user worktrees.

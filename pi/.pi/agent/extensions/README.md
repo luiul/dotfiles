@@ -1,5 +1,31 @@
 # Pi extensions
 
+## Scoped inherited instructions
+
+`scoped-agent-context.ts` reads missing ancestor instructions from the primary checkout when Pi prepares a run in a linked worktree. Git metadata supplies repository identity. Remote owner and branch names do not set instruction scope.
+
+The extension uses Pi's native context discovery and filename precedence. Global instructions, checkout-local overrides, and nested repository instructions stay intact. Inherited files keep their canonical source paths and load before repository-local instructions. Only the added primary-ancestor instruction contents are read again for each run. Native global and checkout-local instructions follow Pi's reload behavior. Checkout identity is cached, with filesystem checks that invalidate it after worktree repair or relocation. Context-loading opt-outs remain respected.
+
+Known legacy owner links to the HelloFresh instruction files are removed from the run's context, not from disk. Regular owner files and unknown links remain untouched. Worktrunk no longer creates shared instruction links. Nothing writes generated instructions or changes tracked `AGENTS.md` files.
+
+The change applies to newly prepared prompts. It does not erase old instructions from saved conversation history. Use a fresh session for work that previously loaded unrelated business instructions. Physical removal of legacy links needs separate approval and a review of affected checkouts.
+
+```sh
+bun scripts/test-scoped-agent-context.ts
+node scripts/test-scoped-agent-context-live.mjs
+uv run scripts/test-worktree-no-editor.py
+```
+
+## Hermes memory reviews
+
+`pi/.pi/agent/hermes-memory-config.json` uses direct completion through `ai-model-router/zai-org/GLM-5.3-Flash`, with `ai-model-router/gpt-6-luna` as its model fallback. Thinking stays off. This replaces the invalid review model with cheaper models tested on preference, correction, project-lesson, no-op, and longer-context reviews. Hermes tries the model fallback before its subprocess fallback on direct transport errors. Retention, integrity-check settings, and the trusted auth extension remain unchanged.
+
+Verify model calls through their completed assistant response and memory writes. A zero CLI exit code alone does not prove provider success. Test fixtures use private memory stores and a loopback provider, never the live database.
+
+```sh
+node scripts/test-hermes-review.mjs
+```
+
 ## Background resource guard
 
 `resource-budget.ts` supplies a 120-second default for ctx execution tools and rejects background execution without an explicit timeout. It checks the version-pinned context-mode lifecycle patch before every ctx call. A missing or changed patch blocks those tools and points to `pi-resources-patch`. Other tools remain available.

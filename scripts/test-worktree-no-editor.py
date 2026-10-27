@@ -49,7 +49,7 @@ def main() -> None:
     assert cop, "cop must be installed"
     source = ROOT / "worktrunk/.config/worktrunk/config.toml"
     config = tomllib.loads(source.read_text())
-    assert set(config["post-start"]) == {"venv", "copy", "registry", "agents-md"}
+    assert set(config["post-start"]) == {"venv", "copy", "registry"}
     assert "post-switch" not in config, "Orchestrator opening belongs to explicit cop commands"
     check_hooks(config)
     assert config["pre-remove"]["protect"]
@@ -115,15 +115,15 @@ def main() -> None:
             wait_for(
                 lambda: (path / ".venv").is_symlink()
                 and (path / ".env").exists()
-                and registry.exists()
-                and (path.parent.parent / "AGENTS.md").is_symlink()
-                and (path.parent.parent / "CLAUDE.md").is_symlink(),
+                and registry.exists(),
                 f"setup hooks for {branch}",
             )
             assert (path / ".venv").resolve() == (repo / ".venv").resolve()
             assert (path / ".env").read_text() == "FIXTURE_ONLY=1\n"
             assert str(repo) in registry.read_text().splitlines()
-            assert (path.parent.parent / "AGENTS.md").resolve() == parent / "AGENTS.md"
+            for name in ("AGENTS.md", "CLAUDE.md"):
+                assert not (path.parent.parent / name).exists(), "Creation shared inherited instructions"
+                assert not (path.parent / name).exists(), "Creation wrote branch-wide instructions"
             assert not calls.exists(), "Worktree creation launched an editor"
             return path
 

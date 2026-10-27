@@ -12,6 +12,31 @@ const sourcePath = resolve(import.meta.dir, "../pi/.pi/agent/extensions/status-b
 const flush = async () => {
 	for (let i = 0; i < 12; i++) await Promise.resolve();
 };
+const colors: Record<string, number> = { text: 255, accent: 141, muted: 250, dim: 240, warning: 220, error: 196, success: 82 };
+const colorText = (color: string, text: string) => `\x1b[38;5;${colors[color]}m${text}\x1b[0m`;
+function styledCells(text: string) {
+	let color: number | undefined;
+	let bold = false;
+	const cells: { text: string; color?: number; bold: boolean }[] = [];
+	for (const match of text.matchAll(/\x1b\[([0-9;]*)m|([^\x1b])/g)) {
+		if (match[1] !== undefined) {
+			const codes = (match[1] || "0").split(";").map(Number);
+			for (let i = 0; i < codes.length; i++) {
+				if (codes[i] === 0) { color = undefined; bold = false; }
+				else if (codes[i] === 1) bold = true;
+				else if (codes[i] === 22) bold = false;
+				else if (codes[i] === 38 && codes[i + 1] === 5) { color = codes[i + 2]; i += 2; }
+			}
+		} else cells.push({ text: match[2], color, bold });
+	}
+	return cells;
+}
+function assertStyle(row: string, text: string, color: string, bold = false) {
+	const cells = styledCells(row);
+	const start = cells.map(c => c.text).join("").indexOf(text);
+	assert.ok(start >= 0, `Missing styled text: ${text}`);
+	assert.ok(cells.slice(start, start + text.length).every(c => c.color === colors[color] && c.bold === bold), `Wrong ${color}/${bold ? "bold" : "normal"} style: ${text}`);
+}
 let checks = 0;
 function check(name: string, fn: () => void) {
 	fn();
@@ -110,7 +135,7 @@ function harness(code: string) {
 		let footerSets = 0;
 		const statuses = new Map([["meter", "plain status"]]);
 		const theme = {
-			fg: (color: string, text: string) => `\x1b[38;5;${color.length + 230}m${text}\x1b[0m`,
+			fg: colorText,
 			bold: (text: string) => `\x1b[1m${text}\x1b[22m`,
 			getThinkingBorderColor: () => (text: string) => text,
 		};
@@ -413,10 +438,13 @@ if (baselineCode) {
 	const c = current.context();
 	await baseline.fire("session_start", b);
 	await current.fire("session_start", c);
-	check("layout intentionally changes from baseline", () => {
+	check("styling changes without changing baseline layout or visible content", () => {
 		assert.equal(c.footer.render(120).length, 3);
 		assert.equal(c.footer.render(60).length, 4);
 		assert.notEqual(JSON.stringify(c.footer.render(120)), JSON.stringify(b.footer.render(120)));
+		for (const width of [0, 1, 20, 36, 44, 60, 79, 80, 100, 139, 140, 160, 200]) {
+			assert.deepEqual(c.footer.render(width).map(strip), b.footer.render(width).map(strip), `Visible layout changed at ${width}`);
+		}
 	});
 	await baseline.fire("before_agent_start", b);
 	await current.fire("before_agent_start", c);
@@ -566,6 +594,12 @@ if (baselineCode) {
 			assert.ok(/\[[^\]]+\]/.test(rendered), `${width}: ${rendered}`);
 			assert.ok(rendered.includes("working 3s") && rendered.includes("until compact 82k"));
 			assert.ok(state.footer.render(width).every((r: string) => visibleWidth(r) <= width));
+			const row = state.footer.render(width)[1];
+			const cells = styledCells(row);
+			const start = cells.findIndex(c => c.text === "[");
+			const end = cells.findIndex((c, i) => i > start && c.text === "]");
+			assert.ok(start >= 0 && end > start);
+			assert.ok(cells.slice(start, end + 1).every(c => c.color === colors.muted && !c.bold), `Long provider style at ${width}`);
 		}
 		assert.ok(text(80).includes("…"));
 		state.ctx.model = model;
@@ -628,6 +662,66 @@ if (baselineCode) {
 		assert.ok(text(80).includes("auto compact off"));
 		assert.ok(!text(200).includes("until compact"));
 	});
+	await h.fire("session_shutdown", state);
+}
+
+{
+	const h = harness(code);
+	const state = h.context();
+	await h.fire("session_start", state);
+	check("model is bold accent and checkout is bold neutral while metadata stays quiet", () => {
+		const rows = state.footer.render(200);
+		assertStyle(rows[0], "one", "text", true);
+		assertStyle(rows[0], "main", "muted");
+		assertStyle(rows[0], "2", "warning");
+		assertStyle(rows[1], "Model Name", "accent", true);
+		assertStyle(rows[1], " [router]", "muted");
+		assertStyle(rows[2], state.ctx.sessionManager.getSessionId(), "muted");
+		for (const text of ["$0.123", "in 1.0k", "out 2.0k", "cache 4.1k"]) assertStyle(rows[2], text, "dim");
+		assertStyle(rows[2], "80%", "success");
+	});
+	check("truncated models retain bold accent without leaking into the provider or context", () => {
+		state.ctx.model = { id: "eu.anthropic.claude-sonnet-4-6", name: "Sonnet", provider: "amazon-bedrock" };
+		for (const width of [20, 31, 36, 60, 79, 80, 90, 139, 140, 200]) {
+			const row = state.footer.render(width)[1];
+			const cells = styledCells(row);
+			const bracket = cells.findIndex(c => c.text === "[");
+			assert.ok(bracket > 0, `Missing provider at ${width}`);
+			const end = cells.findIndex((c, i) => i >= bracket && c.text === "]");
+			assert.ok(end > bracket);
+			assert.ok(cells.slice(0, bracket).filter(c => c.text !== " ").every(c => c.color === colors.accent && c.bold), `Model styling at ${width}: ${JSON.stringify(row)}`);
+			assert.ok(cells.slice(bracket, end + 1).every(c => c.color === colors.muted && !c.bold), `Provider styling at ${width}`);
+			if (width >= 36) assertStyle(row, "eu.", "accent", true);
+			if (strip(row).includes("context")) assertStyle(row, "context ", "dim");
+		}
+		state.ctx.model = { id: "model-id", name: "Model Name", provider: "router" };
+	});
+	check("cache reuse has neutral moderate values and green positive results", () => {
+		for (const [hit, color] of [[0, "dim"], [49, "dim"], [50, "muted"], [79, "muted"], [80, "success"], [100, "success"]] as const) {
+			state.ctx.sessionManager.getBranch = () => [{ type: "message", message: { role: "assistant", stopReason: "stop",
+				usage: { input: 100 - hit, output: 0, cacheRead: hit, cacheWrite: 0, cost: { total: 0 } } } }];
+			assertStyle(state.footer.render(200)[2], `${hit}%`, color);
+		}
+	});
+	check("context colors preserve compaction boundaries without accenting healthy usage", () => {
+		for (const [tokens, color] of [[30000, "muted"], [74999, "muted"], [75000, "warning"], [94999, "warning"], [95000, "error"], [120000, "error"]] as const) {
+			state.ctx.getContextUsage = () => ({ tokens, contextWindow: 116384, percent: tokens / 116384 * 100 });
+			const row = state.footer.render(200)[1];
+			const cells = styledCells(row);
+			const text = strip(row);
+			const start = text.indexOf("until compact ") + "until compact ".length;
+			assert.equal(cells[start].color, colors[color], `Headroom at ${tokens}`);
+			const fill = cells.filter(c => c.text === "█");
+			assert.ok(fill.length > 0 && fill.every(c => c.color === colors[color]), `Context fill at ${tokens}`);
+		}
+	});
+	await h.fire("before_agent_start", state);
+	await h.advance(599999);
+	check("working timer stays yellow before ten minutes", () => assertStyle(state.footer.render(200)[0], "9m", "warning"));
+	await h.advance(1);
+	check("working timer becomes red at ten minutes", () => assertStyle(state.footer.render(200)[0], "10m", "error"));
+	await h.fire("agent_settled", state);
+	check("settled footer has no working timer", () => assert.ok(!strip(state.footer.render(200)[0]).includes("working")));
 	await h.fire("session_shutdown", state);
 }
 

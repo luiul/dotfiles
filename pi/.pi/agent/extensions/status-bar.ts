@@ -61,6 +61,8 @@ interface CheckoutIdentity {
 
 interface FooterSegment {
 	text: string;
+	// Reuse widths already measured for model/provider truncation.
+	measuredWidth?: number;
 	priority: number;
 	required?: boolean;
 	minWidth?: number;
@@ -79,7 +81,7 @@ const statusText = (text: string): string => text
 // get their space before long left labels expand. The UUID's minimum is its full
 // width, so optional right metrics can never force it to shorten.
 const fitGroups = (left: FooterSegment[], right: FooterSegment[], width: number): string => {
-	const ordered = [left, right].flatMap((segments, side) => segments.map((segment, index) => ({ ...segment, side, index, fullWidth: visibleWidth(segment.text) })))
+	const ordered = [left, right].flatMap((segments, side) => segments.map((segment, index) => ({ ...segment, side, index, fullWidth: segment.measuredWidth ?? visibleWidth(segment.text) })))
 		.filter(s => s.text).sort((a, b) => a.priority - b.priority || b.side - a.side || a.index - b.index);
 	const selected: { segment: typeof ordered[number]; width: number }[] = [];
 	let remaining = Math.max(0, width);
@@ -355,11 +357,10 @@ export default function (pi: ExtensionAPI) {
 				const ratio = contextWindow > 0 ? tokens / contextWindow : 0;
 				const filled = Math.min(slots, Math.max(0, Math.round(ratio * slots)));
 				const compactRatio = usable > 0 ? tokens / usable : ratio;
-				// one-modern restyle (2026-10-24): the healthy fill is the accent blue, not
-				// success green — a usage bar is state, not a verdict. Warning/error
-				// escalation by compaction proximity is unchanged.
+				// Healthy usage stays neutral; accent identifies the active model.
+				// Warning/error still track proximity to automatic compaction.
 				const color =
-					compactRatio >= 0.95 ? "error" : compactRatio >= 0.75 ? "warning" : "accent";
+					compactRatio >= 0.95 ? "error" : compactRatio >= 0.75 ? "warning" : "muted";
 				// Slot (1-based) just before which auto-compaction becomes reachable.
 				const threshold =
 					compaction.enabled && contextWindow > 0
@@ -424,20 +425,22 @@ export default function (pi: ExtensionAPI) {
 					const modelWidth = visibleWidth(cleanModel);
 					const provider = m ? ` [${cleanProvider}]` : "";
 					const providerWidth = visibleWidth(provider);
-					const modelText = theme.fg("muted", cleanModel + provider);
+					const modelText = theme.fg("accent", theme.bold(cleanModel)) + theme.fg("muted", provider);
 					const modelSegment: FooterSegment = {
-						text: modelText, priority: 2, required: true,
+						text: modelText, measuredWidth: modelWidth + providerWidth, priority: 2, required: true,
 						minWidth: Math.min(modelWidth + providerWidth, Math.max(0, width), 32),
 						render: size => {
 							if (size >= modelWidth + providerWidth) return modelText;
-							if (size < 4) return truncateToWidth(modelText, size, "…");
+							// The width helper resets SGR before its ellipsis; style it explicitly.
+							const ellipsis = theme.fg("accent", theme.bold("…"));
+							if (size < 4) return theme.fg("accent", theme.bold(truncateToWidth(cleanModel, size, ellipsis)));
 							const tagWidth = Math.min(providerWidth, Math.max(0, size - Math.min(3, modelWidth)));
-							const tag = m ? ` [${truncateToWidth(cleanProvider, Math.max(0, tagWidth - 3), "…")}]` : "";
-							return theme.fg("muted", truncateToWidth(cleanModel, Math.max(0, size - visibleWidth(tag)), "…") + tag);
+							const tag = m ? ` [${tagWidth >= providerWidth ? cleanProvider : plain(truncateToWidth(cleanProvider, Math.max(0, tagWidth - 3), "…"))}]` : "";
+							return theme.fg("accent", theme.bold(truncateToWidth(cleanModel, Math.max(0, size - visibleWidth(tag)), ellipsis))) + theme.fg("muted", tag);
 						},
 					};
 					const identity: FooterSegment[] = [
-						{ text: theme.fg("accent", theme.bold(plain(project))), priority: 0, required: true, minWidth: Math.min(12, visibleWidth(plain(project))) },
+						{ text: theme.fg("text", theme.bold(plain(project))), priority: 0, required: true, minWidth: Math.min(12, visibleWidth(plain(project))) },
 						{ text: checkout ? label("worktree", checkout.worktree) : "", priority: 1, required: true, minWidth: 12 },
 						{ text: footerData.getGitBranch() ? label("branch", footerData.getGitBranch()!) : "", priority: 2, minWidth: 12 },
 						{ text: checkout?.subdirectory ? label("dir", checkout.subdirectory) : "", priority: 5, minWidth: 10 },
@@ -470,20 +473,20 @@ export default function (pi: ExtensionAPI) {
 						{ text: usage?.percent != null ? theme.fg("muted", `${Math.round(usage.percent)}%`) : "", priority: 8 },
 						{ text: contextTokens != null ? contextBar(contextTokens, contextWindow, usableWindow, 10) : "", priority: 9 },
 					];
-					const hitColor = lastHitRate != null && lastHitRate >= 80 ? "success" : lastHitRate != null && lastHitRate >= 50 ? "warning" : "dim";
+					const hitColor = lastHitRate != null && lastHitRate >= 80 ? "success" : lastHitRate != null && lastHitRate >= 50 ? "muted" : "dim";
 					const metrics: FooterSegment[] = [
-						{ text: theme.fg("muted", `$${cost.toFixed(3)}`), priority: 4 },
+						{ text: theme.fg("dim", `$${cost.toFixed(3)}`), priority: 4 },
 						{ text: lastHitRate != null ? theme.fg("dim", "hit ") + theme.fg(hitColor, `${Math.round(lastHitRate)}%`) : "", priority: 5 },
-						{ text: label("in", fmtTokens(input)), priority: 7 },
-						{ text: label("out", fmtTokens(output)), priority: 7 },
-						{ text: label("cache", fmtTokens(cache)), priority: 7 },
+						{ text: theme.fg("dim", `in ${fmtTokens(input)}`), priority: 7 },
+						{ text: theme.fg("dim", `out ${fmtTokens(output)}`), priority: 7 },
+						{ text: theme.fg("dim", `cache ${fmtTokens(cache)}`), priority: 7 },
 					];
 					const statuses = footerData.getExtensionStatuses?.();
 					const extensions: FooterSegment[] = [...(statuses?.values() ?? [])].filter(Boolean)
 						.map(s => ({ text: relabelMeterLetters(statusText(s)), priority: 2 }));
 					// A UUID is never shortened if 36 columns fit. Its label yields first.
 					const session: FooterSegment = {
-						text: theme.fg("dim", width >= 44 ? "session " : "") + theme.fg("accent", id),
+						text: theme.fg("dim", width >= 44 ? "session " : "") + theme.fg("muted", id),
 						priority: 0, required: true, minWidth: Math.min(width, width >= 44 ? id.length + 8 : id.length),
 					};
 					const sessionName: FooterSegment = { text: name ? label("name", name) : "", priority: 6, minWidth: 10 };

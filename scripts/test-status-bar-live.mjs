@@ -38,6 +38,10 @@ function run(binary, args, optional = false) {
   catch (error) { if (optional) return ''; throw new Error(`${binary} ${args.join(' ')}: ${error.stderr ?? error.message}`); }
 }
 function tmux(...args) { return run('tmux', args); }
+const [checkoutRoot, commonGit, ownGit] = run('git', ['-C', repo, 'rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir', '--git-dir']).trimEnd().split('\n');
+const repository = commonGit.split('/').at(-1) === '.git' ? dirname(commonGit).split('/').at(-1) : checkoutRoot.split('/').at(-1);
+const worktree = commonGit === ownGit ? 'main' : checkoutRoot.split('/').at(-1) === repository ? dirname(checkoutRoot).split('/').at(-1) : checkoutRoot.split('/').at(-1);
+const branch = run('git', ['-C', repo, 'branch', '--show-current']).trim();
 function events(host) {
   if (!existsSync(host.events)) return [];
   // Ignore an incomplete final write, never discard earlier events.
@@ -45,6 +49,52 @@ function events(host) {
   return text.slice(0, text.lastIndexOf('\n') + 1).split('\n').filter(Boolean).map((line) => JSON.parse(line));
 }
 function capture(host) { return tmux('capture-pane', '-p', '-t', host.name); }
+function assertIdentityStyles(host, modelName = 'GPT-6.1 Sol') {
+  const raw = tmux('capture-pane', '-p', '-e', '-t', host.name);
+  const cells = [];
+  let bold = false, color = 'default';
+  for (const match of raw.matchAll(/\x1b\[([0-9;]*)m|([^\x1b])/g)) {
+    if (match[1] !== undefined) {
+      const codes = (match[1] || '0').split(';').map(Number);
+      for (let i = 0; i < codes.length; i++) {
+        const code = codes[i];
+        if (code === 0) { bold = false; color = 'default'; }
+        else if (code === 1) bold = true;
+        else if (code === 22) bold = false;
+        else if (code === 39) color = 'default';
+        else if (code >= 30 && code <= 37 || code >= 90 && code <= 97) color = String(code);
+        else if (code === 38 && [2, 5].includes(codes[i + 1])) {
+          const count = codes[i + 1] === 2 ? 4 : 2;
+          color = codes.slice(i + 1, i + 1 + count).join(';'); i += count;
+        }
+      }
+    } else cells.push({ text: match[2], color, bold });
+  }
+  const rawText = cells.map(c => c.text).join('');
+  const lines = rawText.split('\n');
+  const sessionRow = lines.findLastIndex(line => line.includes(current(host).uuid));
+  const firstRow = Math.max(0, sessionRow - (host.width >= 80 ? 2 : 3));
+  const start = lines.slice(0, firstRow).reduce((n, line) => n + line.length + 1, 0);
+  const end = start + lines.slice(firstRow, sessionRow + 1).reduce((n, line) => n + line.length + 1, 0);
+  const footerCells = cells.slice(start, end);
+  const text = footerCells.map(c => c.text).join('');
+  const segment = (value) => {
+    const at = text.lastIndexOf(value);
+    assert(at >= 0, `Missing styled ${value}: ${text}`);
+    return footerCells.slice(at, at + value.length);
+  };
+  const model = segment(modelName), tag = segment(`[${provider}]`);
+  assert(model.every(c => c.bold && c.color === model[0].color), 'Model must be uniformly bold');
+  assert(tag.every(c => !c.bold && c.color === tag[0].color), 'Provider must not inherit model bold');
+  assert.notEqual(model[0].color, tag[0].color, 'Model accent must differ from muted provider');
+  const project = segment(host.cwd === repo ? repository : host.cwd.split('/').at(-1));
+  assert(project.every(c => c.bold && c.color === project[0].color), 'Location must be uniformly bold');
+  assert.notEqual(project[0].color, model[0].color, 'Location and model must use distinct colors');
+  const uuid = segment(current(host).uuid);
+  assert(uuid.every(c => !c.bold && c.color === tag[0].color), 'UUID must share muted provider role');
+  check(`${host.mode}: ${host.width}-column real footer preserves prominent model and quiet provider/UUID styles`);
+  return { model: model[0].color, provider: tag[0].color, project: project[0].color };
+}
 function alive(pid) { try { process.kill(pid, 0); return true; } catch { return false; } }
 function hostErrors(host, text) {
   assert(!/Extension error|Extension ".*" error:|Failed to load extension|Unhandled|uncaughtException|TypeError:|Error in render|exceeds terminal width/i.test(text), `Host error:\n${text}`);
@@ -140,7 +190,7 @@ async function start(mode, { cwd = repo, width = 160, seeded = true, unknown = f
     // Record the exact exec'd pane PID even when extension loading fails before ready.
     host.pid = Number(tmux('display-message', '-p', '-t', host.name, '#{pane_pid}').trim());
     pids.add(host.pid);
-    await wait(host, (text, list) => list.some((e) => e.type === 'ready') && /\bsession\b/.test(text) && (!seeded || cwd !== repo || text.includes('worktree improve-status-bar')), 'first custom footer paint');
+    await wait(host, (text, list) => list.some((e) => e.type === 'ready') && /\bsession\b/.test(text) && (!seeded || cwd !== repo || text.includes(`worktree ${worktree}`)), 'first custom footer paint');
     const list = events(host);
     const ready = list.find((e) => e.type === 'ready');
     assert.equal(ready.pid, host.pid, 'Pane PID must be the actual Pi host');
@@ -148,7 +198,7 @@ async function start(mode, { cwd = repo, width = 160, seeded = true, unknown = f
     assert.equal(ready.provider, provider);
     assert.equal(ready.cwd, cwd);
     assert(list.some((e) => e.type === 'clipboard-preload') && list.some((e) => e.type === 'clipboard-safe'));
-    assert.deepEqual([...ready.commands].sort(), ['sb-live-model', 'sb-live-snapshot', 'session-ref', 'statusbar'].sort(), 'Inherited extension commands');
+    assert.deepEqual([...ready.commands].sort(), ['sb-live-model', 'sb-live-snapshot', 'sb-live-theme', 'session-ref', 'statusbar'].sort(), 'Inherited extension commands');
     if (initial) assert.equal(ready.uuid, initial.uuid);
     return host;
   } catch (error) { await stop(host); throw error; }
@@ -231,10 +281,14 @@ function assertFooter(host, text, { working = false, context = 'known', identity
     assert(lines[1].startsWith(`GPT-6.1 Sol [${provider}]`), `Model and immediate bracketed provider are not at column 0:\n${full}`);
   }
   if (identity) {
-    assert(lines[0].startsWith('dotfiles'), `Repository identity is not at column 0:\n${full}`);
+    assert(lines[0].startsWith(repository), `Repository identity is not at column 0:\n${full}`);
     if (host.width >= 100) {
-      assert(/worktree\s+improve-status-bar(?:\/dotfiles)?\b/.test(lines[0]), `Worktree identity missing:\n${full}`);
-      assert(/branch\s+improve-status-bar\b/.test(lines[0]), `Branch identity missing:\n${full}`);
+      // Identity may truncate before right-side state. Require exact values at ample widths.
+      assert(lines[0].includes('worktree '), `Worktree identity missing:\n${full}`);
+      if (host.width >= 160) {
+        assert(lines[0].includes(`worktree ${worktree}`), `Wrong worktree identity:\n${full}`);
+        assert(!branch || lines[0].includes(`branch ${branch}`), `Wrong branch identity:\n${full}`);
+      }
     }
   } else assert(lines[0].startsWith(host.cwd.split('/').at(-1)), `Cwd fallback is not at column 0:\n${full}`);
   if (git.test(lines[0]) || timer.test(lines[0])) {
@@ -288,8 +342,9 @@ async function resize(host, width, options) {
     try { lines = footer(screen, width); } catch { previous = ''; return false; }
     // A stale four-row capture can look like three rows after enlargement.
     // Fence on row positions before treating repeated captures as a repaint.
-    const project = host.cwd === repo ? 'dotfiles' : host.cwd.split('/').at(-1);
+    const project = host.cwd === repo ? repository : host.cwd.split('/').at(-1);
     if (!lines[0].startsWith(project) || !lines[1].startsWith('GPT-6.1 Sol') ||
+      !lines.at(-1).startsWith(width >= 44 ? `session ${current(host).uuid}` : current(host).uuid) ||
       (width >= 80 && !/\bcontext\b/.test(lines[1]))) {
       previous = '';
       return false;
@@ -300,6 +355,7 @@ async function resize(host, width, options) {
     return stable;
   }, `${width}-column footer`);
   assertFooter(host, text, options);
+  if (width >= 60) assertIdentityStyles(host);
   check(`${host.mode}: ${width}-column footer fits with ${width >= 80 ? 3 : 4} rows`);
 }
 async function copy(host, expected) {
@@ -334,6 +390,7 @@ async function lifecycle(mode) {
   try {
     const first = capture(host);
     const startupRows = assertFooter(host, first)[2];
+    assertIdentityStyles(host);
     for (const value of ['in 30k', 'out 1.0k', 'cache 40k', '$0.036']) {
       assert(startupRows.includes(value), `Seeded usage or cost missing from footer: ${value}\n${startupRows}`);
     }
@@ -363,6 +420,20 @@ async function lifecycle(mode) {
       assertFooter(host, settled);
     }
     await resize(host, 160);
+    const darkColors = assertIdentityStyles(host);
+    await command(host, '/sb-live-model alternate');
+    await wait(host, (screen) => footer(screen, host.width)[1].startsWith('Kimi K3 Preview'), 'distinct model footer identity');
+    assertIdentityStyles(host, 'Kimi K3 Preview');
+    assert(!footer(capture(host), host.width)[1].includes('GPT-6.1 Sol'), 'Previous model identity survived switch');
+    await command(host, '/sb-live-theme light');
+    await wait(host, (screen, list) => list.some(e => e.type === 'theme' && e.theme === 'light') && footer(screen, host.width)[1].startsWith('Kimi K3 Preview'), 'light theme repaint');
+    const lightColors = assertIdentityStyles(host, 'Kimi K3 Preview');
+    assert.notDeepEqual(lightColors, darkColors, 'Theme switch retained dark footer colors');
+    await command(host, '/sb-live-theme dark');
+    await command(host, '/sb-live-model fixture');
+    await wait(host, screen => footer(screen, host.width)[1].startsWith('GPT-6.1 Sol'), 'original model/theme restored');
+    assert.deepEqual(assertIdentityStyles(host), darkColors, 'Restored theme retained light colors');
+    check(`${mode}: model identity and real theme changes repaint without stale footer styles`);
     const records = readFileSync(current(host).session, 'utf8').trim().split('\n').map(JSON.parse);
     const usage = records.filter((e) => e.type === 'message' && e.message.role === 'assistant').at(-1).message.usage;
     assert.deepEqual([usage.input, usage.output, usage.cacheRead, usage.cost.total], [30000, 1000, 40000, 0.036]);
@@ -411,7 +482,7 @@ async function fallback(mode, compact) {
     const text = capture(host);
     assertFooter(host, text, options);
     assert(text.includes(cwd.split('/').at(-1)), 'Non-Git cwd fallback missing');
-    assert(!/worktree\s+improve-status-bar|branch\s+improve-status-bar/.test(footer(text, 160).join('\n')), 'Non-Git host inherited worktree state');
+    assert(!/\bworktree\s|\bbranch\s/.test(footer(text, 160).join('\n')), 'Non-Git host inherited worktree state');
     await resize(host, 60, options);
     await resize(host, 160, options);
     await copy(host, true);

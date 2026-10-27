@@ -1,0 +1,67 @@
+{
+  "debug": false,
+  "sessionFallback": false,
+  "compaction": "auto",
+  "compactionEngine": "blackhole",
+  "compactionSummaryMode": "default",
+  "skipForProviders": [],
+  "tailBehavior": "minimal",
+  "showPreCompactionMessage": true,
+  "retainedToolOutputMaxTokens": 20000,
+  "recallResponseMaxChars": 48000,
+  "midRunCompaction": "off",
+  "observeAfterTokens": 15000,
+  "reflectAfterTokens": 25000,
+  "compactAfterPreset": "default",
+  "observationsPoolMaxTokens": 20000,
+  "reflectionsPoolMaxTokens": 8000,
+  "fullFoldAlways": true,
+  "observationsPoolTargetTokens": 10000,
+  "reflectorInputMaxTokens": 80000,
+  "dropperInputMaxTokens": 80000,
+  "dropperPressureThreshold": 0.7,
+  "dropperPoolFullnessThreshold": 0.1,
+  "observerChunkMaxTokens": 40000,
+  "observerPreambleMaxTokens": 0,
+  "agentMaxTurns": 16,
+  "memory": true,
+  "debugLog": false,
+  "statusBar": true,
+  "showWorkerNotifications": true,
+  "observerModel": {
+    "provider": "ai-model-router",
+    "id": "DeepSeek V4 Flash",
+    "thinking": "off"
+  },
+  "reflectorModel": {
+    "provider": "ai-model-router",
+    "id": "DeepSeek V4 Flash",
+    "thinking": "low"
+  },
+  "dropperModel": {
+    "provider": "ai-model-router",
+    "id": "DeepSeek V4 Flash",
+    "thinking": "off"
+  },
+  "observerFallbackModels": [
+    {
+      "provider": "ai-model-router",
+      "id": "GLM 5.3 Flash",
+      "thinking": "off"
+    }
+  ],
+  "reflectorFallbackModels": [
+    {
+      "provider": "ai-model-router",
+      "id": "GLM 5.3 Flash",
+      "thinking": "off"
+    }
+  ],
+  "dropperFallbackModels": [
+    {
+      "provider": "ai-model-router",
+      "id": "GLM 5.3 Flash",
+      "thinking": "off"
+    }
+  ]
+}

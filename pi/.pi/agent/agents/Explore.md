@@ -5,7 +5,7 @@ tools: read, bash, grep, find, ls
 extensions: true
 exclude_extensions: canopy-status, pi-blackhole
 skills: true
-model: ai-model-router/gpt-6-luna
+model: ai-model-router/GPT-6 Luna
 thinking: low
 prompt_mode: replace
 ---

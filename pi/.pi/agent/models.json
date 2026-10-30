@@ -560,6 +560,19 @@
           "maxTokens": 262144
         },
         {
+          "id": "DeepSeek V4.1 Flash Fast",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 0.54,
+            "output": 2.16,
+            "cacheRead": 0.0126,
+            "cacheWrite": 0
+          },
+          "contextWindow": 1048576,
+          "maxTokens": 131072
+        },
+        {
           "id": "Fast",
           "input": ["text", "image"],
           "cost": {
@@ -607,7 +620,7 @@
             "cacheRead": 0.01,
             "cacheWrite": 0.125
           },
-          "contextWindow": 1050000,
+          "contextWindow": 922000,
           "maxTokens": 128000
         },
         {
@@ -664,7 +677,7 @@
     }
   },
   "grove": {
-    "generatedAt": "2026-10-27T23:05:11Z",
+    "generatedAt": "2026-10-29T13:19:02Z",
     "bedrock": {
       "defaultRegion": "eu-west-1",
       "regions": {

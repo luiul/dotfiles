@@ -69,6 +69,30 @@
                                     }
                                 ],
                                 "type": "basic"
+                            },
+                            {
+                                "description": "Copy in Orca terminals: pass Cmd+C through and add Cmd+Shift+C for Kitty-active TUIs (pi copy).",
+                                "type": "basic",
+                                "from": {
+                                    "key_code": "c",
+                                    "modifiers": { "mandatory": ["command"] }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "c",
+                                        "modifiers": ["command"]
+                                    },
+                                    {
+                                        "key_code": "c",
+                                        "modifiers": ["command", "shift"]
+                                    }
+                                ],
+                                "conditions": [
+                                    {
+                                        "type": "frontmost_application_if",
+                                        "bundle_identifiers": ["^com\\.stablyai\\.orca$"]
+                                    }
+                                ]
                             }
                         ]
                     }

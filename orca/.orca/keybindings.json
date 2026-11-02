@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "keybindings": {},
+  "platforms": {
+    "darwin": {
+      "voice.dictation": [],
+      "worktree.navigateUp": [],
+      "worktree.navigateDown": []
+    },
+    "linux": {},
+    "win32": {}
+  }
+}

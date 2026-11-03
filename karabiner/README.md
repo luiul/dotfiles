@@ -1,19 +1,13 @@
 # karabiner
 
-Karabiner-Elements rewrites `~/.config/karabiner/karabiner.json` in place
-(reformatting it) whenever its settings change, which silently replaces any
-stow symlink with a real file. Because of that, this package is **not
-stowable** — `karabiner.json` is kept here as a versioned export, the same way
-the `rectangle` package works.
+Karabiner-Elements rewrites `~/.config/karabiner/karabiner.json` whenever its settings change.
+This replaces any stow symlink with a real file.
+This package is **not stowable**.
+It keeps `karabiner.json` as a versioned export, like the `rectangle` package.
 
-## Command center shortcut
+## Super key
 
-`cmd+shift+c` calls `~/.local/bin/ghostty-cc mark` when Ghostty is frontmost.
-It marks the current tab and clears any previous command center designation.
-`super+c` (Caps Lock + C) calls `~/.local/bin/ghostty-cc` from any app.
-It focuses the marked tab, or creates and marks a new window if none exists.
-Caps Lock still maps to Command, Control, Option, and Shift.
-See `ghostty/README.md` for setup and tests.
+Caps Lock maps to Command, Control, Option, and Shift.
 
 ## VS Code shortcut
 
@@ -45,6 +39,5 @@ and commit.
 
 ## Why no `stow karabiner`
 
-`setup.sh` skips this package, and it is excluded from the stow list because
-Karabiner would immediately overwrite the symlink with a real file on its next
-config write. It is tracked here purely as a versioned export.
+`setup.sh` skips this package because Karabiner would replace the symlink on its next config write.
+The file is tracked here only as a versioned export.

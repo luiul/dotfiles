@@ -15,7 +15,7 @@ const owned = new Set();
 const integrations = new Set();
 const sandbox = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'repo-guard-tests-')));
 const env = { ...process.env, HOME: sandbox, XDG_CONFIG_HOME: sandbox, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_AUTHOR_NAME: 'Guard Test', GIT_AUTHOR_EMAIL: 'guard@example.invalid', GIT_COMMITTER_NAME: 'Guard Test', GIT_COMMITTER_EMAIL: 'guard@example.invalid' };
-for (const key of Object.keys(env)) if (/^(GIT_DIR|GIT_WORK_TREE|GIT_COMMON_DIR|GIT_INDEX_FILE|GIT_CONFIG_COUNT|GIT_CONFIG_KEY_|GIT_CONFIG_VALUE_|WORKTRUNK_)/.test(key)) delete env[key];
+for (const key of Object.keys(env)) if (/^(GIT_DIR|GIT_WORK_TREE|GIT_COMMON_DIR|GIT_INDEX_FILE|GIT_CONFIG_COUNT|GIT_CONFIG_KEY_|GIT_CONFIG_VALUE_|WORKTRUNK_|REPO_GUARD_STATUS_TIMEOUT_MS$)/.test(key)) delete env[key];
 function exec(command, args, cwd, extra = {}) {
   return execFileSync(command, args, { cwd, env: { ...env, ...extra }, encoding: 'utf8', timeout: 40000, maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 }
@@ -110,6 +110,84 @@ test('imports are inert; parser and NUL status paths have no data content', () =
   assert.throws(() => api.parse(['publish', '--verify', 'true']), /approved/);
   assert.throws(() => api.parse(['publish', '--approved']), /verify/);
   assert.throws(() => api.parse(['status', '--force']), /Unknown/);
+});
+
+test('status queries share a monotonic deadline across parallel work and ancestry', async t => {
+  let clock = 100, wallClock = 0;
+  t.mock.method(Date, 'now', () => wallClock);
+  const budgets = [], result = { code: 0, stdout: '', stderr: '' };
+  const query = api.statusQuery('/unused', 10000, {
+    now: () => clock,
+    execute: async (cmd, args, cwd, options) => {
+      assert.equal(cmd, 'git'); assert.equal(cwd, '/unused');
+      budgets.push(options.timeout); wallClock += 100000; return result;
+    },
+  });
+  assert.deepEqual(await Promise.all([
+    query('repository paths', ['rev-parse']), query('working tree', ['status']),
+  ]), [result, result]);
+  clock += 4500;
+  assert.equal(await query('ancestry check', ['merge-base'], true), result);
+  assert.deepEqual(budgets, [10000, 10000, 5500]);
+  assert.equal(wallClock, 300000);
+});
+
+test('exhausted status budget launches no further Git query', async () => {
+  let clock = 0, calls = 0;
+  const query = api.statusQuery('/unused', 100, {
+    now: () => clock, execute: async () => { calls++; return { code: 0 }; },
+  });
+  await query('working tree', ['status']);
+  clock = 100;
+  await assert.rejects(query('ancestry check', ['merge-base'], true), /Status deadline exceeded during ancestry check \(100 ms budget\)/);
+  assert.equal(calls, 1);
+});
+
+test('status rejects late completion and labels timeouts without hiding other errors', async () => {
+  let clock = 0;
+  const late = api.statusQuery('/unused', 100, {
+    now: () => clock, execute: async () => { clock = 100; return { code: 0 }; },
+  });
+  await assert.rejects(late('working tree', ['status']), /Status deadline exceeded during working tree \(100 ms budget\)/);
+  const timedOut = api.statusQuery('/unused', 100, {
+    execute: async () => { throw Object.assign(new Error('git timed out'), { code: 'ETIMEDOUT' }); },
+  });
+  await assert.rejects(timedOut('ancestry check', ['merge-base'], true), /Status deadline exceeded during ancestry check \(100 ms budget\)/);
+  const failure = new Error('Git executable missing');
+  const broken = api.statusQuery('/unused', 100, { execute: async () => { throw failure; } });
+  await assert.rejects(broken('repository paths', ['rev-parse']), error => error === failure);
+});
+
+test('invalid status budget fails before launching Git', async t => {
+  const previous = process.env.REPO_GUARD_STATUS_TIMEOUT_MS;
+  t.after(() => {
+    if (previous === undefined) delete process.env.REPO_GUARD_STATUS_TIMEOUT_MS;
+    else process.env.REPO_GUARD_STATUS_TIMEOUT_MS = previous;
+  });
+  for (const value of ['0', '49', '120001', '100.5', 'bad', 'Infinity', ' ']) {
+    process.env.REPO_GUARD_STATUS_TIMEOUT_MS = value;
+    await assert.rejects(api.status('/does-not-exist'), /Invalid REPO_GUARD_STATUS_TIMEOUT_MS \(50 to 120000 ms\)/);
+  }
+});
+
+test('default status budget allows a slow ancestry query beyond the old four-second limit', () => {
+  const f = fixture(), bin = path.join(f.dir, 'slow-ancestry-bin'); fs.mkdirSync(bin);
+  const paths = git(f.feature, 'rev-parse', '--show-toplevel', '--path-format=absolute', '--git-common-dir', '--absolute-git-dir');
+  const head = git(f.feature, 'rev-parse', 'HEAD');
+  // Fixed local responses avoid multiplying runtime startup costs in this timing test.
+  fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\ncase "$1" in
+rev-parse) printf '%s\\n' ${quote(paths)} ;;
+status) printf '%s\\0' ${quote(`# branch.oid ${head}`)} '# branch.head feature' ;;
+symbolic-ref) printf '%s\\n' 'refs/remotes/origin/main' ;;
+config) printf '%s\\n' ${quote(f.origin)} ;;
+ls-files) : ;;
+merge-base) sleep 4.5 ;;
+*) exit 2 ;;
+esac\n`, { mode: 0o755 });
+  const start = Date.now();
+  const result = guard(f.feature, ['status'], { PATH: `${bin}:${env.PATH}` });
+  assert.equal(result.code, 0, result.error); assert.equal(result.publication, 'cached');
+  assert.ok(Date.now() - start >= 4500);
 });
 
 test('status is exact, local only, cached publication is never remote proof', () => {
@@ -210,6 +288,17 @@ test('dirty primary defers without touching index or files; explicit refresh is 
   git(f.root, 'reset', '--hard'); fs.unlinkSync(path.join(f.root, 'untracked'));
   const refresh = guard(f.feature, ['refresh', '--approved']); assert.equal(refresh.code, 0); assert.equal(refresh.refreshed, true);
   assert.equal(git(f.root, 'rev-parse', 'HEAD'), source);
+});
+
+test('dirty source still refuses publication with the new status budget', () => {
+  const f = fixture(); commit(f.feature, 'feature', 'approved commit');
+  write(f.feature, 'base', 'unrelated edit');
+  const before = remoteHead(f), index = git(f.feature, 'write-tree');
+  const result = publish(f);
+  assert.equal(result.code, 1); assert.match(result.error, /Dirty checkout or operation in progress/);
+  assert.equal(remoteHead(f), before); assert.equal(git(f.feature, 'write-tree'), index);
+  assert.equal(fs.readFileSync(path.join(f.feature, 'base'), 'utf8'), 'unrelated edit');
+  assert.equal(fs.existsSync(path.join(f.root, '.git/repo-guard.lock')), false);
 });
 
 test('refresh preserves ignored collisions with newly tracked incoming paths', () => {
@@ -424,12 +513,12 @@ test('status deadline and parent death terminate local Git command grandchildren
   for (const parentDeath of [false, true]) {
     const f = fixture(), bin = path.join(f.dir, 'slow-bin'), pid = path.join(f.dir, 'status-child.pid'); fs.mkdirSync(bin);
     fs.writeFileSync(path.join(bin, 'git'), `#!/usr/bin/env node\nconst cp=require('child_process'),fs=require('fs');if(process.argv[2]==='rev-parse'){const child=cp.spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});fs.writeFileSync(${JSON.stringify(pid)},String(child.pid));setInterval(()=>{},1000)}else{const r=cp.spawnSync(${JSON.stringify(realGit)},process.argv.slice(2),{stdio:'inherit'});process.exit(r.status??1)}\n`, { mode: 0o755 });
-    const start = Date.now(), running = backgroundGuard(f.feature, ['status'], { PATH: `${bin}:${env.PATH}` });
+    const start = Date.now(), running = backgroundGuard(f.feature, ['status'], { PATH: `${bin}:${env.PATH}`, REPO_GUARD_STATUS_TIMEOUT_MS: '4000' });
     const done = running.done.catch(() => null);
     await waitFor(pid); const child = Number(fs.readFileSync(pid, 'utf8'));
     if (parentDeath) running.child.kill('SIGKILL');
     const result = await done;
-    if (!parentDeath) { assert.equal(result.code, 1); assert.match(result.error, /timed out/); assert.ok(Date.now() - start < 5500); }
+    if (!parentDeath) { assert.equal(result.code, 1); assert.match(result.error, /Status deadline exceeded during repository paths \(4000 ms budget\)/); assert.ok(Date.now() - start < 5500); }
     let alive = true;
     for (let i = 0; i < 100; i++) { try { process.kill(child, 0); } catch (e) { if (e.code === 'ESRCH') { alive = false; break; } throw e; } await new Promise(r => setTimeout(r, 25)); }
     assert.equal(alive, false, `Leaked status descendant ${child}`);

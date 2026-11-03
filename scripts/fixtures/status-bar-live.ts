@@ -34,6 +34,8 @@ export default function (pi: ExtensionAPI) {
 				cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 1 }, contextWindow: 128000, maxTokens: 4096 },
 			{ id: "alternate", name: "Kimi K3 Preview", reasoning: true, input: ["text"],
 				cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 1 }, contextWindow: 128000, maxTokens: 4096 },
+			{ id: "GPT-6.1 Terra", name: "Daily | Coding and admin", reasoning: true, input: ["text"],
+				cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 1 }, contextWindow: 128000, maxTokens: 4096 },
 			{ id: "unavailable", name: "GPT-6.1 Sol", reasoning: true, input: ["text"],
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 0, maxTokens: 4096 },
 		],
@@ -83,7 +85,16 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_shutdown", () => note("shutdown"));
 	pi.registerCommand("sb-live-snapshot", {
 		description: "Record real host state without a model request",
-		handler: async (_args, ctx) => note("snapshot", snapshot(ctx)),
+		handler: async (args, ctx) => {
+			if (args.trim() === "statuses") {
+				ctx.ui.setStatus("fixture-mcp", "MCP 2/2");
+				ctx.ui.setStatus("fixture-memory", "blackhole ctx▕░░░░░░░░░▏");
+			} else if (args.trim() === "clear-statuses") {
+				ctx.ui.setStatus("fixture-mcp", undefined);
+				ctx.ui.setStatus("fixture-memory", undefined);
+			}
+			note("snapshot", snapshot(ctx));
+		},
 	});
 	pi.registerCommand("sb-live-theme", {
 		description: "Switch the isolated host theme",

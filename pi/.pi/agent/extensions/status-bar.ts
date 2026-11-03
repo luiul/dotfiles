@@ -1,9 +1,9 @@
 /**
  * Enhanced status bar for pi.
  *
- * Three rows separate checkout identity, active model/context, and session identity.
+ * Three rows separate checkout/cost, active model/context, and session/status.
  * Narrow terminals use four rows so the full UUID has its own space.
- * Optional metrics yield to identity, compaction headroom, and the working timer.
+ * Optional metrics yield to cost, identity, compaction headroom, and the working timer.
  * /session-ref copies a read-only context reference, never a resume command.
  *
  * The context cluster is compaction-aware: the bar shows
@@ -112,14 +112,34 @@ const fitGroups = (left: FooterSegment[], right: FooterSegment[], width: number)
 	optional(1);
 	expand(0);
 	optional(0);
-	const render = (side: number) => selected.filter(s => s.segment.side === side)
-		.sort((a, b) => a.segment.index - b.segment.index)
-		.map(({ segment, width: size }) => size >= segment.fullWidth ? segment.text : (segment.render?.(size) ?? truncateToWidth(segment.text, size, "…")))
-		.join("  ");
+	const render = (side: number) => {
+		const entries = selected.filter(s => s.segment.side === side).sort((a, b) => a.segment.index - b.segment.index);
+		let columns = Math.max(0, entries.length - 1) * 2;
+		let leadingMarks = false;
+		const text = entries.map(({ segment, width: size }) => {
+			// Leading marks can join the separator's space, so widths may not add.
+			leadingMarks ||= /^(?:\x1b\[[0-9;]*m)*\p{M}/u.test(segment.text);
+			if (size >= segment.fullWidth) {
+				columns += segment.fullWidth;
+				return segment.text;
+			}
+			const shortened = segment.render?.(size) ?? truncateToWidth(segment.text, size, "…");
+			columns += visibleWidth(shortened);
+			return shortened;
+		}).join("  ");
+		return { text, columns: leadingMarks ? visibleWidth(text) : columns, leadingMarks };
+	};
 	const l = render(0), r = render(1);
-	if (!l && !r && width > 0 && ordered.length) return truncateToWidth(ordered[0].text, width, "…");
-	if (!r) return l;
-	return l + " ".repeat(Math.max(0, width - visibleWidth(l) - visibleWidth(r))) + r;
+	if (!l.text && !r.text && width > 0 && ordered.length) return truncateToWidth(ordered[0].text, width, "…");
+	const boundMarks = (text: string): string => {
+		let size = width;
+		// Grapheme-aware truncation can itself retain a joined spacing mark.
+		while (visibleWidth(text) > width && size > 0) text = truncateToWidth(text, --size, "…");
+		return text;
+	};
+	if (!r.text) return l.leadingMarks ? boundMarks(l.text) : l.text;
+	const line = l.text + " ".repeat(Math.max(0, width - l.columns - r.columns)) + r.text;
+	return l.leadingMarks || r.leadingMarks ? boundMarks(line) : line;
 };
 
 // pi-blackhole's status segment keys its meters with single letters (bh O/P/X).
@@ -410,13 +430,14 @@ export default function (pi: ExtensionAPI) {
 					const id = plain(sm.getSessionId());
 					const { input, output, cache, cost, lastHitRate } = tally(ctx);
 					const usage = ctx.getContextUsage();
-					// Bedrock keeps the raw id (its eu./us./global. prefix encodes the
-					// invocation region, which matters here); other providers show the
-					// friendly name ("moonshotai/Kimi-K3" -> "Kimi K3").
+					// Picker role descriptions are not model identities. Keep the canonical
+					// id for these names and show only their short role as optional metadata.
+					// Bedrock also keeps its raw id, including the invocation region.
 					const m = ctx.model;
+					const role = m?.name?.match(/^(Daily|Think|Budget|Quick|Vision|Helper)\s*\|/)?.[1];
 					const model = !m
 						? "no model"
-						: m.provider === "amazon-bedrock"
+						: m.provider === "amazon-bedrock" || role
 							? m.id
 							: (m.name ?? m.id);
 					const think = thinkingTag();
@@ -474,12 +495,17 @@ export default function (pi: ExtensionAPI) {
 						{ text: contextTokens != null ? contextBar(contextTokens, contextWindow, usableWindow, 10) : "", priority: 9 },
 					];
 					const hitColor = lastHitRate != null && lastHitRate >= 80 ? "success" : lastHitRate != null && lastHitRate >= 50 ? "muted" : "dim";
-					const metrics: FooterSegment[] = [
-						{ text: theme.fg("dim", `$${cost.toFixed(3)}`), priority: 4 },
-						{ text: lastHitRate != null ? theme.fg("dim", "hit ") + theme.fg(hitColor, `${Math.round(lastHitRate)}%`) : "", priority: 5 },
+					const amount = `$${cost.toFixed(3)}`;
+					const spending: FooterSegment = { text: theme.fg("text", theme.bold(amount)), measuredWidth: amount.length, priority: 0, required: true };
+					const cacheHit: FooterSegment = { text: lastHitRate != null ? theme.fg("dim", "hit ") + theme.fg(hitColor, `${Math.round(lastHitRate)}%`) : "", priority: 5 };
+					const traffic: FooterSegment[] = [
 						{ text: theme.fg("dim", `in ${fmtTokens(input)}`), priority: 7 },
 						{ text: theme.fg("dim", `out ${fmtTokens(output)}`), priority: 7 },
 						{ text: theme.fg("dim", `cache ${fmtTokens(cache)}`), priority: 7 },
+					];
+					const modelMetadata: FooterSegment[] = [
+						{ text: role ? theme.fg("muted", role) : "", priority: 6 },
+						{ text: think, priority: 3, required: true },
 					];
 					const statuses = footerData.getExtensionStatuses?.();
 					const extensions: FooterSegment[] = [...(statuses?.values() ?? [])].filter(Boolean)
@@ -492,20 +518,19 @@ export default function (pi: ExtensionAPI) {
 					const sessionName: FooterSegment = { text: name ? label("name", name) : "", priority: 6, minWidth: 10 };
 
 					const detail = width >= DETAIL_WIDTH;
-					const summaryMetrics = detail ? metrics : metrics.slice(0, 2);
-					const checkoutRow = fitGroups(identity, gitStatus, width);
-					const sessionRow = fitGroups([session, sessionName], [...extensions, ...summaryMetrics], width);
+					const checkoutRow = fitGroups(identity, [spending, ...(detail ? traffic : []), ...gitStatus], width);
+					const sessionRow = fitGroups([session, sessionName], [...extensions, cacheHit], width);
 					if (width < NARROW_WIDTH) {
 						return [
 							checkoutRow,
-							fitGroups([modelSegment], [{ text: think, priority: 3, required: true }], width),
+							fitGroups([modelSegment], modelMetadata, width),
 							fitGroups(context.slice(0, 1), context.slice(1), width),
 							sessionRow,
 						];
 					}
 					return [
 						checkoutRow,
-						fitGroups([modelSegment, { text: think, priority: 3, required: true }], [...context, ...(detail ? contextDetails : [])], width),
+						fitGroups([modelSegment, ...modelMetadata], [...context, ...(detail ? contextDetails : [])], width),
 						sessionRow,
 					];
 				},

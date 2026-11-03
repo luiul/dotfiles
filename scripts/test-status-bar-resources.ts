@@ -438,12 +438,15 @@ if (baselineCode) {
 	const c = current.context();
 	await baseline.fire("session_start", b);
 	await current.fire("session_start", c);
-	check("styling changes without changing baseline layout or visible content", () => {
+	check("layout changes keep row counts and preserve core identity and cost", () => {
 		assert.equal(c.footer.render(120).length, 3);
 		assert.equal(c.footer.render(60).length, 4);
 		assert.notEqual(JSON.stringify(c.footer.render(120)), JSON.stringify(b.footer.render(120)));
-		for (const width of [0, 1, 20, 36, 44, 60, 79, 80, 100, 139, 140, 160, 200]) {
-			assert.deepEqual(c.footer.render(width).map(strip), b.footer.render(width).map(strip), `Visible layout changed at ${width}`);
+		for (const width of [36, 44, 60, 79, 80, 100, 139, 140, 160, 200]) {
+			const rows = c.footer.render(width).map(strip);
+			assert.ok(rows.every(row => visibleWidth(row) <= width));
+			assert.ok(rows[0].includes("$0.123"), `Cost at ${width}`);
+			assert.ok(rows.at(-1)!.includes(c.ctx.sessionManager.getSessionId()));
 		}
 	});
 	await baseline.fire("before_agent_start", b);
@@ -474,7 +477,9 @@ if (baselineCode) {
 		assert.ok(rows[1].includes("GPT-6.1 Sol [ai-model-router]"));
 		assert.ok(rows[1].includes("context 30k/128k") && rows[1].includes("until compact 82k"));
 		assert.ok(rows[2].includes(state.ctx.sessionManager.getSessionId()));
-		for (const metric of ["test session", "$0.123", "hit 80%", "in 1.0k", "out 2.0k", "cache 4.1k", "plain status"]) assert.ok(rows[2].includes(metric), metric);
+		for (const metric of ["$0.123", "in 1.0k", "out 2.0k", "cache 4.1k"]) assert.ok(rows[0].includes(metric), metric);
+		for (const metric of ["test session", "hit 80%", "plain status"]) assert.ok(rows[2].includes(metric), metric);
+		assert.ok(!rows[2].includes("$0.123") && !rows[2].includes("cache 4.1k"));
 		assert.ok(!text(200).includes("free "));
 	});
 	check("four narrow rows keep UUID, provider, context and timer before metrics", () => {
@@ -492,8 +497,42 @@ if (baselineCode) {
 			assert.ok(rows.every((row: string) => visibleWidth(row) === width), `${width}: ${rows.join("\n")}`);
 			assert.match(rows[0], / {2,}changed 2  ahead 2  behind 3$/);
 			assert.ok(rows[1].indexOf("context") > rows[1].indexOf("[ai-model-router]") + 17);
-			assert.match(rows[2], / {2,}(plain status|\$0\.123)/);
+			assert.match(rows[2], / {2,}(plain status|hit 80%)/);
 		}
+	});
+	check("role display names keep the canonical model identity and omit long purposes", () => {
+		const saved = state.ctx.model;
+		for (const [role, id, purpose] of [
+			["Daily", "GPT-6.1 Terra", "Coding and admin"],
+			["Think", "GPT-6.1 Sol", "Hard problems and advice"],
+			["Budget", "GLM 5.3", "Lower-cost coding"],
+			["Quick", "GPT-6 Luna", "Lookups and simple tasks"],
+			["Vision", "gemini-4-argon", "Images, scans and floorplans"],
+			["Helper", "GLM 5.3 Flash", "Summaries and memory checks"],
+		]) {
+			state.ctx.model = { id, name: `${role} | ${purpose}`, provider: role === "Vision" ? "google-vertex" : "ai-model-router" };
+			const row = state.footer.render(200)[1];
+			assert.ok(strip(row).startsWith(id + " ["));
+			assertStyle(row, id, "accent", true);
+			assertStyle(row, role, "muted");
+			assert.ok(!strip(row).includes(purpose));
+			for (const width of [36, 60, 79, 80, 100, 140]) assert.ok(!text(width).includes(purpose));
+		}
+		state.ctx.model = { id: "normal-id", name: "Friendly Model | Custom edition", provider: "router" };
+		assert.ok(text(200).includes("Friendly Model | Custom edition"), "Do not reinterpret arbitrary names");
+		state.ctx.model = saved;
+	});
+	check("cost has a protected full amount while traffic yields under crowding", () => {
+		const saved = state.ctx.sessionManager.getBranch;
+		state.ctx.sessionManager.getBranch = () => [{ type: "message", message: { role: "assistant", stopReason: "stop",
+			usage: { input: 1000, output: 2000, cacheRead: 4000, cacheWrite: 100, cost: { total: 12345.678 } } } }];
+		for (const width of [36, 44, 60, 79, 80, 100, 139, 140, 200]) {
+			const rows = state.footer.render(width);
+			assertStyle(rows[0], "$12345.678", "text", true);
+			assert.ok(rows.every((row: string) => visibleWidth(row) <= width));
+			assert.ok(!strip(rows.at(-1)).includes("$"));
+		}
+		state.ctx.sessionManager.getBranch = saved;
 	});
 	check("detail metrics stay out of compact and medium layouts", () => {
 		for (const width of [36, 44, 60, 79, 80, 100, 120, 139]) {
@@ -620,7 +659,8 @@ if (baselineCode) {
 		state.ctx.sessionManager.getSessionName = () => "session-title-".repeat(100);
 		const rows = state.footer.render(120).map(strip);
 		assert.ok(rows[2].startsWith(`session ${state.ctx.sessionManager.getSessionId()}`));
-		assert.ok(rows[2].includes("plain status") && rows[2].includes("$0.123") && rows[2].includes("hit 80%"));
+		assert.ok(rows[2].includes("plain status") && rows[2].includes("hit 80%"));
+		assert.ok(rows[0].includes("$0.123"));
 		assert.equal(visibleWidth(rows[2]), 120);
 		assert.ok(rows[2].includes("…"));
 		state.ctx.sessionManager.getSessionName = saved;
@@ -673,11 +713,12 @@ if (baselineCode) {
 		const rows = state.footer.render(200);
 		assertStyle(rows[0], "one", "text", true);
 		assertStyle(rows[0], "main", "muted");
-		assertStyle(rows[0], "2", "warning");
+		assertStyle(rows[0].slice(rows[0].indexOf("changed")), "2", "warning");
 		assertStyle(rows[1], "Model Name", "accent", true);
 		assertStyle(rows[1], " [router]", "muted");
 		assertStyle(rows[2], state.ctx.sessionManager.getSessionId(), "muted");
-		for (const text of ["$0.123", "in 1.0k", "out 2.0k", "cache 4.1k"]) assertStyle(rows[2], text, "dim");
+		assertStyle(rows[0], "$0.123", "text", true);
+		for (const text of ["in 1.0k", "out 2.0k", "cache 4.1k"]) assertStyle(rows[0], text, "dim");
 		assertStyle(rows[2], "80%", "success");
 	});
 	check("truncated models retain bold accent without leaking into the provider or context", () => {
@@ -830,11 +871,12 @@ for (const identity of ["/repo/one\n/repo/one/.git\n/repo/one/.git\n", "/repo/li
 	state.statuses.clear();
 	h.output = "";
 	await h.fire("session_start", state);
-	check("empty checkout right group leaves identity unpadded", () => {
+	check("clean checkout still right-aligns prominent cost and optional traffic", () => {
 		const rows = state.footer.render(160).map(strip);
 		assert.ok(rows[0].startsWith("one  worktree main  branch main"));
 		assert.equal(rows[0], rows[0].trimEnd());
-		assert.ok(visibleWidth(rows[0]) < 160);
+		assert.equal(visibleWidth(rows[0]), 160);
+		assert.ok(rows[0].includes("$0.123") && rows[0].endsWith("cache 4.1k"));
 	});
 	check("UUID-only narrow row has no padding or optional traffic", () => {
 		const last = strip(state.footer.render(44).at(-1));
@@ -852,7 +894,7 @@ for (const identity of ["/repo/one\n/repo/one/.git\n/repo/one/.git\n", "/repo/li
 		assert.ok(before.startsWith("one  worktree main") && after.startsWith("one  worktree main"));
 	});
 	await h.fire("agent_settled", state);
-	check("settled checkout returns to an unpadded left group", () => {
+	check("settled checkout retains right-aligned cost without the timer", () => {
 		const row = strip(state.footer.render(100)[0]);
 		assert.ok(!row.includes("working"));
 		assert.equal(row, row.trimEnd());
@@ -877,6 +919,19 @@ for (const identity of ["/repo/one\n/repo/one/.git\n/repo/one/.git\n", "/repo/li
 				assert.ok(rows.every((row: string) => visibleWidth(row) <= width), `size ${size}, width ${width}`);
 				if (width >= 36) assert.ok(strip(rows.at(-1)).includes(state.ctx.sessionManager.getSessionId()));
 				if (width >= 36) assert.ok(strip(rows[0]).endsWith("working 0s"));
+			}
+		}
+	});
+	check("leading combining marks cannot overflow joined extension groups", () => {
+		state.ctx.sessionManager.getSessionName = () => "";
+		for (const marks of ["\u0301\u0903X", "\x1b[31m\u0301\u0903X\x1b[0m", "\u200d\u0301X"]) {
+			state.statuses.clear();
+			state.statuses.set("first", "MCP 2/2");
+			state.statuses.set("marks", marks);
+			for (let width = 36; width <= 220; width++) {
+				const rows = state.footer.render(width);
+				assert.ok(rows.every((row: string) => visibleWidth(row) <= width), `Joined marks ${JSON.stringify(marks)} at ${width}: ${JSON.stringify(rows.map((row: string) => [strip(row), visibleWidth(row)]))}`);
+				assert.ok(strip(rows.at(-1)).includes(state.ctx.sessionManager.getSessionId()));
 			}
 		}
 	});

@@ -92,7 +92,11 @@ function assertIdentityStyles(host, modelName = 'GPT-6.1 Sol') {
   assert.notEqual(project[0].color, model[0].color, 'Location and model must use distinct colors');
   const uuid = segment(current(host).uuid);
   assert(uuid.every(c => !c.bold && c.color === tag[0].color), 'UUID must share muted provider role');
-  check(`${host.mode}: ${host.width}-column real footer preserves prominent model and quiet provider/UUID styles`);
+  const amount = text.match(/\$\d+\.\d{3}/)?.[0];
+  assert(amount, 'Footer cost missing');
+  const cost = segment(amount);
+  assert(cost.every(c => c.bold && c.color === project[0].color), 'Cost must be bold neutral text, not dim');
+  check(`${host.mode}: ${host.width}-column real footer preserves prominent model/cost and quiet provider/UUID styles`);
   return { model: model[0].color, provider: tag[0].color, project: project[0].color };
 }
 function alive(pid) { try { process.kill(pid, 0); return true; } catch { return false; } }
@@ -270,7 +274,8 @@ function assertFooter(host, text, { working = false, context = 'known', identity
     if (index !== 0) assert(!git.test(line) && !timer.test(line), `Git or timer is not on row 1: ${line}`);
     if (index !== 1) assert(!/GPT-6\.1 Sol|\[(?:ai-model-router|sb-live)\]|\bthinking\b/.test(line), `Model, provider or thinking is not on row 2: ${line}`);
     if (index !== contextRow) assert(!/\bcontext\b|until compact|auto compact off|[█░▏]/.test(line), `Context is on the wrong row: ${line}`);
-    if (index !== sessionRow) assert(!line.includes(state.uuid) && !metrics.test(line), `UUID or usage is not on the final row: ${line}`);
+    if (index !== sessionRow) assert(!line.includes(state.uuid) && !/\bhit\s+\d+%/.test(line), `UUID or cache hit is not on the final row: ${line}`);
+    if (index !== 0) assert(!/\$\d+\.\d+/.test(line) && !traffic.test(line), `Cost or traffic is not on row 1: ${line}`);
   }
   if (host.width >= 44) {
     assert(lines[sessionRow].startsWith(`session ${state.uuid}`), `Full session UUID is not at column 0 at ${host.width}: ${lines[sessionRow]}`);
@@ -291,8 +296,8 @@ function assertFooter(host, text, { working = false, context = 'known', identity
       }
     }
   } else assert(lines[0].startsWith(host.cwd.split('/').at(-1)), `Cwd fallback is not at column 0:\n${full}`);
-  if (git.test(lines[0]) || timer.test(lines[0])) {
-    const { left, right } = assertGroups(lines[0], host.width, /\b(?:changed|ahead|behind)\s+\d+\b|\bworking\s+\d+(?:s|m|h|d)/, 1, groups);
+  if (git.test(lines[0]) || timer.test(lines[0]) || /\$\d+\.\d+/.test(lines[0])) {
+    const { left, right } = assertGroups(lines[0], host.width, /\$\d+\.\d+/, 1, groups);
     assert(!/\b(?:worktree|branch|dir)\b/.test(right), `Checkout identity leaked into the right group: ${right}`);
     if (working) assert(timer.test(right) && !timer.test(left), `Working timer is not in the right group: ${lines[0]}`);
   }
@@ -324,10 +329,8 @@ function assertFooter(host, text, { working = false, context = 'known', identity
     assert(left.includes(state.uuid), `UUID is not in the left group: ${left}`);
     assert(!/\bname\b/.test(right), `Session name leaked into the right group: ${right}`);
   }
-  if (wide) {
-    assert(/\$\d+\.\d+/.test(lines[sessionRow]), `Session right group lost cost:\n${full}`);
-    if (host.initial && context !== 'unavailable') assert(/\bhit\s+\d+%/.test(lines[sessionRow]), `Session right group lost cache hit rate:\n${full}`);
-  }
+  assert(/\$\d+\.\d+/.test(lines[0]), `Checkout right group lost cost:\n${full}`);
+  if (wide && host.initial && context !== 'unavailable') assert(/\bhit\s+\d+%/.test(lines[sessionRow]), `Session right group lost cache hit rate:\n${full}`);
   assert.equal(timer.test(lines[0]), working, `Working timer state is wrong on row 1:\n${full}`);
   assert(!/\b(?:last|elapsed)\s+\d+(?:s|m|h|d)/.test(full), `Settled elapsed time leaked:\n${full}`);
   return lines;
@@ -389,8 +392,17 @@ async function lifecycle(mode) {
   const host = await start(mode);
   try {
     const first = capture(host);
-    const startupRows = assertFooter(host, first)[2];
+    const startupRows = assertFooter(host, first)[0];
     assertIdentityStyles(host);
+    await command(host, '/sb-live-snapshot statuses');
+    await wait(host, screen => footer(screen, host.width)[2].includes('MCP 2/2'), 'extension statuses painted');
+    const statusRows = footer(capture(host), host.width);
+    assert(statusRows[2].includes('blackhole') && statusRows[2].includes('hit 57%'), 'Third row retains extension status and hit rate');
+    assert(!/\$|\bin\s+\d|\bout\s+\d|\bcache\s+\d/.test(statusRows[2]), 'Third row must not repeat cost or traffic');
+    assert(statusRows[0].includes('$0.036'), 'Extension statuses must not hide cost');
+    check(`${mode}: realistic MCP/memory statuses stay on row 3 without cost or traffic clutter`);
+    await command(host, '/sb-live-snapshot clear-statuses');
+    await wait(host, screen => !footer(screen, host.width)[2].includes('MCP 2/2'), 'extension statuses cleared');
     for (const value of ['in 30k', 'out 1.0k', 'cache 40k', '$0.036']) {
       assert(startupRows.includes(value), `Seeded usage or cost missing from footer: ${value}\n${startupRows}`);
     }
@@ -434,6 +446,24 @@ async function lifecycle(mode) {
     await wait(host, screen => footer(screen, host.width)[1].startsWith('GPT-6.1 Sol'), 'original model/theme restored');
     assert.deepEqual(assertIdentityStyles(host), darkColors, 'Restored theme retained light colors');
     check(`${mode}: model identity and real theme changes repaint without stale footer styles`);
+    await command(host, '/sb-live-model GPT-6.1 Terra');
+    await wait(host, screen => footer(screen, host.width)[1].startsWith('GPT-6.1 Terra'), 'role alias retains canonical model');
+    const roleRow = footer(capture(host), host.width)[1];
+    assert(roleRow.includes('Daily') && !roleRow.includes('Coding and admin'), 'Only short role belongs in footer');
+    assertIdentityStyles(host, 'GPT-6.1 Terra');
+    for (const width of [80, 79, 60]) {
+      host.width = width;
+      tmux('resize-window', '-t', host.name, '-x', String(width), '-y', '32');
+      await wait(host, screen => {
+        const rows = footer(screen, width);
+        return rows[0].startsWith(repository) && rows[1].startsWith('GPT-6.1 Terra') && rows[0].includes('$');
+      }, 'role alias resize');
+      assertIdentityStyles(host, 'GPT-6.1 Terra');
+    }
+    await command(host, '/sb-live-model fixture');
+    await wait(host, screen => screen.includes('GPT-6.1 Sol'), 'fixture restored');
+    await resize(host, 160);
+    check(`${mode}: role description shows canonical Terra plus short role, including narrow layouts`);
     const records = readFileSync(current(host).session, 'utf8').trim().split('\n').map(JSON.parse);
     const usage = records.filter((e) => e.type === 'message' && e.message.role === 'assistant').at(-1).message.usage;
     assert.deepEqual([usage.input, usage.output, usage.cacheRead, usage.cost.total], [30000, 1000, 40000, 0.036]);
@@ -445,7 +475,10 @@ async function lifecycle(mode) {
     const cloned = await snapshot(host);
     assert.notEqual(cloned.uuid, old);
     assert(cloned.persisted);
-    const clonedText = await wait(host, (screen) => footer(screen, host.width).at(-1).includes(cloned.uuid), 'cloned UUID footer');
+    const clonedText = await wait(host, (screen) => {
+      const rows = footer(screen, host.width);
+      return rows.at(-1).includes(cloned.uuid) && rows[0].includes(`worktree ${worktree}`);
+    }, 'cloned UUID and asynchronous checkout identity footer');
     assertFooter(host, clonedText);
     await copy(host, true);
     check(`${mode}: /clone changes the UUID and the copied session file`);

@@ -1,18 +1,24 @@
 #!/usr/bin/env -S uv run --script
-"""Check Ghostty's cmd+e binding and VS Code launcher without opening user windows."""
+"""Check remaining Ghostty shortcuts and the VS Code launcher without opening user windows."""
 # ruff: noqa: S101, S603
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import shlex
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import unquote, urlparse
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "ghostty/.local/bin/ghostty-open-vscode"
@@ -23,12 +29,48 @@ def run(*args: str | Path, env: dict[str, str] | None = None) -> subprocess.Comp
     return subprocess.run(args, capture_output=True, text=True, check=False, env=env, timeout=15)
 
 
-def main() -> None:
-    """Check binding scope, directory quoting, errors, and AppleScript syntax."""
-    assert run("/bin/bash", "-n", SCRIPT).returncode == 0
+def is_removed_shortcut(manipulator: dict) -> bool:
+    """Match only Super+C globally and Cmd+Shift+C in Ghostty."""
+    source = manipulator.get("from", {})
+    if source.get("key_code") != "c":
+        return False
+    modifiers = set(source.get("modifiers", {}).get("mandatory", []))
+    if modifiers == {"command", "control", "option", "shift"}:
+        return True
+    return modifiers == {"command", "shift"} and any(
+        condition.get("type") == "frontmost_application_if"
+        and r"^com\.mitchellh\.ghostty$" in condition.get("bundle_identifiers", [])
+        for condition in manipulator.get("conditions", [])
+    )
+
+
+def check_bindings() -> None:
+    """Check shortcut removal and preserve the remaining Ghostty bindings."""
     config = json.loads((ROOT / "karabiner/karabiner.json").read_text())
-    rules = config["profiles"][0]["complex_modifications"]["rules"]
-    bindings = [m for rule in rules for m in rule["manipulators"] if m["from"]["key_code"] == "e"]
+    manipulators = [
+        m for profile in config["profiles"]
+        for rule in profile.get("complex_modifications", {}).get("rules", [])
+        for m in rule["manipulators"]
+    ]
+    assert not any("ghostty-cc" in json.dumps(m) for m in manipulators)
+    assert not any(is_removed_shortcut(m) for m in manipulators)
+    assert not is_removed_shortcut({"from": {"key_code": "c", "modifiers": {"mandatory": ["command"]}}})
+    assert not is_removed_shortcut({"from": {"key_code": "c", "modifiers": {"mandatory": ["command", "shift"]}}})
+    assert not (ROOT / "ghostty/.local/bin/ghostty-cc").exists()
+    assert not (ROOT / "scripts/test-cc.py").exists()
+    caps = [m for m in manipulators if m["from"]["key_code"] == "caps_lock"]
+    assert len(caps) == 1
+    assert caps[0]["from"]["modifiers"] == {"optional": ["any"]}
+    assert caps[0]["to"] == [
+        {"key_code": "left_shift", "modifiers": ["left_command", "left_control", "left_option"]},
+    ]
+    ghostty = (ROOT / "ghostty/.config/ghostty/config").read_text()
+    assert "ghostty-cc" not in ghostty
+    assert "keybind = cmd+shift+c=" not in ghostty
+    assert "keybind = cmd+shift+x=set_tab_title:" in ghostty
+    assert "keybind = performable:cmd+c=copy_to_clipboard" in ghostty
+    assert "keybind = global:control+command+shift+option+r=toggle_quick_terminal" in ghostty
+    bindings = [m for m in manipulators if m["from"]["key_code"] == "e"]
     assert len(bindings) == 1
     binding = bindings[0]
     assert binding["from"]["modifiers"] == {"mandatory": ["command"]}
@@ -36,6 +78,98 @@ def main() -> None:
     assert binding["conditions"] == [
         {"type": "frontmost_application_if", "bundle_identifiers": [r"^com\.mitchellh\.ghostty$"]},
     ]
+
+
+def write_live_osascript(path: Path, notifications: Path, real: Path = Path("/usr/bin/osascript")) -> None:
+    """Keep real lookups, but record test notifications instead of showing them."""
+    path.write_text(
+        "#!/bin/bash\n"
+        'if [[ "$1" == "-e" && "$2" == "display notification "* ]]; then\n'
+        f"  printf '%s\\n' \"$2\" >> {shlex.quote(str(notifications))}\n"
+        "  exit 0\n"
+        "fi\n"
+        f'exec {shlex.quote(str(real))} "$@"\n',
+    )
+    path.chmod(0o755)
+
+
+def check_live_osascript() -> None:
+    """Check that the live test forwards lookups and never shows error popups."""
+    with tempfile.TemporaryDirectory(prefix="test-live-osascript-") as directory:
+        home = Path(directory)
+        real = home / "real osascript"
+        real.write_text('#!/bin/bash\nprintf "%s\\n" "$@" > "$HOME/forwarded"\nexit 7\n')
+        real.chmod(0o755)
+        wrapper = home / "osascript"
+        notifications = home / "notifications"
+        write_live_osascript(wrapper, notifications, real)
+        env = {**os.environ, "HOME": directory}
+        result = run(wrapper, "-e", 'display notification "Fixture failure"', env=env)
+        assert result.returncode == 0
+        assert not (home / "forwarded").exists()
+        assert notifications.read_text() == 'display notification "Fixture failure"\n'
+        result = run(wrapper, "-e", 'tell application "Ghostty" to return running', env=env)
+        assert result.returncode == 7  # noqa: PLR2004
+        assert (home / "forwarded").read_text() == '-e\ntell application "Ghostty" to return running\n'
+        assert run(wrapper, env=env).returncode == 7  # noqa: PLR2004
+        notifications.unlink()
+        result = run("/bin/bash", SCRIPT, env={**env, "PATH": directory + ":/usr/bin:/bin"})
+        assert result.returncode == 1
+        assert "Could not read the focused Ghostty directory." in result.stderr
+        assert notifications.read_text().startswith('display notification "Could not open the Ghostty directory')
+    print("PASS: live test notifications stay in fixture logs; lookup arguments and errors pass through")
+
+
+def finish_cleanup(actions: list[Callable[[], None]], original_error: BaseException | None = None) -> None:
+    """Run every cleanup action and keep the original test failure when present."""
+    errors = []
+    for action in actions:
+        try:
+            action()
+        except Exception as error:  # noqa: BLE001, one failure must not skip the remaining cleanup
+            errors.append(error)
+    if errors:
+        if original_error is not None:
+            for error in errors:
+                original_error.add_note(f"Cleanup failed: {error}")
+        else:
+            message = "Live fixture cleanup failed"
+            raise ExceptionGroup(message, errors)
+
+
+def check_cleanup() -> None:
+    """Check that cleanup failures do not skip window closure or hide test failures."""
+    calls = []
+
+    def fail() -> None:
+        calls.append("editor")
+        message = "fixture editor failed to stop"
+        raise AssertionError(message)
+
+    actions = [fail, lambda: calls.append("launcher"), lambda: calls.append("window"), lambda: calls.append("focus")]
+    original = AssertionError("original test failure")
+    finish_cleanup(actions, original)
+    assert calls == ["editor", "launcher", "window", "focus"]
+    assert str(original) == "original test failure"
+    assert original.__notes__ == ["Cleanup failed: fixture editor failed to stop"]
+    calls.clear()
+    try:
+        finish_cleanup(actions)
+    except ExceptionGroup as error:
+        assert len(error.exceptions) == 1  # noqa: PT017, this standalone script does not use pytest
+    else:
+        message = "Cleanup failure was lost"
+        raise AssertionError(message)
+    assert calls == ["editor", "launcher", "window", "focus"]
+    print("PASS: failed editor cleanup cannot skip window closure or replace the original test failure")
+
+
+def main() -> None:
+    """Check binding scope, directory quoting, errors, and AppleScript syntax."""
+    check_bindings()
+    check_live_osascript()
+    check_cleanup()
+    assert run("/bin/bash", "-n", SCRIPT).returncode == 0
     with tempfile.TemporaryDirectory(prefix="test-ghostty-code-") as directory:
         home = Path(directory)
         folder = home / "repo" / "nested space ' quote; $(touch NOT_EXECUTED)"
@@ -82,10 +216,11 @@ exit "${CODE_EXIT:-0}"
             assert (home / "notified").read_text() == "notified\n"
         assert run("/bin/bash", SCRIPT, env={**env, "CODE_EXIT": "1"}).returncode == 1
         print("PASS: failed lookup, missing directory, and code failure show a notification")
+    print("PASS: cc workflow absent; Caps Lock, title clearing, copy, and quick terminal bindings preserved")
     print("PASS: Ghostty-only cmd+e routing, shell syntax, and AppleScript compilation")
 
 
-def live_test() -> None:  # noqa: C901, PLR0912, PLR0915
+def live_test() -> None:  # noqa: C901, PLR0915
     """Open a temporary focused split in a separate VS Code instance, then clean up."""
     def apple(source: str) -> str:
         result = run("/usr/bin/osascript", "-e", f'tell application "Ghostty"\n{source}\nend tell')
@@ -95,7 +230,7 @@ def live_test() -> None:  # noqa: C901, PLR0912, PLR0915
     def quote(text: str) -> str:
         return json.dumps(text, ensure_ascii=False)
 
-    original_tab = apple("return id of selected tab of front window")
+    original_terminal = apple("return id of focused terminal of selected tab of front window")
     windows_before = int(apple("return count of windows"))
     code_cli = "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
     assert Path(code_cli).is_file()
@@ -116,6 +251,7 @@ def live_test() -> None:  # noqa: C901, PLR0912, PLR0915
             f'--disable-extensions --new-window "$@" > {shlex.quote(str(fixture / "code-log"))} 2>&1\n',
         )
         code.chmod(0o755)
+        write_live_osascript(binary / "osascript", fixture / "notifications")
         env = {**os.environ, "PATH": str(binary) + os.pathsep + os.environ["PATH"]}
         win = apple(
             'set w to new window with configuration {initial working directory:"/tmp", command:"/bin/sleep 120"}\n'
@@ -123,30 +259,47 @@ def live_test() -> None:  # noqa: C901, PLR0912, PLR0915
         )
         launcher = None
         try:
-            split_command = shlex.join(["/bin/zsh", "-ic", "exec /bin/sleep 120"])
+            split_command = shlex.join([
+                "/bin/sh", "-c",
+                (
+                    f"cd {shlex.quote(str(folder))} && "
+                    "printf '\\033]7;kitty-shell-cwd://localhost%s\\007' \"$PWD\"; exec /bin/sleep 120"
+                ),
+            ])
             target = apple(
                 f"set t to new tab in window id {quote(win)} "
                 f'with configuration {{initial working directory:{quote(str(fixture))}, command:"/bin/sleep 120"}}\n'
                 "set term to split focused terminal of t direction right "
                 f"with configuration {{initial working directory:{quote(str(folder))}, "
                 f"command:{quote(split_command)}}}\n"
-                "activate\nfocus term\nreturn id of term",
+                "return id of term",
             )
-            apple("repeat 30 times\nif frontmost then return\ndelay 0.1\nend repeat")
-            assert apple("return id of focused terminal of selected tab of front window") == target
+            apple(f"activate\nfocus terminal id {quote(target)}")
+            apple(
+                "repeat 30 times\n"
+                "if frontmost and id of focused terminal of selected tab of front window is "
+                f"{quote(target)} then return\n"
+                'delay 0.1\nend repeat\nerror "Fixture terminal did not become frontmost."',
+            )
             deadline = time.monotonic() + 5
             actual = ""
             while time.monotonic() < deadline:
-                actual = apple("return working directory of focused terminal of selected tab of front window")
+                actual = apple(f"return working directory of terminal id {quote(target)}")
                 if actual == str(folder):
                     break
                 time.sleep(0.1)
             assert actual == str(folder), repr(actual)
+            assert apple("return id of focused terminal of selected tab of front window") == target
+            assert apple("return frontmost") == "true"
             launcher = subprocess.Popen(["/bin/bash", str(SCRIPT)], env=env, stdout=subprocess.PIPE,
                                         stderr=subprocess.PIPE, text=True)
             deadline = time.monotonic() + 25
             found = False
             while time.monotonic() < deadline:
+                if launcher.poll() not in (None, 0):
+                    stdout, stderr = launcher.communicate(timeout=5)
+                    message = f"VS Code launcher failed (exit {launcher.returncode}):\n{stdout}{stderr}"
+                    raise AssertionError(message)
                 for workspace in (user_data / "User/workspaceStorage").glob("*/workspace.json"):
                     try:
                         uri = json.loads(workspace.read_text()).get("folder", "")
@@ -162,36 +315,55 @@ def live_test() -> None:  # noqa: C901, PLR0912, PLR0915
             if not found:
                 logs = list((user_data / "logs").rglob("*.log"))
                 details = "\n".join(f"{p.name}: {p.read_text(errors='replace')[-1500:]}" for p in logs)
-                details += (fixture / "code-log").read_text(errors="replace")[:4000]
+                for name in ("code-log", "notifications"):
+                    path = fixture / name
+                    content = path.read_text(errors="replace")[:4000] if path.exists() else "not created"
+                    details += f"\n{name}: {content}"
                 message = f"VS Code did not open the focused split directory.\n{details}"
                 raise AssertionError(message)
+            assert not (fixture / "notifications").exists(), "The launcher tried to show an error notification"
             print("PASS: real Ghostty background tab and split directory opened in an isolated VS Code window")
         finally:
-            # Only terminate the separate main process with this unique user-data-dir.
-            ps = run("/bin/ps", "-axo", "pid=,args=")
-            owned_pids = []
-            for line in ps.stdout.splitlines():
-                if "Visual Studio Code.app/Contents/MacOS/Code" in line and str(user_data) in line:
-                    pid = int(line.strip().split(None, 1)[0])
-                    owned_pids.append(pid)
-                    os.kill(pid, 15)
-            deadline = time.monotonic() + 10
-            while owned_pids and time.monotonic() < deadline:
-                owned_pids = [pid for pid in owned_pids if run("/bin/ps", "-p", str(pid)).returncode == 0]
-                if owned_pids:
-                    time.sleep(0.2)
-            assert not owned_pids, "The isolated VS Code process did not stop"
-            if launcher is not None:
-                if launcher.poll() is None:
-                    launcher.terminate()
-                launcher.communicate(timeout=5)
-            apple(f"if exists window id {quote(win)} then close window window id {quote(win)}")
-            apple(
-                "repeat with w in windows\nrepeat with t in tabs of w\n"
-                f"if id of t is {quote(original_tab)} then\nactivate\nfocus focused terminal of t\n"
-                "return\nend if\nend repeat\nend repeat",
-            )
-            assert int(apple("return count of windows")) == windows_before
+            def stop_editor() -> None:
+                # Only terminate the separate main process with this unique user-data-dir.
+                ps = run("/bin/ps", "-axo", "pid=,args=")
+                assert ps.returncode == 0, ps.stderr
+                owned_pids = []
+                for line in ps.stdout.splitlines():
+                    if "Visual Studio Code.app/Contents/MacOS/Code" in line and str(user_data) in line:
+                        pid = int(line.strip().split(None, 1)[0])
+                        owned_pids.append(pid)
+                        with contextlib.suppress(ProcessLookupError):
+                            os.kill(pid, 15)
+                deadline = time.monotonic() + 10
+                while owned_pids and time.monotonic() < deadline:
+                    owned_pids = [pid for pid in owned_pids if run("/bin/ps", "-p", str(pid)).returncode == 0]
+                    if owned_pids:
+                        time.sleep(0.2)
+                assert not owned_pids, "The isolated VS Code process did not stop"
+
+            def stop_launcher() -> None:
+                if launcher is not None:
+                    if launcher.poll() is None:
+                        with contextlib.suppress(ProcessLookupError):
+                            launcher.terminate()
+                    try:
+                        launcher.communicate(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        with contextlib.suppress(ProcessLookupError):
+                            launcher.kill()
+                        launcher.communicate(timeout=5)
+
+            def check_windows() -> None:
+                assert int(apple("return count of windows")) == windows_before
+
+            finish_cleanup([
+                stop_editor,
+                stop_launcher,
+                lambda: apple(f"if exists window id {quote(win)} then close window window id {quote(win)}"),
+                lambda: apple(f"activate\nfocus terminal id {quote(original_terminal)}"),
+                check_windows,
+            ], sys.exception())
     print("PASS: isolated VS Code stopped, temporary Ghostty window closed, original tab restored")
 
 

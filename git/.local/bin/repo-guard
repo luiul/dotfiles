@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
+const { performance } = require('node:perf_hooks');
 
 const active = new Set();
 let interrupted = false;
@@ -37,7 +38,7 @@ function run(cmd, args, cwd, { timeout = 10000, env = {}, allowFailure = false }
     });
     const stop = () => { if (child.connected) child.send({ stop: true }, () => {}); };
     active.add(stop);
-    const timer = setTimeout(() => { failure = new Error(`${cmd} timed out after ${timeout} ms`); stop(); }, timeout);
+    const timer = setTimeout(() => { failure = Object.assign(new Error(`${cmd} timed out after ${timeout} ms`), { code: 'ETIMEDOUT' }); stop(); }, timeout);
     const collect = (stream, key) => stream.on('data', bytes => {
       if (key === 'out') stdout += bytes; else stderr += bytes;
       if (stdout.length + stderr.length > 4 * 1024 * 1024) { failure = new Error(`${cmd} output limit exceeded`); stop(); }
@@ -94,16 +95,32 @@ function parseV2(raw) {
   }
   return { headers, dirty };
 }
+function statusQuery(cwd, budget, { now = () => performance.now(), execute = run } = {}) {
+  // Parallel queries and later ancestry checks share one monotonic deadline.
+  const deadline = now() + budget;
+  return async (label, args, allowFailure = false) => {
+    const expired = () => Object.assign(new Error(`Status deadline exceeded during ${label} (${budget} ms budget)`), { code: 'ETIMEDOUT' });
+    const remaining = Math.floor(deadline - now());
+    if (remaining < 1) throw expired();
+    try {
+      const result = await execute('git', args, cwd, { timeout: remaining, allowFailure });
+      if (now() >= deadline) throw expired();
+      return result;
+    } catch (error) {
+      if (error.code === 'ETIMEDOUT') throw expired();
+      throw error;
+    }
+  };
+}
 async function status(cwd) {
-  // Parallel queries share a total deadline and each has parent-death cleanup.
-  const deadline = Date.now() + 4000;
-  const query = (args, allowFailure = false) => run('git', args, cwd, { timeout: Math.max(1, deadline - Date.now()), allowFailure });
+  const budget = milliseconds('REPO_GUARD_STATUS_TIMEOUT_MS', 10000);
+  const query = statusQuery(cwd, budget);
   const [paths, state, cached, origin, index] = await Promise.all([
-    query(['rev-parse', '--show-toplevel', '--path-format=absolute', '--git-common-dir', '--absolute-git-dir']),
-    query(['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all', '--ignore-submodules=none']),
-    query(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], true),
-    query(['config', '--get', 'remote.origin.url'], true),
-    query(['ls-files', '--full-name', '-v', '-z']),
+    query('repository paths', ['rev-parse', '--show-toplevel', '--path-format=absolute', '--git-common-dir', '--absolute-git-dir']),
+    query('working tree', ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all', '--ignore-submodules=none']),
+    query('cached default branch', ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], true),
+    query('origin configuration', ['config', '--get', 'remote.origin.url'], true),
+    query('index flags', ['ls-files', '--full-name', '-v', '-z']),
   ]);
   const [rootPath, commonPath, gitDir] = paths.stdout.trim().split('\n');
   const root = fs.realpathSync(rootPath), commonDir = fs.realpathSync(commonPath);
@@ -123,7 +140,7 @@ async function status(cwd) {
   const operation = ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'REBASE_HEAD', 'BISECT_LOG', 'rebase-merge', 'rebase-apply', 'sequencer'].some(file => fs.existsSync(path.join(gitDir, file)));
   let publication = 'unknown';
   for (const ref of [defaultBranch && `refs/remotes/origin/${defaultBranch}`, isHelloFresh && branch && `refs/remotes/origin/${branch}`].filter(Boolean)) {
-    const proof = await query(['merge-base', '--is-ancestor', head, ref], true);
+    const proof = await query('ancestry check', ['merge-base', '--is-ancestor', head, ref], true);
     if (proof.code === 0) { publication = 'cached'; break; }
   }
   return { root, commonDir, branch, head, dirty, upstream, ahead, behind, defaultBranch, isHelloFresh, publication, operation };
@@ -369,7 +386,7 @@ async function main(argv = process.argv.slice(2)) {
     return 1;
   }
 }
-module.exports = { main, status, parseDirty, parseV2, helloFresh, run, identity, acquire, unlock, parse };
+module.exports = { main, status, statusQuery, parseDirty, parseV2, helloFresh, run, identity, acquire, unlock, parse };
 if (require.main === module) {
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { interrupted = true; for (const stop of active) stop(); });
   main().then(code => { process.exitCode = code; }).catch(error => { console.error(`repo-guard: ${error.message}`); process.exitCode = 1; });

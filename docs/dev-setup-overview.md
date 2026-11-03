@@ -60,7 +60,11 @@ The lock coordinates guard commands, not arbitrary Git commands, editors, or oth
 
 Do not run `cop sync` while workers or publication are active. Its installed implementation can update both primary and source checkouts outside this lock. `--no-main` skips primary refresh, but still permits source updates. Run it only after the affected workers are idle and their work is preserved.
 
-Network commands default to 30 seconds each. Verification defaults to 120 seconds. `REPO_GUARD_NETWORK_TIMEOUT_MS` and `REPO_GUARD_VERIFY_TIMEOUT_MS` set explicit bounds from 50 through 120000 milliseconds. Longer checks run separately before publication, then use a bounded combined-tree check.
+Each status check has one total ten-second budget for its parallel Git queries and later ancestry checks. `REPO_GUARD_STATUS_TIMEOUT_MS` changes that budget. The deadline uses a monotonic clock. An exhausted budget stops new queries, and timeout errors name the query and total budget. Status checks remain local and keep process cleanup on timeout and parent death.
+
+Network commands default to 30 seconds each. Verification defaults to 120 seconds. `REPO_GUARD_STATUS_TIMEOUT_MS`, `REPO_GUARD_NETWORK_TIMEOUT_MS`, and `REPO_GUARD_VERIFY_TIMEOUT_MS` accept explicit bounds from 50 through 120000 milliseconds. Longer checks run separately before publication, then use a bounded combined-tree check.
+
+Publication requires a clean source worktree. If the live checkout has unrelated changes, use a clean wt-managed source containing the approved commits. Do not stash, reset, or remove unrelated changes to make publication pass. A dirty primary checkout still defers live deployment.
 
 HelloFresh uses feature branches and draft PRs instead. Never run the personal publisher for HelloFresh work.
 

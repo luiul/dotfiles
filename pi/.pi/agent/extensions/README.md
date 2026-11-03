@@ -42,21 +42,6 @@ node scripts/test-context-mode-resources.mjs
 
 Orca and Canopy show Pi agent activity. Pi no longer sends desktop notifications. The notification extension and its commands are removed.
 
-## Work completion reminder
-
-`work-completion.ts` shows local checkout state at session start and settlement. `/work-status` refreshes it explicitly. The original baseline persists in custom session entries across reload and resume.
-
-The reminder distinguishes preexisting dirty paths from later observed changes, without claiming authorship. Dirty files, Git operations, and local commits ahead of cached upstream show pending work. A clean checkout that matches cached upstream shows a neutral status, not a permanent publication warning. `/work-status` still says fresh publication and deployment were not checked. It gives the removal-check reminder only for task branches, not protected default checkouts.
-
-Remote refs are cached evidence, never fresh publication proof. The extension makes no network calls, runs no polling timer or watcher, and never commits, pushes, submits a prompt, or blocks shutdown. SDK, RPC, and print sessions remain silent.
-
-Publication and removal checks belong to `repo-guard`. See [the workflow](../../../../docs/dev-setup-overview.md).
-
-```sh
-bun scripts/test-work-completion.ts
-node scripts/test-work-completion-live.mjs
-```
-
 ## Zsh bang commands (`!!!`)
 
 `zsh-bang.ts` runs `!!!<cmd>` passthrough commands in the interactive zsh instead of bash. Pi's `!`/`!!` passthrough spawns `/bin/bash -c`, which loads no rc files, so zsh functions and aliases (e.g. `gurl` in `funcs_git.zsh`) fail with `command not found`. With the extension, `!!!type gurl` resolves them.

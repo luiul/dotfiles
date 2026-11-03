@@ -44,7 +44,7 @@ Use the format: `type/TICKET-description`
 ## Parallel Work and Completion
 
 - Use separate wt-managed source worktrees for concurrent agents. Preserve each task's reviewed commits. Never stage, stash, reset, or overwrite another worker's checkout.
-- Implementation approval does not approve commits or publication. After explicit approval, push the ticket branch and create a draft PR. Do not use the personal `repo-guard publish` command for HelloFresh work.
+- Implementation approval does not approve commits or publication. After explicit approval, push the ticket branch and create a draft PR. HelloFresh work does not publish directly to the default branch.
 - Report review readiness, commit, feature-branch publication, PR state, merge, and deployment separately. A published feature branch is not merged or deployed.
 - Before removing a worktree, stop or hand off its worker and use wt or coppice. The global removal guard requires a clean target and fresh remote preservation proof. A merged squash PR needs exact head and merge evidence, not patch similarity alone. Offline or uncertain evidence means retain the checkout.
 - Other unfinished worktrees do not block a completed target. Native orchestrator deletion and disabled hooks bypass the guard. Use those only after explicit scoped discard approval.

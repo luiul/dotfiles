@@ -67,9 +67,6 @@ def main() -> None:
         config_dir = home / ".config/worktrunk"
         config_dir.mkdir(parents=True)
         shutil.copyfile(source, config_dir / "config.toml")
-        guard_dir = home / ".local/bin"
-        guard_dir.mkdir(parents=True)
-        shutil.copy2(ROOT / "git/.local/bin/repo-guard", guard_dir / "repo-guard")
         git_config = home / ".gitconfig"
         git_config.write_text("[user]\nname = Fixture\nemail = fixture@example.invalid\n")
         env = dict(os.environ)
@@ -145,16 +142,14 @@ def main() -> None:
         wt_path = home / "worktrees/local/wt-fixture/demo"
         valuable = wt_path / "uncommitted.txt"
         valuable.write_text("keep this work\n")
-        refused = run(wt, "remove", "wt-fixture", "--force", "--foreground", "--yes", ok=False)
-        assert refused.returncode != 0, "--force bypassed the dirty-work guard"
+        refused = run(wt, "remove", "wt-fixture", "--foreground", "--yes", ok=False)
+        assert refused.returncode != 0, "native wt removed dirty work without force"
         assert valuable.read_text() == "keep this work\n"
         valuable.unlink()
         committed = wt_path / "approved.txt"
         committed.write_text("preserve this commit\n")
         run("git", "-C", str(wt_path), "add", "approved.txt")
         run("git", "-C", str(wt_path), "commit", "-q", "-m", "fixture change")
-        refused = run(wt, "remove", "wt-fixture", "--force-delete", "--foreground", "--yes", ok=False)
-        assert refused.returncode != 0, "--force-delete bypassed publication checks"
         assert committed.exists()
         run("git", "-C", str(wt_path), "push", "-q", "origin", "HEAD:main")
         main_before = run("git", "rev-parse", "HEAD").stdout.strip()
@@ -169,11 +164,11 @@ def main() -> None:
         assert (repo / "parallel-main.txt").read_text() == "unrelated live work\n"
         assert run("git", "-C", str(remote_path), "rev-parse", "HEAD").stdout.strip() == remote_head
         for branch in ("wt-fixture", "cop-fixture", "remote-base-fixture"):
-            run(wt, "remove", branch, "--foreground", "--yes")
+            run(wt, "remove", branch, "--no-delete-branch", "--foreground", "--yes")
             wait_for(lambda branch=branch: not (home / "worktrees/local" / branch).exists(), "empty branch cleanup")
         assert not calls.exists(), "An editor was launched"
         print("PASS: real wt and cop create/reuse without editor gates or editor calls")
-        print("PASS: force flags preserve dirty files and unpublished commits; remote publication allows removal")
+        print("PASS: protected branches and native dirty-work refusal remain without a publication gate")
         print("PASS: fetch-only creation preserves dirty primary and uses the explicit remote base")
 
 

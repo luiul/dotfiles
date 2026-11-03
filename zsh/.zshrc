@@ -92,20 +92,106 @@ znap eval fzf 'fzf --zsh'
 
 if command -v wt >/dev/null 2>&1; then znap eval wt 'command wt config shell init zsh'; fi
 
-# wt completion cache. wt's completer shells out to git ~15x per call, and every
-# exec on this machine is taxed ~0.3s by SentinelOne, serialized. One uncached
-# completion therefore costs 4s+. zsh-autocomplete re-runs the completion on EVERY
-# keystroke, each in a throwaway pty fork of the shell, so the result must be
-# cached on disk, not in a shell variable. The cache key is cwd plus position plus
-# the words already on the line; the current word is deliberately emptied in the
-# wt call so the cache holds the FULL candidate list for that position, and zsh
-# itself filters it by the typed prefix. Branches created in another window show
-# up once the TTL expires. Replaces the completer bound by wt's shell init
-# (_wt_lazy_complete) and brew's generated _wt, whose describe logic is copied
-# verbatim so rendering (dirs, descriptions) stays identical.
+# wt completion cache. wt's completer shells out to git several times per call, and
+# every exec on this machine is taxed ~0.3s by SentinelOne, serialized. One
+# uncached completion therefore costs 4s+, far more in repos with many worktrees.
+# zsh-autocomplete re-runs the completion on EVERY keystroke, each in a throwaway
+# pty fork of the shell, so the result must be cached on disk, not in a shell
+# variable. The cache key is cwd plus position plus the words already on the line;
+# the current word is deliberately emptied in the wt call so the cache holds the
+# FULL candidate list for that position, and zsh itself filters it by the typed
+# prefix. Replaces the completer bound by wt's shell init (_wt_lazy_complete) and
+# brew's generated _wt, whose describe logic is copied verbatim so rendering
+# (dirs, descriptions) stays identical.
+#
+# Serving is stale while revalidating: an entry younger than 60s serves as is; an
+# entry up to a day old still serves instantly, and the next prompt's precmd hook
+# rewrites it in a detached background job (throttled by a marker file, so
+# keystroke storms share one refresh); only a missing or day old entry blocks
+# on a live wt call. The blocking call runs in a pty worker that
+# zsh-autocomplete may kill at the completion timeout; on that cold path the
+# detached refresh is started first (there it is safe: the worker stays alive
+# while it blocks) and lands the cache for the next Tab. The wt function wrapper
+# below drops a repo's entries after a mutating wt command (switch, remove,
+# merge), so new branches appear without waiting for the freshness window.
+# Detached cache refresh. Disowned with fds redirected. The marker file
+# throttles to one refresh per key per 60s. The trap block makes it safe to call
+# from inside a completion worker as well as the main shell.
+_wt_refresh_bg() {
+  local cache_file=$1
+  local -i idx=$2
+  shift 2
+  local -a w=("$@")
+  (( $+EPOCHSECONDS )) || zmodload zsh/datetime
+  zmodload zsh/stat 2>/dev/null
+  local now=$EPOCHSECONDS
+  local mtime
+  local marker="$cache_file.refresh"
+  if zstat -A mtime +mtime -- "$marker" 2>/dev/null && (( now - mtime < 60 )); then
+    # Throttled: an in-flight or recent refresh for this key exists.
+    return 1
+  fi
+  command mkdir -p "${cache_file:h}"
+  command touch "$marker"
+  # zasync cancels a finished or timed out worker with `kill -- -<worker pid>`:
+  # SIGTERM to the worker's whole process group, which a plain background job
+  # still belongs to (workers run without job control). `&!` disowns the job
+  # table entry, it does not change the process group, so the subshell must
+  # ignore the signals itself; the ignore disposition is inherited by the wt
+  # and git children. Fds are redirected because the worker's pty and pipes die
+  # with it.
+  (
+    trap '' TERM HUP INT
+    local -a out=() lines=()
+    local raw rc
+    raw=$( _CLAP_IFS=$'\n' _CLAP_COMPLETE_INDEX=$idx COMPLETE=zsh command wt -- "${w[@]}" "" 2>/dev/null ); rc=$?
+    out=("${(@f)raw}")
+    local l
+    for l in $out; do
+      [[ -n $l ]] && lines+=( "$l" )
+    done
+    (( $#lines )) || exit 1
+    local tmp="$cache_file.tmp.$$"
+    print -rl -- $lines > "$tmp"
+    command mv -f "$tmp" "$cache_file"
+  ) >/dev/null 2>&1 &!
+}
+# Precmd hook in the MAIN shell: turn stale path request files into detached
+# refreshes. The pty worker that serves a stale entry only writes the request
+# file (pure file I/O, no spawn): spawning from the worker is unreliable, because
+# zasync kills the worker's whole process group the moment its result lands,
+# and a wt killed mid run there exits 1 without writing anything. Background
+# jobs of the interactive main shell get their own process group under job
+# control, so refreshes spawned here are safe. The marker inside
+# _wt_refresh_bg still throttles repeated requests.
+_wt_flush_wants() {
+  local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/wt/zsh-completion"
+  local -a wants=()
+  () {
+    setopt localoptions nullglob
+    wants=( "$cache_dir"/*.want )
+  }
+  (( $#wants )) || return 0
+  (( $+EPOCHSECONDS )) || zmodload zsh/datetime
+  zmodload zsh/stat 2>/dev/null
+  local now=$EPOCHSECONDS want cache_file mtime _wt_idx _wt_words
+  for want in $wants; do
+    cache_file="${want%.want}"
+    { read -r _wt_idx; read -r _wt_words } < "$want"
+    if [[ -s $cache_file ]] && zstat -A mtime +mtime -- "$cache_file" 2>/dev/null && (( now - mtime < 60 )); then
+      command rm -f -- "$want"
+      continue
+    fi
+    local -a _wt_w=( ${(s: :)_wt_words} )
+    # Keep the request file when throttled (return 1): the next prompt retries
+    # once the 60s marker window of the in-flight refresh has passed.
+    if _wt_refresh_bg "$cache_file" "$_wt_idx" "${_wt_w[@]}"; then
+      command rm -f -- "$want"
+    fi
+  done
+}
 _wt_cached() {
   local -i idx=$(( CURRENT - 1 ))
-  local -i ttl=15
   (( $+EPOCHSECONDS )) || zmodload zsh/datetime
   zmodload zsh/stat 2>/dev/null
   local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/wt/zsh-completion"
@@ -115,10 +201,20 @@ _wt_cached() {
   local -a out=()
   local mtime
   local -i miss=0
-  if [[ -s $cache_file ]] && zstat -A mtime +mtime -- "$cache_file" 2>/dev/null && (( now - mtime < ttl )); then
+  local -i fresh=60 stale=86400
+  if [[ -s $cache_file ]] && zstat -A mtime +mtime -- "$cache_file" 2>/dev/null && (( now - mtime < stale )); then
     out=("${(@f)$(<$cache_file)}")
+    if (( now - mtime >= fresh )); then
+      # Request a background refresh; the precmd hook in the main shell runs it.
+      # One file write here beats a flaky spawn inside the doomed pty worker.
+      print -r -- "$idx"$'\n'"${(j: :)words[1,idx]}" > "$cache_file.want"
+    fi
   else
     miss=1
+    # Start the detached refresh BEFORE blocking: if this pty worker is killed
+    # at the completion timeout before the blocking call lands, the detached
+    # one still writes the cache, so the next Tab is instant.
+    _wt_refresh_bg "$cache_file" "$idx" "${(@)words[1,idx]}"
     out=("${(@f)$( _CLAP_IFS=$'\n' _CLAP_COMPLETE_INDEX=$idx COMPLETE=zsh command wt -- "${(@)words[1,idx]}" "" 2>/dev/null )}")
   fi
   # Drop empty lines. Under zsh-autocomplete a cache miss runs in a throwaway
@@ -135,10 +231,11 @@ _wt_cached() {
     local tmp="$cache_file.tmp.$$"
     print -rl -- $lines > "$tmp"
     command mv -f "$tmp" "$cache_file"
-    # Prune entries older than a day. The glob needs nullglob only here.
+    # Prune entries and markers older than two days; the stale window is one day.
+    # The glob needs nullglob only here.
     () {
       setopt localoptions nullglob
-      local -a old=( "$cache_dir"/*(.m+1) )
+      local -a old=( "$cache_dir"/*(.m+2) )
       (( $#old )) && command rm -f -- $old
     }
   fi
@@ -165,9 +262,11 @@ _wt_cached() {
 zstyle ':completion:*:wt:*' list-max 1
 zstyle ':completion:*:*:wt:*' list-grouped false
 # zsh-autocomplete kills a slow live completion after this timeout (default 1s).
-# wt's fan-out costs 4s+ on a cold cache, so raise the budget: the menu then
-# streams in asynchronously once wt finishes instead of never showing at all.
-# Cached positions complete instantly and ignore this entirely.
+# Only a cold wt completion (first ever for a repo and position, or a day old)
+# still blocks: 4s+ in small repos, more in big ones. The budget lets small
+# repos land the first menu inline. If a big repo exceeds it, the worker dies,
+# but the detached refresh from _wt_cached lands the cache, so the next Tab is
+# instant. Everything else serves from the cache and ignores this entirely.
 zstyle ':autocomplete:*' timeout 8
 # Bind wt to _wt_cached. compinit runs asynchronously under zsh-autocomplete (and
 # as a fallback later in this file), so compdef does not exist yet at this point;
@@ -184,6 +283,46 @@ else
   }
   autoload -Uz add-zsh-hook
   add-zsh-hook precmd _wt_compdef_once
+fi
+# Run pending background refreshes at every prompt (see _wt_flush_wants).
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd _wt_flush_wants
+
+# Drop wt completion cache entries after a mutating wt command. wt's shell init
+# (znap eval above) defines the wt function and regenerates it on every shell
+# startup, always before this block, so copy it once per shell and wrap it.
+# switch, remove, and merge change the branch and worktree lists of the old cwd's
+# repo and, after a switch moved the shell, the new one. Delete both repos'
+# entries so the next completion is correct, then warm the new cwd's switch list
+# in the background so that Tab usually stays instant. The guard prevents double
+# wrapping if this file is sourced twice in one shell.
+if (( $+functions[wt] && ! $+functions[_wt_shell_orig] )); then
+  functions[_wt_shell_orig]=$functions[wt]
+  _wt_comp_warm() {
+    local prefix="${1//[^a-zA-Z0-9._-]/_}"
+    local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/wt/zsh-completion"
+    _wt_refresh_bg "$cache_dir/${prefix}_2_wt_switch" 2 wt switch
+    _wt_refresh_bg "$cache_dir/${prefix}_1_wt" 1 wt
+  }
+  wt() {
+    local -i _wt_rc=0
+    local _wt_old_pwd=$PWD
+    _wt_shell_orig "$@"
+    _wt_rc=$?
+    if (( _wt_rc == 0 )) && [[ "$1" == (switch|remove|merge) ]]; then
+      local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/wt/zsh-completion"
+      local _wt_p
+      for _wt_p in "$_wt_old_pwd" "$PWD"; do
+        () {
+          setopt localoptions nullglob
+          local -a stale=( "$cache_dir/${_wt_p//[^a-zA-Z0-9._-]/_}_"* )
+          (( $#stale )) && command rm -f -- $stale
+        }
+      done
+      _wt_comp_warm "$PWD"
+    fi
+    return _wt_rc
+  }
 fi
 
 # understory polls `wt list` for every known repo (~200 taxed execs per cycle).
@@ -238,6 +377,40 @@ if (( $+commands[mole] )); then
       }
       autoload -Uz add-zsh-hook
       add-zsh-hook precmd _mole_compdef_once
+    fi
+  fi
+fi
+
+# Same pattern as mole above: hunk's completion script calls compdef directly,
+# and the resolved path + mtime keep Znap's cache header valid across shell
+# restarts without respawning hunk at startup.
+if (( $+commands[hunk] )); then
+  () {
+    local executable=${commands[hunk]:A}
+    local -a mtime=()
+    zmodload zsh/stat
+    zstat -A mtime +mtime -- "$executable" 2>/dev/null
+    local -i had_compdef=$+functions[compdef]
+    (( had_compdef )) || compdef() { :; }
+    {
+      znap eval hunk "command ${(q)executable} completion zsh 2>/dev/null # ${mtime[1]:-0}"
+    } always {
+      (( had_compdef )) || unfunction compdef
+    }
+  }
+  if (( $+functions[_hunk] )); then
+    if (( $+functions[compdef] )); then
+      compdef _hunk hunk
+    else
+      _hunk_compdef_once() {
+        if (( $+functions[compdef] )); then
+          compdef _hunk hunk
+          add-zsh-hook -d precmd _hunk_compdef_once
+          unfunction _hunk_compdef_once
+        fi
+      }
+      autoload -Uz add-zsh-hook
+      add-zsh-hook precmd _hunk_compdef_once
     fi
   fi
 fi

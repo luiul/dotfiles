@@ -150,6 +150,12 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Fallback when a plain image file is required (e.g. Marp decks): keep the `.drawio`/`.mmd` source next to the rendered image and export with the `drawio` CLI (see the `export-drawio-diagrams-as-images-via-cli` skill).
 - Check the rendered diagram in GitHub light and dark mode before merging.
 
+## Google Docs
+
+- To share a document with someone who reads in Google Docs, use `gdoc-publish` (repo: `~/projects/personal/gdoc-publisher`, skill: `create-work-google-doc-from-markdown`). It creates or refreshes a styled doc from Markdown, in the work account, private by default.
+- It never changes sharing. Sharing and posting the link need separate approval. Check the rendered PDF, not only the printed metrics.
+- Change the code in the repo, with a test first. Do not copy its logic into skills or scratch scripts. The `md2gdoc` tool stays for replacing the body of an existing doc through a service account.
+
 ## Browser Automation
 
 - Default tool: playwriter CLI (`playwriter -s <session> -e '<playwright JS>'`). It drives the real Brave browser through an extension bridge, so logged-in sessions work and bot detection sees a real browser. Full reference: `~/.pi/agent/skills/playwriter/SKILL.md` (context-mode source `playwriter-skill`); setup doc: `docs/browser-automation.md` in the dotfiles repo.

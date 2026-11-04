@@ -22,7 +22,8 @@
     "npm:pi-mcp-adapter",
     "npm:context-mode@1.0.169",
     "npm:pi-hermes-memory",
-    "npm:pi-blackhole"
+    "npm:pi-blackhole",
+    "npm:@plannotator/pi-extension"
   ],
   "markdown": {
     "codeBlockIndent": ""

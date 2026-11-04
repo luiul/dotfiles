@@ -16,6 +16,8 @@ tap "xo/xo", trusted: { formulae: ["usql"] }
 brew "bat"
 # Container runtimes on MacOS (and Linux) with minimal setup
 brew "colima"
+# Your feedback loop with the agent: review plans and code locally
+brew "crit"
 # Pack, ship and run any application as a lightweight container
 brew "docker"
 # Docker CLI plugin for extended build capabilities with BuildKit
@@ -219,6 +221,7 @@ go "github.com/luiul/understory/cmd/understory"
 uv "coppice"
 uv "dbt"
 uv "dbts"
+uv "gdoc-publisher"
 uv "harvest"
 uv "md2gdoc"
 uv "pi-model-sync", source: "git+https://github.com/luiul/orchard"

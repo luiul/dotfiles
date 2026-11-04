@@ -99,7 +99,7 @@ The `vscode` package stows `settings.json`, `keybindings.json`, and `extensions.
 
 `pi-hermes-memory` uses direct review calls through `ai-model-router/GLM 5.3 Flash`, with `ai-model-router/GPT-6 Luna` as its fallback. Thinking stays off for background maintenance. The config lives at `pi/.pi/agent/hermes-memory-config.json`, stowed to `~/.pi/agent/hermes-memory-config.json`. Model references use current router IDs, not retired technical IDs.
 
-The AWS SSO refresh extension remains available to isolated child calls. Review transport and fallback settings do not change the main session model or its prompt cache.
+The AWS SSO refresh extension remains available to isolated child calls. Review transport and fallback settings do not change the main session model or its prompt cache. The separate [memory hardening setup](docs/pi-memory-hardening.md) preserves user and tool evidence and limits background review batches. Its activation has separate checks; these model settings do not apply that patch.
 
 ## Pi Subagents
 

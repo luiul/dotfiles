@@ -12,9 +12,11 @@ Use GLM 5.3 Flash off for bounded review, explicit web summaries, and Hermes mai
 
 ## Configuration dependencies
 
-[Grove](https://github.com/luiul/grove) owns the router catalog and display names in `~/projects/personal/grove/store.json` and `overlay.json`. The dotfiles model snapshot matches those files. At recovery review, both Grove files remained uncommitted. Preserve and review that source change before publishing this snapshot or regenerating from a clean Grove checkout. A dotfiles commit alone does not preserve the catalog source.
+[Grove](https://github.com/luiul/grove) owns the router catalog and display names in `~/projects/personal/grove/store.json` and `overlay.json`. [The preserved source commit](https://github.com/luiul/grove/commit/5fb66bc) regenerates this dotfiles snapshot without changes. Use that source or newer reviewed catalog data when running sync. A dotfiles snapshot alone does not preserve the catalog source.
 
 Argon resolves from the live discovered catalog in `~/.pi/agent/models-store.json`. Pi 1.5.0's bundled Vertex catalog does not contain it. A fresh installation needs successful catalog discovery before the Vision favorite can resolve. The model-role test uses a synthetic Argon record, so that test does not prove fresh-install availability.
+
+The Git filter `strip-pi-thinkinglevel` removes the session-wide `defaultThinkingLevel` from committed settings. Keep that local preference separate. The committed `modelThinkingLevels` map sets Terra high and the other model startup levels. Package snapshots retain the installed Plannotator extension and existing helper versions.
 
 ## Usage Evidence
 

@@ -2,12 +2,13 @@
   "name": "pi-extensions",
   "private": true,
   "dependencies": {
-    "@tintinweb/pi-subagents": "^0.22.0",
+    "@plannotator/pi-extension": "^0.28.48",
+    "@tintinweb/pi-subagents": "^0.22.1",
     "context-mode": "1.0.169",
     "pi-blackhole": "^0.5.16",
     "pi-hermes-memory": "^0.9.11",
-    "pi-mcp-adapter": "^6.0.0",
-    "pi-web-access": "^0.44.0"
+    "pi-mcp-adapter": "^7.0.0",
+    "pi-web-access": "^0.46.0"
   },
   "overrides": {
     "@modelcontextprotocol/client": "2.3.1",

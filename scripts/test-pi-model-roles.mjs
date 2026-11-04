@@ -28,7 +28,8 @@ const scope=[
 ];
 assert.equal(settings.defaultProvider,'ai-model-router');
 assert.equal(settings.defaultModel,'GPT-6.1 Terra');
-assert.equal(settings.defaultThinkingLevel,'high');
+// Git intentionally strips the session-wide defaultThinkingLevel. Model pins persist.
+assert(settings.defaultThinkingLevel===undefined||settings.defaultThinkingLevel==='high');
 assert.deepEqual(settings.enabledModels,scope);
 assert.equal(new Set(router.models.map(m=>m.id)).size,router.models.length);
 for(const [role,[id,thinking,description]] of Object.entries(roles)){

@@ -188,7 +188,7 @@ CLI-first. Reach every system through its CLI, or a documented `curl` REST recip
 | Snowflake | `snow` CLI | browser SSO |
 | Databricks | `databricks` CLI | OAuth |
 | AWS (S3, etc.) | `aws` CLI | SSO (`hfsso` session, browser) |
-| Google Docs | `md2gdoc` | service account |
+| Google Docs | `md2gdoc` to replace the body of an existing doc (service account); `gdoc-publish` to create or refresh a styled private doc (gcloud work account) | service account; gcloud |
 | Slack | approved official Slack MCP first; `slack-reader` browser fallback (shim: `slack-hf-read`) | separate OAuth for the current client; no credential capture or replay |
 | HelloDev KB | MCP (Pi, via `pi-mcp-adapter`) | none required |
 

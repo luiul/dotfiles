@@ -26,6 +26,10 @@ Verify model calls through their completed assistant response and memory writes.
 node scripts/test-hermes-review.mjs
 ```
 
+## Hermes evidence and retrieval hardening
+
+The reviewed Hermes 0.9.11 patch preserves user corrections, source roles, and entry IDs. It adds incremental background review and current-project search defaults with explicit wider retrieval. Providers, packages, skills, and history stay unchanged. The patch is not applied automatically. See [memory hardening](../../../../docs/pi-memory-hardening.md) for limits, application, and checks.
+
 ## Background resource guard
 
 `resource-budget.ts` supplies a 120-second default for ctx execution tools and rejects background execution without an explicit timeout. It checks the version-pinned context-mode lifecycle patch before every ctx call. A missing or changed patch blocks those tools and points to `pi-resources-patch`. Other tools remain available.

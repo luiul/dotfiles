@@ -17,8 +17,13 @@ try {
 		files[file] = createHash("sha256").update("fixture").digest("hex");
 	}
 	writeFileSync(join(dir, "package.json"), JSON.stringify({ version: "1.0.169" }));
-	writeFileSync(join(dir, ".pi-resource-patch.json"), JSON.stringify({ revision: "context-mode-resources-v1", patchVersion: 1, version: "1.0.169", files }));
-	check("verified files accepted", () => assert.equal(verifyResourcePatch(dir), undefined));
+	const manifestPath = join(dir, ".pi-resource-patch.json");
+	const manifest = { revision: "context-mode-resources-v2", patchVersion: 1, version: "1.0.169", files };
+	writeFileSync(manifestPath, JSON.stringify(manifest));
+	check("verified v2 files accepted", () => assert.equal(verifyResourcePatch(dir), undefined));
+	writeFileSync(manifestPath, JSON.stringify({ ...manifest, revision: "context-mode-resources-v1" }));
+	check("obsolete v1 revision rejected", () => assert.match(verifyResourcePatch(dir)!, /version does not match/));
+	writeFileSync(manifestPath, JSON.stringify(manifest));
 	writeFileSync(join(dir, "build/executor.js"), "drift");
 	check("source drift rejected", () => assert.match(verifyResourcePatch(dir)!, /drift/));
 	for (const tool of ["ctx_execute", "ctx_execute_file", "ctx_batch_execute"]) {

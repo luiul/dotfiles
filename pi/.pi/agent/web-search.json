@@ -1,0 +1,6 @@
+{
+  "workflow": "none",
+  "summaryModel": "ai-model-router/GLM 5.3 Flash:off",
+  "queryRewriteModel": "ai-model-router/GPT-6 Luna:low",
+  "summaryInstructions": "- Preserve prices, dates, versions, units, and URLs exactly.\n- Separate source facts from estimates. State conflicts and expired offers."
+}

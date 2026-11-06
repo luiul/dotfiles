@@ -22,7 +22,7 @@ const installed = join(homedir(), '.pi/agent/npm/node_modules/pi-hermes-memory')
 const runtime = join(homedir(), '.pi/agent/install/releases/1.5.0/node_modules/@earendil-works/pi-coding-agent');
 const root = mkdtempSync(join(tmpdir(), 'hermes-hardening-'));
 const pkg = join(root, 'package');
-const original = readFileSync(join(installed, 'src/handlers/message-parts.ts'));
+const originals = new Map(Object.keys(JSON.parse(readFileSync(join(repo, 'pi/.pi/agent/patches/hermes-memory/baseline.json'), 'utf8'))).map(file => [file, readFileSync(join(installed, file))]));
 const checks = [];
 const check = async (name, fn) => { await fn(); checks.push(name); console.log(`PASS ${name}`); };
 try {
@@ -43,6 +43,9 @@ try {
   await check('private package patch and idempotence', () => {
     assert.equal(applyPatch(pkg, true).applied, true);
     assert.equal(applyPatch(pkg, true).applied, false);
+    const marker = JSON.parse(readFileSync(join(pkg, '.pi-memory-hardening.json'), 'utf8'));
+    assert.equal(marker.version, JSON.parse(readFileSync(join(installed, 'package.json'), 'utf8')).version);
+    assert.equal(marker.files['src/handlers/message-parts.ts'].length, 64);
   });
   await check('interrupted marker publication can resume from verified baseline bytes',()=>{
     const marker=join(pkg,'.pi-memory-hardening.json');rmSync(marker);
@@ -187,7 +190,7 @@ export default function(pi) { pi.registerTool({name:'bridge',label:'bridge',desc
     const output=execFileSync(process.execPath,[join(repo,'scripts/test-hermes-review.mjs')],{cwd:repo,env:{...process.env,HERMES_TEST_CONFIG:join(homedir(),'.pi/agent/hermes-memory-config.json'),HERMES_TEST_PACKAGE:pkg},encoding:'utf8',timeout:95000,maxBuffer:1_000_000});
     assert(output.includes('PASS real Pi RPC'));console.log('REGRESSION '+output.split('\n').filter(x=>x.startsWith('PASS')).length+' existing Hermes checks');
   });
-  assert.deepEqual(readFileSync(join(installed,'src/handlers/message-parts.ts')),original);
+  for (const [file, bytes] of originals) assert.deepEqual(readFileSync(join(installed, file)), bytes, `Live package changed: ${file}`);
   console.log(`Checks: ${checks.length} passed. Live package untouched. Private fixtures only.`);
 } finally { rmSync(root,{recursive:true,force:true});assert(!existsSync(root)); }
 // Pi's module loader retains process-level handles. This test-owned host is complete.

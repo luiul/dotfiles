@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Apply only reviewed Hermes 0.9.11 source changes. Never run automatically at startup. */
+/** Apply only reviewed Hermes source versions. Never run automatically at startup. */
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, mkdirSync, writeFileSync, renameSync, realpathSync, lstatSync, rmSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const resources = resolve(dirname(fileURLToPath(import.meta.url)), '../pi/.pi/agent/patches/hermes-memory');
 export const revision = 'hermes-evidence-scope-v1';
+export const supportedVersions = ['0.9.11', '0.10.0'];
 const digest = (text) => createHash('sha256').update(text).digest('hex');
 function replaceOnce(text, oldText, newText) {
   if (!text.includes(oldText) || text.indexOf(oldText) !== text.lastIndexOf(oldText)) throw new Error('Hermes source shape changed');
@@ -106,8 +107,10 @@ function safePath(root, path) {
 
 export function preparePatch(packageDir) {
   const root = realpathSync(packageDir);
-  if (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version !== '0.9.11') throw new Error('Hermes patch requires version 0.9.11');
-  const baseline = JSON.parse(readFileSync(join(resources, 'baseline.json'), 'utf8'));
+  const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
+  if (!supportedVersions.includes(version)) throw new Error(`Hermes patch requires version ${supportedVersions.join(' or ')}`);
+  const manifest = version === '0.9.11' ? 'baseline.json' : `baseline-${version}.json`;
+  const baseline = JSON.parse(readFileSync(join(resources, manifest), 'utf8'));
   const markerPath = safePath(root, join(root, '.pi-memory-hardening.json'));
   const marker = existsSync(markerPath) ? JSON.parse(readFileSync(markerPath, 'utf8')) : null;
   if (marker && marker.revision !== revision) throw new Error('Unknown Hermes patch revision');
@@ -130,7 +133,7 @@ export function preparePatch(packageDir) {
     if (existsSync(path) && (lstatSync(path).isSymbolicLink() || readFileSync(path, 'utf8') !== text)) throw new Error(`Unexpected patch helper: ${file}`);
     updates.push({ file, path, old: existsSync(path) ? readFileSync(path, 'utf8') : null, text });
   }
-  return { root, updates, alreadyApplied: updates.every(x => x.old === x.text) };
+  return { root, version, baseline, updates, alreadyApplied: updates.every(x => x.old === x.text) };
 }
 export function recoverPatch(packageDir, approved = false) {
   if (!approved) throw new Error('Recovery requires explicit approval');
@@ -173,7 +176,7 @@ export function applyPatch(packageDir, approved = false) {
         const dest = safePath(root, join(backup, item.file)); mkdirSync(dirname(dest), { recursive: true, mode: 0o700 });
         if (!realpathSync(dirname(dest)).startsWith(root + sep)) throw new Error('Unsafe baseline path');
         if (!existsSync(dest)) writeFileSync(dest, item.old, { mode: 0o600, flag: 'wx' });
-        const expected=JSON.parse(readFileSync(join(resources,'baseline.json'),'utf8'))[item.file];
+        const expected=plan.baseline[item.file];
         if (expected && digest(readFileSync(dest))!==expected) throw new Error('Baseline backup drift');
       }
       const tmp = item.path + '.hardening-tmp';
@@ -186,7 +189,7 @@ export function applyPatch(packageDir, approved = false) {
     const files = Object.fromEntries(plan.updates.map(x => [x.file, digest(x.text)]));
     const marker = join(root, '.pi-memory-hardening.json');
     const tmp = marker + '.hardening-tmp';
-    writeFileSync(tmp, JSON.stringify({ revision, version: '0.9.11', files }, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
+    writeFileSync(tmp, JSON.stringify({ revision, version: plan.version, files }, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
     temporary.push(tmp);
     renameSync(tmp, marker);
     return { applied: true, revision, files: Object.keys(files).length };

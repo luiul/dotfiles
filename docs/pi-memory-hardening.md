@@ -28,7 +28,7 @@ The opt-in anchor session-search mode keeps its existing explicit Markdown inter
 
 ## Patch lifecycle
 
-The patch supports Hermes 0.9.11 only. `pi-memory-hardening` validates the package version and reviewed source hashes without writing. Application needs explicit approval and stopped affected Pi sessions:
+The patch supports Hermes 0.9.11 and 0.10.0 only, with a separate reviewed source-hash manifest for each. All eight patched upstream source files are byte-identical between these versions. The 0.10.0 port keeps the same behavior and rejects other releases or source drift. It records the actual package version in the marker. `pi-memory-hardening` validates the package version and reviewed source hashes without writing. Application needs explicit approval and stopped affected Pi sessions:
 
 ```sh
 pi-memory-hardening --approved
@@ -49,6 +49,23 @@ node scripts/bench-hermes-hardening.mjs
 ```
 
 The hardening suite uses private package copies and memory stores. The interactive check uses a bounded agent-owned tmux session and a fixed local provider. The benchmark alternates seven measured baseline and candidate pairs after warm-up, with identical package layouts and private settings.
+
+## Hermes 0.10.0 port checks
+
+The port passed 17 hardening checks, 18 existing review checks, exact-version and recovery checks, 18 resource-budget checks, and a real isolated Pi 1.5.0 TUI check. Tests verify all eight installed target files remain unchanged. Recovery fixtures simulate the older version through package metadata because the patched source hashes are identical; they do not test a separate 0.9.11 runtime installation.
+
+Four seven-pair foreground benchmark runs on 6 November 2026 produced these startup medians:
+
+| Run | Baseline | Candidate |
+| --- | --- | --- |
+| First | 1382 ms | 1399 ms |
+| Repeat | 1422 ms | 1433 ms |
+| Shell run | 1489 ms | 1587 ms |
+| Reversed starting order | 1508 ms | 1517 ms |
+
+Foreground turn medians stayed between 5.72 and 5.92 ms. Candidate RSS differences ranged from 1.4 MiB lower to 3.6 MiB higher. Paired startup differences in the reversed-order run ranged from 464 ms faster to 306 ms slower. These results are inconclusive for a strict no-performance-loss claim. On 6 November 2026, the user accepted a possible small startup cost for the verified memory-correctness benefit. This scoped tradeoff permits rollout after the other activation checks pass; it is not proof of zero overhead. The benchmark disables review and does not exercise searches, so background and large-index costs remain outside these measurements. `--candidate-first` reverses the initial order and reports paired startup differences.
+
+A bounded startup investigation measured the actual Pi extension loader with temporary in-memory instrumentation. Six balanced pairs showed configuration medians of 0.31 ms baseline and 0.29 ms candidate, registration medians of 2.19 and 2.16 ms, and import medians of 270.09 and 287.62 ms. The paired import delta median was 14.24 ms. Unchanged host preamble and persistence work varied much more. A separate same-process import probe suggested 8.49 ms extra import time, but its order was imbalanced and a balanced replacement timed out. These supporting results suggest a small import cost; they do not prove its cause. The accepted tradeoff replaces the strict timing gate for this rollout only. No further whole-host repeats are needed without a new hypothesis.
 
 The optional paid evidence check needs explicit approval:
 

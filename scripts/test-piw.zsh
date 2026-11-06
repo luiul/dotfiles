@@ -10,14 +10,16 @@ trap 'command rm -rf -- "$fixture"' EXIT
 trap 'exit 130' INT TERM
 fixture=${fixture:A}
 mkdir -p "$fixture/bin" "$fixture/start" "$fixture/target dir ' quoted"
-export PIW_TEST_DIR="$fixture" PIW_TEST_RUNNING=true PIW_TEST_CREATE_EXIT=0 PIW_TEST_OPEN_EXIT=0
+export PIW_TEST_DIR="$fixture" PIW_TEST_RUNNING=true PIW_TEST_CHECK_EXIT=0 PIW_TEST_CREATE_EXIT=0 PIW_TEST_OPEN_EXIT=0
 printf '%s\n' '#!/bin/zsh -f
 if [[ $1 == -e ]]; then
+  [[ $2 == '\''application "Ghostty" is running'\'' ]] || exit 98
   print -r -- "$PIW_TEST_RUNNING"
-  exit 0
+  exit "$PIW_TEST_CHECK_EXIT"
 fi
 printf "%s\0" "$@" > "$PIW_TEST_DIR/apple-args"
 /bin/cat > "$PIW_TEST_DIR/apple-source"
+if (( PIW_TEST_CREATE_EXIT )); then print -u2 -- "fixture launch failed"; fi
 exit "$PIW_TEST_CREATE_EXIT"
 ' > "$fixture/bin/osascript"
 printf '%s\n' '#!/bin/zsh -f
@@ -74,8 +76,19 @@ piw "$fixture/missing" 2> "$fixture/error" || rc=$?
 PIW_TEST_CREATE_EXIT=7
 rc=0
 piw . 2> "$fixture/error" || rc=$?
-[[ $rc == 1 && ! -f "$fixture/open-args" && "$(<"$fixture/error")" == *'no window could be created'* ]] || fail 'creation error triggered another launcher'
+[[ $rc == 7 && ! -f "$fixture/open-args" && "$(<"$fixture/error")" == *'no window could be created'* && "$(<"$fixture/error")" == *'fixture launch failed'* ]] || fail 'creation error was hidden or triggered another launcher'
 PIW_TEST_CREATE_EXIT=0
+clear_calls
+PIW_TEST_CHECK_EXIT=6
+rc=0
+piw 2> "$fixture/error" || rc=$?
+[[ $rc == 6 && ! -f "$fixture/apple-args" && ! -f "$fixture/open-args" && "$(<"$fixture/error")" == *'could not check'* ]] || fail 'failed app check launched anyway or lost status'
+PIW_TEST_CHECK_EXIT=0
+PIW_TEST_RUNNING=unexpected
+rc=0
+piw 2> "$fixture/error" || rc=$?
+[[ $rc == 1 && ! -f "$fixture/apple-args" && ! -f "$fixture/open-args" && "$(<"$fixture/error")" == *'unexpected response'* ]] || fail 'invalid app check launched anyway'
+print -r -- 'PASS: app check and launch failures keep their status and never start another instance'
 PIW_TEST_RUNNING=false
 PIW_TEST_OPEN_EXIT=9
 rc=0
@@ -131,3 +144,4 @@ hook_calls=0
 piw
 [[ $PWD == "$fixture/start" && $hook_calls == 0 && -f "$fixture/open-args" ]] || fail 'no argument did not skip zoxide cd'
 print -r -- 'PASS: no argument skips cd and hooks; explicit arguments preserve cd errors and zoxide behavior like cod'
+/bin/zsh "$repo/scripts/test-cod.zsh" piw

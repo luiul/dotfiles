@@ -1,35 +1,36 @@
 # Browser Automation
 
-Setup for letting Pi agents drive a real browser with logged-in sessions. Default tool is playwriter against the Brave Beta automation profile. Playwright MCP stays for clean-room work. Documented 2026-10-04 so we can iterate on it.
+Setup for letting Pi agents drive a real browser with logged-in sessions. There is ONE way: the playwriter CLI driving Google Chrome through the Playwriter extension. Switched from Brave Beta on 2026-11-06 because Brave Beta kept closing. Nothing else drives a browser for agents (no Playwright MCP, no second profile).
 
 ## Components
 
 | Component | What | Where |
 |---|---|---|
-| playwriter CLI | npm global package, currently 0.9.0. Sessions, relay control, MCP mode | `/opt/homebrew/bin/playwriter` (`npm i -g playwriter`) |
-| playwriter extension (default Beta profile) | Web Store install, Luis's primary INTERACTIVE surface (installed 2026-10-20, survived a crash relaunch on 2026-10-21) | `install:Brave:<key>` in the default Beta profile `~/Library/Application Support/BraveSoftware/Brave-Browser-Beta` |
-| playwriter extension (automation profile) | Loaded UNPACKED from the npm package via `--load-extension` at browser launch (the Web Store install in THIS profile kept getting flagged as corrupted and removed, twice on 2026-10-04). The surface for agent and clean-room work | `/opt/homebrew/lib/node_modules/playwriter/dist/extension`, loaded into the Brave Beta automation profile only |
-| Relay daemon | WebSocket bridge between CLI and extension | `localhost:19988`, auto-starts on first CLI command, no manual service |
-| pi MCP configuration | Live configuration currently has `kb` and `playwright`, not `playwriter`. Playwriter runs through its CLI. If an MCP entry is approved later, keep proxy mode (`directTools: false`) | Live file at `~/.pi/agent/mcp-adapter.json`; dotfiles copy is a snapshot |
-| Skill | Full playwriter CLI reference, loaded on demand | `~/pi-skills/pi-native/playwriter/SKILL.md`, also indexed in context-mode as source `playwriter-skill` |
-| Playwright MCP | `@playwright/mcp@0.0.83` driving Brave Beta with the same profile | Unchanged, entry in `mcp-adapter.json` |
-| Stable Brave | The daily browser. Deliberately has NO playwriter extension | Off limits for agents (user decision 2026-10-04) |
+| Google Chrome | The only agent browser | `/Applications/Google Chrome.app` (`brew install --cask google-chrome`) |
+| Chrome profile | "Your Chrome", personal Google account. Holds the extension | `--profile-directory=Default`, `~/Library/Application Support/Google/Chrome/Default` |
+| playwriter extension | Web Store install, id `jfeammnjpkecdekppnclgkkffahnhfhe`, installed 2026-11-06 | Chrome profile `Default` only |
+| playwriter CLI | npm global package, 0.9.0. Sessions, relay control | `/opt/homebrew/bin/playwriter` (`npm i -g playwriter`) |
+| Relay daemon | WebSocket bridge between CLI and extension | `localhost:19988`, auto-starts on first CLI command |
+| Skill | Full CLI reference, loaded on demand | `~/pi-skills/pi-native/playwriter/SKILL.md`, indexed in context-mode as source `playwriter-skill` |
+| pi MCP config | Only `kb`. No `playwright`, no `playwriter` entry | Live file `~/.pi/agent/mcp-adapter.json`; dotfiles copy is a snapshot |
 
 ## Decisions and why
 
-- Real browser over fresh instance: a fresh Playwright browser has no logins and gets flagged by bot detection (Reddit blocks CDP-driven browsers). Since Chrome 136, `--remote-debugging-port` is refused on the default profile, so an extension bridge is the only practical way to drive a real, logged-in browser.
-- playwriter over alternatives: Browser MCP (7k stars) is unmaintained since 2025-04, real-browser-mcp (52 stars) and browser-controller (4 stars) are too immature, browser-use/Stagehand/Skyvern bundle their own agent loop which pi already provides. playwriter: full Playwright API, active maintenance, MCP + CLI, works on Brave via MV3.
-- CLI + skill over MCP direct tool: playwriter's MCP `execute` tool embeds 53.6KB of docs in its description (~13k tokens). Registered as a direct tool it would sit in the standing prompt of every request. Proxy mode keeps it out of context; the CLI with the on-demand skill costs ~30 standing tokens. Measured 2026-10-04 via a stdio initialize/tools/list handshake.
-- Beta-only: the stable Brave extension was installed, verified working (HelloFresh Gmail from an agent-created tab), then removed on user request. Do not reinstall or route agents to stable Brave unless Luis explicitly asks. Work sessions (HelloFresh Google account) are NOT reachable; personal Gmail (aceitunosoriano@gmail.com) is logged in inside the Beta profile.
-- Two surfaces since 2026-10-20 (user decision 2026-10-21, "option A"): the default Beta profile with the Web Store extension is the primary for Luis's own interactive use; the automation profile with the unpacked extension stays the surface for agent and clean-room work. A plain `playwriter session new` binds to whichever extension is connected; when only the default-profile Beta runs, that is the daily browser, so prefer the automation profile for tasks that must not share its cookies or tabs.
-- Two Beta instances can run side by side (each `--user-data-dir` is its own instance), and macOS lists both as "Brave Browser Beta". Dock focus can land on the wrong one; a window without the Playwriter icon is usually the other instance, not a broken extension. Identify instances by pid: `ps aux | grep "MacOS/Brave Browser Beta" | grep -v Helper` (note: `pgrep -x` fails because the process name is truncated to 15 chars). The slack-reader managed browser (`~/.pi/agent/data/slack-session`) is a common third party; an aborted read can leave it running, and `slack-reader reset` cleans it up.
+- One path: Luis asked on 2026-11-06 for a single way to use the browser. Before that there were five surfaces (two Brave Beta profiles, stable Brave, Playwright MCP, playwriter), which caused wrong-instance and profile-lock failures.
+- Chrome over Brave Beta: Brave Beta (157.1.100.49) kept closing and crashed on launch (three SIGTRAP reports on 2026-11-06). A `brew reinstall` did not change the symptom.
+- Real browser over fresh instance: a fresh Playwright browser has no logins and gets flagged by bot detection. Since Chrome 136, `--remote-debugging-port` is refused on the default profile, so an extension bridge is the practical way to drive a logged-in browser.
+- playwriter over alternatives: full Playwright API, active maintenance, works with MV3. Browser MCP is unmaintained and the other options are immature or bundle their own agent loop.
+- CLI plus skill, not MCP: playwriter's MCP `execute` tool description is 53.6KB (about 13k tokens). The CLI with the on-demand skill costs about 30 standing tokens.
+- Profile: the personal "Your Chrome" profile (aceitunosoriano@gmail.com). The HelloFresh work profile ("Profile 1") has no extension on purpose. Work accounts are not reachable by agents.
+- Logins are per profile. On 2026-11-06 this profile had a Google session but no GitHub or LinkedIn login.
+- Playwright MCP is removed from the live config. For a clean room with no logins, use `playwriter session new --browser headless` (headless Chrome for Testing, installed with `playwriter browser install`).
 
 ## Slack reader, a separate browser path
 
 Slack reads use [slack-reader](https://github.com/luiul/slack-reader), not Playwriter's shared browser tabs or the retired source copy in `hellofresh/slack-hf-read`.
 The live `slack-hf-read` and `slack-hf-session-login` commands are compatibility shims into `~/projects/personal/slack-reader`.
 
-- General browser automation: Playwriter CLI, installed version 0.9.0, with the default or automation Brave Beta profile.
+- General browser automation: Playwriter CLI, installed version 0.9.0, with Google Chrome.
 - Slack: Playwright Core in Node, with the dedicated `~/.pi/agent/data/slack-session` profile and `127.0.0.1:9223` debugging endpoint.
 - Do not share profiles, copy credentials, or open Slack tabs in Playwriter as a reader fallback.
 - Pi reads only user-supplied permalinks. Normal reads use `slack-reader read '<url>' --limit 1`.
@@ -42,35 +43,32 @@ Neither Playwriter nor a dedicated profile guarantees protection from Slack Ente
 ## Usage
 
 ```bash
-playwriter session new                      # once, prints a session id
+open -a "Google Chrome" --args --profile-directory=Default   # only if Chrome has no window
+playwriter browser list                     # must show exactly one browser (Chrome)
+playwriter session new --tab-group <word>   # prints a session id
 playwriter -s 1 -e 'state.page = await context.newPage(); await state.page.goto("https://example.com")'
 playwriter -s 1 -e 'console.log(await snapshot({ page: state.page }))'   # a11y tree with aria-ref handles
-playwriter -s 1 -e 'await state.page.locator("aria-ref=e5").click()'
+playwriter session delete 1                 # when done
 ```
 
-- Agent-created tabs (`context.newPage()`) run in the real Beta profile: cookies and logins apply. No icon click needed.
-- Pre-existing tabs need one manual extension-icon click each (native UI, cannot be automated).
-- `playwriter browser list` shows connected browsers; pin with `playwriter session new --browser <key>`.
-- Pipe large snapshots through context-mode (`ctx_execute`/`ctx_search`, source `playwriter-skill` for docs) to keep bytes out of context.
+- Agent-created tabs (`context.newPage()`) run in the real Chrome profile: cookies and logins apply. No icon click needed.
+- Pre-existing tabs need one manual extension-icon click each.
+- If `browser list` shows more than one browser, stop. Do not guess a key. Pin with `session new --browser <key>` only after Luis agrees.
+- Pipe large snapshots through context-mode (`ctx_execute`/`ctx_search`, source `playwriter-skill` for docs).
+- Always close pages you opened and delete your own session. Other sessions belong to other agents.
 
 ## Verify and repair
 
-- Health check: `playwriter -s 1 -e 'state.page = await context.newPage(); await state.page.goto("https://example.com"); console.log(await state.page.title())'` should print `Example Domain`.
-- Stale session after browser restart or idle: `playwriter session reset <id>`. The extension auto-reconnects to the relay after a browser restart (verified), but MV3 service workers suspend when idle, so `browser list` can temporarily show one entry until that browser gets tab activity.
-- After a reboot or hard kill, the relay is dead and the extension's service worker may stay suspended, so `browser list` / `session new` can hang on "Waiting for extension to connect...". The relay auto-starts; the worker wakes on tab activity. Do not conclude the extension is gone: check `disable_reasons` is empty in the profile's `Secure Preferences` (key `extensions.settings.jfeammnjpkecdekppnclgkkffahnhfhe`) before reinstalling anything.
-- After a crash relaunch (`exit_type: Crashed`), Brave can unpin the toolbar icon even though the extension stays enabled. The icon is then behind the puzzle-piece menu; re-pin manually (no programmatic pin API).
-- Reinstall the extension in Beta: open the Web Store page in the Beta profile via Playwright MCP, click "Add to Brave", then send Enter via `browser_press_key` to confirm the native dialog. Proven twice (initial setup and the 2026-10-04 corruption event below).
-- Brave can flag the extension as corrupted and remove it mid-session (integrity check, likely after a hard kill of the browser). Reinstall from the Web Store as above. Never install offline by copying a crx into the profile: tampering with Secure Preferences is what triggers the corruption flag in the first place.
-- Only one MCP server can hold the profile at a time; a second one fails with "Browser is already in use". Release it by quitting the browser gracefully (SIGTERM the main browser pid only, not a blanket pkill, or the next launch shows "Restore pages?").
-- Two Brave Beta instances can run side by side (default profile vs automation profile). AppleScript `tell application "Brave Browser Beta"` can hit the wrong one or launch the default-profile one. Identify the automation browser by pid: `ps aux | grep "MacOS/Brave Browser Beta" | grep playwright-brave-beta` (note: `pgrep -x` fails because the process name is truncated to 15 chars).
-- Canonical launch of the automation browser with the unpacked extension (what the apartment-hunt session uses):
-  `open -na "Brave Browser Beta" --args --user-data-dir=$HOME/.pi/agent/data/playwright-brave-beta --load-extension=/opt/homebrew/lib/node_modules/playwriter/dist/extension`
-  While a manually launched instance holds the profile, Playwright MCP stays locked out ("Browser is already in use"). That is expected; playwriter is the primary path.
-- Playwriter browser keys (`install:Brave:...`) regenerate when the extension is reloaded or reinstalled. Do not hardcode keys; a plain `playwriter session new` binds to the one connected browser. A session bound to a dead key cannot be reset; delete it and create a new one.
-- Removing the extension is harder: the Chrome Web Store blocks CDP navigation (`Page.navigate: Not allowed`) and chrome:// WebUI ignores synthetic CGEvent clicks. What works: pyobjc `AXUIElement` tree walk + `AXPress` on the "Remove extension" link, then `AXPress` on the confirm dialog's "Remove" button. Note the daily Brave windows live in a separate macOS Space (portrait display); `tell application "Brave Browser" to make new window` lands in the active Space and is the reliable way to get a capturable, clickable window.
+- Health check: `playwriter -s 1 -e 'state.page = await context.newPage(); await state.page.goto("https://example.com"); console.log(await state.page.title())'` prints `Example Domain`.
+- "Waiting for extension to connect..." or "No browsers detected": Chrome is not running, has no window, or the MV3 worker is asleep. Chrome running with zero windows looks the same as Chrome not running. Open a window with the command above and retry. Do not reinstall first.
+- Stale session after a browser restart: `playwriter session reset <id>`, or delete it and create a new one.
+- "No current window" from `newPage`: Chrome has no window. Open one.
+- Reinstall the extension: open https://chromewebstore.google.com/detail/playwriter/jfeammnjpkecdekppnclgkkffahnhfhe in the `Default` profile, click Add to Chrome, confirm "Add extension". Chrome allows this through normal clicks.
+- Browser keys (`install:Chrome:...`) change when the extension is reinstalled. Never hardcode them.
 
 ## Not done, deliberately
 
-- No extension in stable Brave (see Beta-only decision).
-- No Chrome DevTools MCP: official and mature, but its extra value is perf traces and Lighthouse audits, not driving. Revisit if perf debugging becomes a need.
-- No token-efficient browser CLIs (browse, agent-browser, caveman-browse): context-mode already covers the token problem.
+- No extension in the HelloFresh Chrome profile or in any other browser.
+- No Playwright MCP and no second automation profile.
+- No Chrome DevTools MCP. Revisit if perf debugging becomes a need.
+- No token-efficient browser CLIs. context-mode already covers the token problem.

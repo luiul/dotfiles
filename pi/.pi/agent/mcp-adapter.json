@@ -11,19 +11,6 @@
       "url": "https://genai-lab-api.eu.foundations.shared.int.hellofresh.io/mcp/v2",
       "lifecycle": "lazy",
       "directTools": false
-    },
-    "playwright": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@playwright/mcp@0.0.83",
-        "--executable-path",
-        "/Applications/Brave Browser Beta.app/Contents/MacOS/Brave Browser Beta",
-        "--user-data-dir",
-        "/Users/luis.aceituno/.pi/agent/data/playwright-brave-beta"
-      ],
-      "lifecycle": "lazy",
-      "directTools": false
     }
   }
 }

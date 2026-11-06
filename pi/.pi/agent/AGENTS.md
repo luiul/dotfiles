@@ -162,11 +162,10 @@ Work in two modes: planning and execution. Pick the mode from the request.
 
 ## Browser Automation
 
-- Default tool: playwriter CLI (`playwriter -s <session> -e '<playwright JS>'`). It drives the real Brave browser through an extension bridge, so logged-in sessions work and bot detection sees a real browser. Full reference: `~/.pi/agent/skills/playwriter/SKILL.md` (context-mode source `playwriter-skill`); setup doc: `docs/browser-automation.md` in the dotfiles repo.
-- Two supported surfaces, never the daily stable Brave (it deliberately has no extension): the **default Brave Beta profile** (Web Store extension, Luis's primary interactive use) and the **Brave Beta automation profile** (`~/.pi/agent/data/playwright-brave-beta`, unpacked extension via `--load-extension`, the surface for agent and clean-room work). When only the default-profile Beta is running, a plain `playwriter session new` binds to it; prefer the automation profile for tasks that must not share the daily browser's cookies or tabs.
-- Two Beta instances can run side by side (each `--user-data-dir` is its own instance). Dock focus can land on the wrong one. Identify instances by pid: `ps aux | grep "MacOS/Brave Browser Beta" | grep -v Helper`.
+- One way only: playwriter CLI (`playwriter -s <session> -e '<playwright JS>'`) driving Google Chrome through the Playwriter extension. Never use another browser, Playwright MCP, or a second automation profile. Full reference: `~/.pi/agent/skills/playwriter/SKILL.md` (context-mode source `playwriter-skill`); setup doc: `docs/browser-automation.md` in the dotfiles repo.
+- Surface: the Chrome profile "Your Chrome" (`--profile-directory=Default`, the personal Google account) has the extension. Logins that exist in that profile apply. Start Chrome with `open -a "Google Chrome" --args --profile-directory=Default` if no window is open, then `playwriter session new`.
+- If `playwriter browser list` shows more than one browser, stop and report it. Do not guess a key.
 - Consent model: agent-created tabs (`context.newPage()`) work directly. Pre-existing tabs need one manual extension-icon click each.
-- Use Playwright MCP for clean-room tasks where no login state should exist.
 - Read-only scraping of bot-protected sites: cookie replay via curl stays the fallback (skill `scrape-logged-in-site-via-browser-cookie-replay`).
-- Keep the playwriter MCP entry in proxy mode (directTools:false). Its `execute` tool description is 53KB and would bloat the standing prompt. Use the CLI.
-
+- Keep the playwriter MCP entry out of the live config. Its `execute` tool description is 53KB and would bloat the standing prompt. Use the CLI.
+- Slack reads use `slack-reader`, a separate managed browser path (see `docs/browser-automation.md`).

@@ -5,6 +5,10 @@ setopt errexit nounset pipefail
 
 repo=${0:A:h:h}
 source "$repo/zsh/.zsh_config/funcs.zsh"
+helper=${1:-cod}
+[[ $helper == cod || $helper == piw ]] || { print -u2 'usage: test-cod.zsh [cod|piw]'; exit 2; }
+# Run the same directory contract for both wrappers, with a harmless Pi backend.
+_piw_launch() { command code .; }
 fixture=$(mktemp -d "${TMPDIR:-/tmp}/test-cod.XXXXXX")
 trap 'command rm -rf -- "$fixture"' EXIT
 trap 'exit 130' INT TERM
@@ -32,7 +36,7 @@ check() {
 	hook_calls=0
 	: > "$COD_TEST_LOG"
 	local rc=0
-	cod "$@" 2> "$fixture/stderr" || rc=$?
+	"$helper" "$@" 2> "$fixture/stderr" || rc=$?
 	[[ $rc == $expected_rc && $PWD == $expected_pwd && $hook_calls == $expected_hooks ]] || {
 		print -u2 -r -- "FAIL: $label (exit=$rc cwd=$PWD hooks=$hook_calls)"
 		exit 1
@@ -91,4 +95,20 @@ check 'zoxide no argument keeps cwd' 0 "$fixture/start" 0 "$fixture/start|1|."
 command zoxide add "$fixture/start"
 check 'zoxide current-only fuzzy match stays a failure' 1 "$fixture/start" 0 '' start
 
-print -r -- "$count tests passed."
+print -r -- "$count $helper directory tests passed."
+
+# Each command delegates to cd completion. Separate files refresh compinit's cache.
+fpath=("$repo/zsh/.zfunc" $fpath)
+autoload -Uz compinit
+compinit -D
+[[ $_comps[cod] == _cod && $_comps[piw] == _piw ]] || {
+	print -u2 'FAIL: cod or piw directory completion is missing'
+	exit 1
+}
+cod_completion="$(<"$repo/zsh/.zfunc/_cod")"
+piw_completion="$(<"$repo/zsh/.zfunc/_piw")"
+[[ ${cod_completion#*$'\n'} == ${piw_completion#*$'\n'} ]] || {
+	print -u2 'FAIL: cod and piw completion rules differ'
+	exit 1
+}
+print -r -- 'PASS: cod and piw share cd completion'

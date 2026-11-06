@@ -123,16 +123,27 @@ cod() {
 	command code .
 }
 
-# piw: same directory rules as cod, then start Pi in a new Ghostty window.
-# Use the running app when possible. open -na would create a second instance.
-# Load the shell environment and discard buffered input before starting Pi.
+# piw: change directory with the configured cd, then open Pi in Ghostty.
+# With no arguments, skip cd and its hooks and open the current directory.
 piw() {
 	if (( $# )); then
 		cd "$@" || return
 	fi
+	_piw_launch
+}
+
+# Use the running app when possible. open -na would create a second instance.
+# Load the shell environment and discard buffered input before starting Pi.
+_piw_launch() {
 	local boot='echo starting pi...; stty -icanon -echo min 0 time 0 2>/dev/null; while read -k1 -t 0.2 _; do while read -k1 -t 1 _; do :; done; done; exec pi'
-	if [[ "$(osascript -e 'tell application "System Events" to (exists process "ghostty")')" == true ]]; then
-		if ! osascript - "$PWD" "$boot" >/dev/null 2>&1 <<'APPLESCRIPT'
+	local running rc
+	running=$(osascript -e 'application "Ghostty" is running') || {
+		rc=$?
+		print -u2 'piw: could not check whether Ghostty is running.'
+		return $rc
+	}
+	if [[ $running == true ]]; then
+		if osascript - "$PWD" "$boot" >/dev/null <<'APPLESCRIPT'
 on run argv
 	tell application "Ghostty"
 		activate
@@ -141,12 +152,18 @@ on run argv
 end run
 APPLESCRIPT
 		then
-			print -u2 "piw: Ghostty is running but no window could be created in it."
-			return 1
+			return 0
+		else
+			rc=$?
+			print -u2 'piw: Ghostty is running but no window could be created in it.'
+			return $rc
 		fi
-	else
+	elif [[ $running == false ]]; then
 		open -a Ghostty.app --args --window-save-state=never \
 			--working-directory="$PWD" -e /bin/zsh -ic "$boot"
+	else
+		print -u2 'piw: unexpected response when checking whether Ghostty is running.'
+		return 1
 	fi
 }
 

@@ -1,8 +1,8 @@
 {
   "reviewTransport": "direct",
-  "llmModelOverride": "ai-model-router/zai-org/GLM-5.3-Flash",
+  "llmModelOverride": "ai-model-router/GLM 5.3 Flash",
   "llmFallbackModels": [
-    "ai-model-router/gpt-6-luna"
+    "ai-model-router/GPT-6 Luna"
   ],
   "llmThinkingOverride": "off",
   "childExtensionPaths": [

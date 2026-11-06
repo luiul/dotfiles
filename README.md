@@ -97,17 +97,40 @@ The `vscode` package stows `settings.json`, `keybindings.json`, and `extensions.
 
 ## Pi Memory (Hermes)
 
-`pi-hermes-memory`'s background auto-review LLM calls are configured via `pi/.pi/agent/hermes-memory-config.json` (stowed to `~/.pi/agent/hermes-memory-config.json`). Since pi's only configured provider is `amazon-bedrock` authenticated via ambient AWS SSO (`AWS_PROFILE=sso-bedrock`, no `/login`-stored API key), the extension's in-process "Direct" review transport always fails (`no_auth: No API key for amazon-bedrock` — its auth resolver only recognizes a persisted API-key credential), falling through to a "Subprocess" transport that spawns an isolated `pi -p --no-extensions` child. That child previously had no path to the `aws-sso-refresh` extension (stripped by `--no-extensions`), so a stale SSO token at review time could hang the child until pi's hard 120s kill fired ("Memory auto-review failed in both transports ... child timed out after 120000ms").
+`pi-hermes-memory` uses direct review calls through `ai-model-router/GLM 5.3 Flash`, with `ai-model-router/GPT-6 Luna` as its fallback. Thinking stays off for background maintenance. The config lives at `pi/.pi/agent/hermes-memory-config.json`, stowed to `~/.pi/agent/hermes-memory-config.json`. Model references use current router IDs, not retired technical IDs.
 
-Fix applied: `reviewTransport: "subprocess"` (skip the always-doomed Direct attempt), `llmModelOverride` to a cheap/fast Bedrock model for background maintenance calls, and `childExtensionPaths` pointing at `aws-sso-refresh.ts` so the isolated child process also proactively refreshes the SSO session before its model call, instead of relying on whatever state the token happened to be in.
-
-**Next step (not yet done, needs a manual interactive command):** run `/login amazon-bedrock` inside pi to store a persisted Bedrock API key (bearer token) in `auth.json`, if the `bedrock-user` SSO role permits minting one. That would let the Direct transport succeed in-process on its own, removing the Subprocess/SSO-refresh dependency for memory review entirely rather than just mitigating it.
+The AWS SSO refresh extension remains available to isolated child calls. Review transport and fallback settings do not change the main session model or its prompt cache. The separate [memory hardening setup](docs/pi-memory-hardening.md) preserves user and tool evidence and limits background review batches. Its activation has separate checks; these model settings do not apply that patch.
 
 ## Pi Subagents
 
-`pi/.pi/agent/agents/Explore.md` overrides the built-in Explore helper from [pi-subagents](https://github.com/tintinweb/pi-subagents). It uses `ai-model-router/gpt-6-luna` with low thinking for fast read-only file and symbol searches. The exact provider avoids the built-in helper's fallback to a Bedrock model ID that needs an inference profile. General-purpose and Plan still inherit the main session's model.
+`pi/.pi/agent/agents/Explore.md` overrides the built-in Explore helper from [pi-subagents](https://github.com/tintinweb/pi-subagents). It uses `ai-model-router/GPT-6 Luna` with low thinking for narrow read-only file and symbol searches. General-purpose and Plan inherit the main session model, now `GPT-6.1 Terra` with high thinking. Delegate independent lookups, not the main decision or duplicate work. A manual model override is available for difficult tasks.
 
 The helper excludes `canopy-status`, since SDK subagents share their parent's process ID and must not publish its dashboard status. The [Canopy extension](https://github.com/luiul/canopy/blob/main/extensions/canopy-status.ts) also accepts only interactive sessions. Apply the helper with `stow --no-folding pi`.
+
+## Pi Model Picker
+
+The global picker opens with six scoped favorites. New sessions start on router Terra high. The apartment project inherits the same scope but keeps Argon high as its visual-task default. Resumed sessions retain their saved model.
+
+Roles are short display names on existing model records. Pi shows each role and purpose beside the canonical model ID. They add no provider, extension, request, duplicate ID, or ranking system. Open `/model` or press `Ctrl+L`, then type a model or role. Tab switches between scoped favorites and all authenticated models. `/thinking` or `Shift+Tab` changes effort without changing model.
+
+| Model | Role | Use | Startup effort |
+| --- | --- | --- | --- |
+| Router GPT-6.1 Terra | Daily | Coding and admin | High |
+| Router GPT-6.1 Sol | Think | Hard problems and advice | Medium |
+| Router GLM 5.3 | Budget | Lower-cost coding | High |
+| Router GPT-6 Luna | Quick | Lookups and simple tasks | Low |
+| Vertex Gemini 4 Argon | Vision | Images, scans and floorplans | High |
+| Router GLM 5.3 Flash | Helper | Summaries and memory checks | Off |
+
+Terra is the chosen GPT-style daily model, not a claim of lower cost on every task. GLM remains the measured budget alternative. Sol is manual escalation, and Luna is for bounded work. Helper is not a deep code reviewer. Kimi, Claude and other specialists remain under Tab → all. Use exact provider/model IDs to select a specific route. If editor autocomplete expands a filter before submission, press Escape before Enter.
+
+Grove owns router display names through its `overlay.json`. The Vertex name is a `modelOverrides` entry. Keep canonical IDs in settings and worker config. Direct Bedrock Sonnet remains a manual independent reviewer, not an automatic extra call. See [model value checks](docs/pi-model-value.md) for matched costs, acceptance checks, and limits.
+
+## Pi Web Search
+
+`pi/.pi/agent/web-search.json` keeps the normal workflow at `none`, so search adds no automatic summary model call. Provider selection and fallback stay automatic. Explicit summary workflows use `GLM 5.3 Flash:off`; curator query rewriting uses `GPT-6 Luna:low`. Preserve source prices, dates, versions, and URLs. Do not send private project details to public search.
+
+A configured summary failure uses the package's deterministic fallback. Search evidence and final task decisions remain with the main agent.
 
 ## Agent Commands
 

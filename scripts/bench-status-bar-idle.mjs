@@ -36,7 +36,7 @@ assert(!process.versions.bun, 'Run with Node, not Bun');
 assert(options.baseline, 'Supply --baseline PATH, normally extracted from HEAD:pi/.pi/agent/extensions/status-bar.ts');
 const baseline = resolve(options.baseline);
 const candidate = resolve(options.candidate ?? join(repo, 'pi/.pi/agent/extensions/status-bar.ts'));
-const cli = resolve(options['pi-cli'] ?? join(homedir(), '.pi/agent/install/releases/1.4.0/node_modules/@earendil-works/pi-coding-agent/dist/cli.js'));
+const cli = resolve(options['pi-cli'] ?? join(homedir(), '.pi/agent/install/current/node_modules/@earendil-works/pi-coding-agent/dist/cli.js'));
 const fixture = join(repo, 'scripts/fixtures/status-bar-live.ts');
 const preload = join(repo, 'scripts/fixtures/status-bar-clipboard.cjs');
 const output = options.output && options.output !== '-' ? resolve(options.output) : undefined;
@@ -49,7 +49,7 @@ assert(['regular', 'fullscreen'].includes(mode), '--mode must be regular or full
 assert(repeats * 2 * (sliceMs + 4500) + 35000 <= 230000, 'Requested slices exceed the four-minute budget');
 for (const path of [baseline, candidate, cli, fixture, preload]) assert(existsSync(path), `Missing ${path}`);
 const piVersion = JSON.parse(readFileSync(join(dirname(dirname(cli)), 'package.json'), 'utf8')).version;
-assert.equal(piVersion, '1.4.0', 'The local fixture is verified against installed Pi 1.4.0');
+assert(['1.4.0', '1.5.0'].includes(piVersion), 'The local fixture supports Pi 1.4.0 and 1.5.0');
 const fingerprint = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
 const sources = Object.fromEntries([baseline, candidate, fixture, preload, fileURLToPath(import.meta.url)].map((path) => [path, fingerprint(path)]));
 assert(!output || !(output in sources), 'Output must not replace a source file');
@@ -68,7 +68,7 @@ const report = {
   pi_version: piVersion, cli, platform: process.platform, arch: process.arch, sources,
   settings: { repeats, slice_ms: sliceMs, git_poll_ms: 4000, width, height: 32, mode, provider, timeout_ms: 240000 },
   limitations: [
-    'Idle diagnostic, not renderer timing. Both real hosts use the same installed Node and Pi 1.4.0 with only the local provider and status bar loaded.',
+    'Idle diagnostic, not renderer timing. Both real hosts use the same installed Node and Pi version with only the local provider and status bar loaded.',
     'Two persistent hosts provide repeated idle slices, not independent process trials. The unmeasured host remains idle and its Git timer still runs.',
     'CPU is macOS ps time for the Node host only, excluding Git, shell, tmux and sampler CPU. Display resolution is 10ms; a zero delta means below this resolution, not zero work.',
     'Slice CPU percentages are fractions of one core. The nominal five-second slices include endpoint sampling overhead; wall time uses ps command midpoints.',
@@ -168,7 +168,7 @@ async function start(variant, source, realGit) {
   const launch = `cd ${quote(repo)} && exec env -i ${Object.entries(env).map(([k, v]) => quote(`${k}=${v}`)).join(' ')} ${argv.map(quote).join(' ')}`;
   tmux('new-session', '-d', '-s', host.name, '-x', String(width), '-y', '32', '/bin/sleep 240');
   owned.set(host.name, host);
-  run('reap-strays', ['--register-tmux', host.name, '--owner', String(process.pid), '--deadline', String(Math.ceil(endAt / 1000))]);
+  run('reap-strays', ['--register-tmux', host.name, '--owner', String(process.pid), '--deadline', String(Math.ceil(endAt / 1000))], false, 15000);
   tmux('set-option', '-t', host.name, 'remain-on-exit', 'on');
   const t0 = performance.now();
   tmux('respawn-pane', '-k', '-t', host.name, launch);

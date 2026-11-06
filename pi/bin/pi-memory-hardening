@@ -1,0 +1,5 @@
+#!/bin/sh
+# Validate first. --approved applies the reviewed patch after affected Pi sessions stop.
+set -eu
+base=$(node -e 'const fs=require("node:fs"),p=require("node:path");process.stdout.write(p.resolve(p.dirname(fs.realpathSync(process.argv[1])),"../.."))' "$0")
+exec node "$base/scripts/patch-hermes-memory.mjs" --package-dir "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/npm/node_modules/pi-hermes-memory" "$@"

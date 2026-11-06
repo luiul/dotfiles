@@ -2,6 +2,7 @@
   "providers": {
     "google-vertex": {
       "modelOverrides": {
+        "gemini-4-argon": { "name": "Vision | Images, scans and floorplans" },
         "gemini-3.1-pro-preview": {
           "inputLimits": {
             "images": {
@@ -514,7 +515,7 @@
           "cost": {
             "input": 2,
             "output": 10,
-            "cacheRead": 0.2,
+            "cacheRead": 0.1,
             "cacheWrite": 2.5
           },
           "contextWindow": 1000000,
@@ -586,6 +587,7 @@
         },
         {
           "id": "GLM 5.3",
+          "name": "Budget | Lower-cost coding",
           "reasoning": true,
           "input": ["text", "image"],
           "cost": {
@@ -599,6 +601,7 @@
         },
         {
           "id": "GLM 5.3 Flash",
+          "name": "Helper | Summaries and memory checks",
           "reasoning": true,
           "input": ["text", "image"],
           "cost": {
@@ -612,6 +615,7 @@
         },
         {
           "id": "GPT-6 Luna",
+          "name": "Quick | Lookups and simple tasks",
           "reasoning": true,
           "input": ["text", "image"],
           "cost": {
@@ -625,6 +629,7 @@
         },
         {
           "id": "GPT-6.1 Sol",
+          "name": "Think | Hard problems and advice",
           "reasoning": true,
           "input": ["text", "image"],
           "cost": {
@@ -635,6 +640,20 @@
           },
           "contextWindow": 1000000,
           "maxTokens": 131072
+        },
+        {
+          "id": "GPT-6.1 Terra",
+          "name": "Daily | Coding and admin",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 1,
+            "output": 5,
+            "cacheRead": 0.05,
+            "cacheWrite": 1.25
+          },
+          "contextWindow": 922000,
+          "maxTokens": 128000
         },
         {
           "id": "Heavy",
@@ -677,7 +696,7 @@
     }
   },
   "grove": {
-    "generatedAt": "2026-10-29T13:19:02Z",
+    "generatedAt": "2026-11-03T14:05:12Z",
     "bedrock": {
       "defaultRegion": "eu-west-1",
       "regions": {

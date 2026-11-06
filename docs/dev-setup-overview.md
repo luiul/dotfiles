@@ -46,99 +46,40 @@ Project hooks repair missing dbt dependencies or checkout-specific environment p
 
 Implementation approval does not authorize commits or pushes. Review the source diff first. After explicit approval, commit only the reviewed files in that worktree.
 
-```sh
-repo-guard publish --approved --verify 'your combined-tree test command'
-```
+Fetch the verified remote default branch, integrate current remote work without rewriting source commits, and run the combined-tree checks. Push normally to the remote default branch. Coordinate with other workers in the same repo. A conflict, failed check, changed source, or rejected push stops publication. Never force-push or discard another worker's files to resolve it.
 
-The guard serializes publication per Git common directory. Different repos can publish concurrently. It fetches the actual remote default branch, combines committed work in an isolated wt-managed integration checkout, runs the supplied checks, and pushes without force. It does not stage source files, rewrite source commits, or refresh the primary checkout.
+Do not run `cop sync` while affected workers or publication are active. It can update primary and source checkouts. Run it only when those workers are idle and their work is preserved.
 
-Integration uses a private wt configuration with setup hooks disabled. It does not inherit the usual `.venv`, ignored-file copying, or registry setup. Pi resolves inherited instructions separately. The verification command must supply safe setup or use checks that need none. Never copy secrets or live settings into a fixture just to make a test pass.
-
-A conflict, failed check, changed source, or rejected push stops publication. Recovery checkouts stay under the Git common directory, not temporary storage. Inspect the reported path and resolve the problem before retrying. Do not choose one side of a conflict wholesale to make a push succeed. A successful verified publication removes only its own clean integration checkout.
-
-The lock coordinates guard commands, not arbitrary Git commands, editors, or other computers. A normal push rejects an outdated integration result. Do not force-push around it. An interrupted owner leaves a closed gate, not an automatically stolen lock. `repo-guard unlock --approved` checks process start identity before recovery; ambiguous locks need manual inspection.
-
-Do not run `cop sync` while workers or publication are active. Its installed implementation can update both primary and source checkouts outside this lock. `--no-main` skips primary refresh, but still permits source updates. Run it only after the affected workers are idle and their work is preserved.
-
-Network commands default to 30 seconds each. Verification defaults to 120 seconds. `REPO_GUARD_NETWORK_TIMEOUT_MS` and `REPO_GUARD_VERIFY_TIMEOUT_MS` set explicit bounds from 50 through 120000 milliseconds. Longer checks run separately before publication, then use a bounded combined-tree check.
-
-HelloFresh uses feature branches and draft PRs instead. Never run the personal publisher for HelloFresh work.
+HelloFresh uses ticket branches and draft PRs instead of direct default-branch publication.
 
 ## Live deployment
 
-Publication and deployment are separate. Publication never updates the primary checkout. Explicit refresh can fast-forward a clean default checkout. Any reported dirt, hidden index flags, or incoming ignored-file collision defers deployment.
+Publication and deployment are separate. Update a clean primary checkout with a normal fast-forward after publication. Preserve unrelated local changes when deployment must wait. Never use mixed reset, direct checked-out ref changes, or index-only shortcuts.
 
-```sh
-repo-guard refresh --approved
-```
+Verify deployed files and live behavior. A remote commit alone does not prove the running setup loaded it. Existing Pi sessions need an idle reload for changed extensions.
 
-Reconcile existing work first. Verify deployed bytes and live behavior after refresh. A remote commit alone does not prove the running setup has loaded it. Existing Pi sessions need an idle reload for changed extensions.
+## Closing and removal
 
-## Completion reminder
+Report pending review, publication, and deployment before closing an agent. Saved files and Pi sessions remain in the checkout; closing an agent does not delete them.
 
-Pi's `/work-status` shows local checkout state. The `work-completion` extension records its original baseline in session entries and reminds at settlement. It uses no network checks, polling, or render-time Git.
+Use `wt remove` or `cop remove` for worktree removal after stopping its worker. The protected-branch hook remains. Native wt checks dirty files and branch merge status, but does not prove remote publication. Check preservation yourself before removing a completed task. `--force` and `--force-delete` are not permission to discard work. Git status excludes ignored files, so inspect valuable ignored data separately.
 
-It distinguishes files present at startup from later observed changes. Neither the baseline nor Git status proves authorship. Cached remote refs are not current publication proof. The reminder never commits, pushes, submits another prompt, or blocks exit.
-
-Report review readiness, commit, remote publication, and live verification separately. Keep unfinished worktrees or provide a clear handoff before closing an agent.
-
-State closing safety separately from completion. If required steps remain, use:
-
-```text
-Task incomplete: review, publication, and deployment pending.
-Agent: safe to close.
-Worktree: keep.
-Progress: saved in /absolute/source/worktree.
-```
-
-Use `Task complete. No required steps remain.` only when all required work is finished. Review approval, publication, requested deployment, and cleanup of the task's temporary worktree and branch all count as required steps. A safe pause is not completion.
-
-Use a separate `Next steps:` heading for required actions and decisions. Use `Open ideas:` for optional out-of-scope suggestions. Omit empty sections. Optional ideas do not block completion.
-
-After verified publication and any requested deployment, report the published commit. The agent then removes the task's temporary worktree and branch through wt, without leaving that cleanup to the user. This needs a fresh removal check, a stopped or handed-off worker, and an ignored-file review. Preserve unique ignored data before removal. Verify the path, branch, and registration are gone. Do not remove other workers' checkouts or imply that deleting unpublished work is safe.
-
-## Remove a worktree
-
-Stop or hand off its worker first. Use `wt remove` or `cop remove`. The global ordered `pre-remove` hook protects primary branches and runs `repo-guard check-remove`.
-
-The checker refuses dirty or untracked targets, hidden index flags, and uncertain remote preservation. Assume-unchanged and skip-worktree flags require explicit reconciliation; sparse checkouts are not supported. It checks the target, not every unfinished worktree in the repo. Personal source commits must be preserved on the remote default branch. HelloFresh source commits can be preserved on the remote ticket branch; merged squash work needs exact PR evidence.
-
-Offline checks fail closed. `--force`, `--force-delete`, and `--yes` do not waive the hook. Deliberate discard needs explicit scoped approval. `--no-hooks`, native orchestrator deletion, raw Git removal, and filesystem deletion bypass this safety rail.
-
-Git status excludes ignored files. Inspect valuable ignored data separately. For unfinished sessions, prefer Sleep or keeping the checkout rather than deleting it.
-
-## Installation and review
-
-Implementation stays unstaged in its source worktree until reviewed. Do not restow the git or Pi package from that worktree: live links must point to `~/dotfiles`, not a checkout that may later be removed.
-
-For this first rollout, run the reviewed checker by absolute path from the preserved source worktree. After explicit commit and publication approval, publish with that bootstrap path. Publication does not refresh live main, so the old hooks stay active until installation.
-
-After publication, install in this order:
-
-1. Put a reviewed executable copy at `~/.local/bin/repo-guard` and test `repo-guard status --json`. Do not point this bootstrap copy into a disposable checkout.
-2. Reconcile live changes and run the reviewed `repo-guard refresh --approved`. Verify the live files against committed source. The checker is already available when the new hook becomes visible through Stow.
-3. Replace the bootstrap copy with a link to `~/dotfiles/git/.local/bin/repo-guard`. Apply the matching Worktrunk configuration if it is not already linked. A missing executable makes removal fail closed.
-4. Link the approved Pi extension from the live package. Test a fresh Pi session, then reload existing sessions only when idle. Keep the source checkout until these checks pass.
-
-Full-package restow may conflict with existing live files. Inspect the dry run first. Do not use adoption or overwrite to resolve those conflicts automatically.
+Prefer Orca Sleep or keeping the checkout for unfinished work. Keep Pi's existing session files. No completion reminder or publication gate is installed.
 
 ## Verification
 
 ```sh
-node scripts/test-work-completion-policy.mjs
-node scripts/test-repo-guard.mjs
-bun scripts/test-work-completion.ts
-node scripts/test-work-completion-live.mjs
+node scripts/test-worktree-policy.mjs
 uv run scripts/test-worktree-no-editor.py
 bun scripts/test-scoped-agent-context.ts
 node scripts/test-scoped-agent-context-live.mjs
 node scripts/test-hermes-review.mjs
 ```
 
-These tests use disposable repos, local bare remotes, private configuration, and bounded tmux sessions. They must not publish to real remotes or remove user worktrees.
+These tests use disposable fixtures and bounded processes. They must not publish to real remotes or remove user worktrees.
 
 ## History
 
-The original repo-layout and worktree evaluation is in [dotfiles issue 4](https://github.com/luiul/dotfiles/issues/4). That history includes retired wtx commands, older memory behavior, and removed tooling. It is not the current command reference.
+The original repo-layout and worktree evaluation is in [dotfiles issue 4](https://github.com/luiul/dotfiles/issues/4). That history includes retired wtx commands, older memory behavior, and removed tooling.
 
-The concurrency safeguard is tracked in [dotfiles issue 89](https://github.com/luiul/dotfiles/issues/89).
+The removed concurrency safeguard is recorded in [dotfiles issue 89](https://github.com/luiul/dotfiles/issues/89). Git history preserves its code and tests if needed later.

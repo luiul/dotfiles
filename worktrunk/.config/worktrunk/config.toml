@@ -26,9 +26,9 @@
 worktree-path = "~/worktrees/{{ owner | default('local') }}/{{ branch | sanitize }}/{{ repo }}"
 
 # Fetch the remote default before creation without moving a live checkout or local branch.
-# Integration and publication belong to repo-guard, after explicit approval.
+# Commit and publication still need explicit approval.
 # The new branch's base remains the explicit --base or Worktrunk's normal default.
-# Offline fetch is best effort; removal and publication checks fail closed instead.
+# Offline fetch is best effort.
 [pre-switch]
 sync-default = '''
 {% if not target_worktree_path %}
@@ -55,14 +55,12 @@ registry = "mkdir -p ~/.cache/wt && echo '{{ repo_path }}' >> ~/.cache/wt/known-
 # Orchestrator workspaces are opened only by explicit coppice commands.
 # cop new and direct wt calls keep normal setup without opening Herdr or Orca.
 
-# One ordered hook. Table keys would run concurrently, so protect and publication
-# checks must stay together. A missing checker fails closed, including with --force.
+# Keep the original protected-branch check. Other removal checks are native wt behavior.
 [pre-remove]
 protect = '''
 case "{{ branch }}" in
   main|master|live) echo "refusing to remove protected branch: {{ branch }}" >&2; exit 1 ;;
 esac
-"$HOME/.local/bin/repo-guard" check-remove
 '''
 # wt remove deletes <owner>/<branch>/<repo> but leaves the empty <branch> parent dir behind
 # (e.g. ~/worktrees/hellofresh/fix-thing/). Prune it. rmdir only removes EMPTY dirs, so a

@@ -1,0 +1,130 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["markdown-it-py>=3.0"]
+# ///
+"""Convert Markdown to Mac-style RTF (Helvetica 12) and copy it for pasting into email.
+
+Pasting the result into Mail, Outlook, or Gmail keeps bold, links, lists, and line breaks.
+A single newline in the Markdown becomes a line break, so "To:" and "Cc:" header lines and
+signatures stay on separate lines. Use --join-lines to treat single newlines as spaces.
+
+Sizes are CSS px on purpose: textutil turns 12px into RTF 12 pt, but 12pt into 16 pt.
+"""
+
+from __future__ import annotations
+
+import argparse
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+from markdown_it import MarkdownIt
+
+DEFAULT_FONT = "Helvetica"
+DEFAULT_MONO = "Menlo"
+DEFAULT_SIZE = 12
+
+
+def build_css(font: str, mono: str, size: int) -> str:
+    """Return the stylesheet. Spacing is one blank line between blocks, like Mail."""
+    small = max(size - 1, 8)
+    return f"""
+body {{ font-family: {font}; font-size: {size}px; color: #000000; }}
+p {{ margin: 0 0 {size}px 0; }}
+h1 {{ font-size: {size + 6}px; font-weight: bold; margin: {size}px 0 {size // 2}px 0; }}
+h2 {{ font-size: {size + 2}px; font-weight: bold; margin: {size}px 0 {size // 2}px 0; }}
+h3, h4, h5, h6 {{ font-size: {size}px; font-weight: bold; margin: {size}px 0 {size // 2}px 0; }}
+ul, ol {{ margin: 0 0 {size}px 0; }}
+li {{ margin: 0 0 {size // 3}px 0; }}
+blockquote {{ margin: 0 0 {size}px {size * 2}px; color: #555555; }}
+code, pre {{ font-family: {mono}; font-size: {small}px; }}
+pre {{ margin: 0 0 {size}px 0; }}
+th, td {{ padding: 3px 8px; vertical-align: top; }}
+th {{ font-weight: bold; }}
+"""
+
+
+def render_html(md_text: str, *, font: str = DEFAULT_FONT, mono: str = DEFAULT_MONO,
+                size: int = DEFAULT_SIZE, join_lines: bool = False) -> str:
+    """Markdown to a small HTML document that textutil converts cleanly."""
+    parser = MarkdownIt("commonmark", {"breaks": not join_lines}).enable(["table", "strikethrough"])
+    body = parser.render(md_text)
+    return (f'<html><head><meta charset="utf-8"><style>{build_css(font, mono, size)}</style></head>'
+            f"<body>{body}</body></html>")
+
+
+def html_to_rtf(html: str) -> bytes:
+    """Run macOS textutil on the HTML. Returns RTF bytes."""
+    if shutil.which("textutil") is None:
+        raise RuntimeError("textutil not found. This command needs macOS.")
+    with tempfile.TemporaryDirectory(prefix="md-to-rtf-") as tmp:
+        src, dst = Path(tmp) / "in.html", Path(tmp) / "out.rtf"
+        src.write_text(html, encoding="utf-8")
+        subprocess.run(["textutil", "-convert", "rtf", "-encoding", "UTF-8", str(src), "-output", str(dst)],
+                       check=True, capture_output=True)
+        return dst.read_bytes()
+
+
+def copy_rtf(rtf: bytes) -> None:
+    """pbcopy files RTF input under the RTF pasteboard type, so rich paste works."""
+    subprocess.run(["pbcopy"], input=rtf, check=True)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="md-to-rtf", description=__doc__.split("\n\n")[0])
+    ap.add_argument("markdown", help="Markdown file, or - to read stdin")
+    ap.add_argument("-o", "--output", type=Path, help="RTF path (default: next to the input, .rtf)")
+    ap.add_argument("--no-copy", action="store_true", help="do not put the RTF on the clipboard")
+    ap.add_argument("--no-file", action="store_true", help="copy only; do not write an .rtf file")
+    ap.add_argument("--font", default=DEFAULT_FONT, help=f"body font (default {DEFAULT_FONT})")
+    ap.add_argument("--mono", default=DEFAULT_MONO, help=f"code font (default {DEFAULT_MONO})")
+    ap.add_argument("--size", type=int, default=DEFAULT_SIZE, help=f"body size in pt (default {DEFAULT_SIZE})")
+    ap.add_argument("--join-lines", action="store_true",
+                    help="treat single newlines as spaces (for hard-wrapped Markdown)")
+    args = ap.parse_args(argv)
+
+    if args.markdown == "-":
+        if args.no_copy and args.output is None:
+            print("md-to-rtf: stdin with --no-copy requires --output", file=sys.stderr)
+            return 2
+        md_text, out = sys.stdin.read(), args.output
+        if out is None and not args.no_file and not args.no_copy:
+            args.no_file = True
+    else:
+        src = Path(args.markdown).expanduser()
+        if not src.is_file():
+            print(f"md-to-rtf: no such file: {src}", file=sys.stderr)
+            return 1
+        md_text, out = src.read_text(encoding="utf-8"), args.output or src.with_suffix(".rtf")
+    if not md_text.strip():
+        print("md-to-rtf: input is empty", file=sys.stderr)
+        return 1
+    if args.no_file and args.no_copy:
+        print("md-to-rtf: --no-file with --no-copy produces nothing", file=sys.stderr)
+        return 2
+
+    try:
+        rtf = html_to_rtf(render_html(md_text, font=args.font, mono=args.mono, size=args.size,
+                                      join_lines=args.join_lines))
+    except (RuntimeError, subprocess.CalledProcessError) as exc:
+        print(f"md-to-rtf: conversion failed: {exc}", file=sys.stderr)
+        return 1
+
+    done = []
+    if not args.no_file and out is not None:
+        out = out.expanduser()
+        existed = out.exists()
+        out.write_bytes(rtf)
+        done.append(f"{'replaced' if existed else 'wrote'} {out}")
+    if not args.no_copy:
+        copy_rtf(rtf)
+        done.append("copied to clipboard (paste into the email body)")
+    print(f"md-to-rtf: {args.font} {args.size} pt, " + "; ".join(done), file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

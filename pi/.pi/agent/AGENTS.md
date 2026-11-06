@@ -150,6 +150,10 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Fallback when a plain image file is required (e.g. Marp decks): keep the `.drawio`/`.mmd` source next to the rendered image and export with the `drawio` CLI (see the `export-drawio-diagrams-as-images-via-cli` skill).
 - Check the rendered diagram in GitHub light and dark mode before merging.
 
+## Email Drafts
+
+- To paste a draft into an email app with formatting, use `md-to-rtf <file.md>` (repo: `~/dotfiles/macos/.local/bin/md-to-rtf`, docs: `macos/README.md`). It writes an `.rtf` next to the Markdown and copies it to the clipboard. Change the command there, with a test first. Do not rebuild it in scratch scripts.
+
 ## Google Docs
 
 - To share a document with someone who reads in Google Docs, use `gdoc-publish` (repo: `~/projects/personal/gdoc-publisher`, skill: `create-work-google-doc-from-markdown`). It creates or refreshes a styled doc from Markdown, in the work account, private by default.

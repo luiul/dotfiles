@@ -14,6 +14,28 @@ Runs `~/.local/bin/gui-env-sync.sh` at login to push selected secrets from `~/do
 into the GUI session environment via `launchctl setenv`, so Dock-launched apps see
 them at process start. See the script's own header comment for the full "why".
 
+## `md-to-rtf` (command, stowed)
+
+Converts a Markdown file to Mac-style RTF (Helvetica 12 pt, Menlo for code) and puts it on the clipboard, so you can paste a draft into Mail, Outlook, or Gmail with bold, links, lists, and line breaks kept. It replaces the old `md_to_rtf` zsh function that used pandoc.
+
+```sh
+md-to-rtf ~/scratch/email.md              # writes email.rtf next to it and copies it
+md-to-rtf draft.md --no-copy              # file only
+md-to-rtf draft.md --no-file              # clipboard only
+md-to-rtf draft.md --font Arial --size 14
+md-to-rtf draft.md --join-lines           # for hard-wrapped Markdown
+cat draft.md | md-to-rtf -                # stdin to clipboard
+cat draft.md | md-to-rtf - --no-copy -o draft.rtf  # stdin to a file
+```
+
+- Stdin with `--no-copy` needs `--output`. The command rejects calls that would produce nothing.
+- A single newline is a line break, so `To:`, `Cc:`, and signature lines stay on separate lines. Use `--join-lines` to join them.
+- Sizes use CSS px on purpose. `textutil` turns `12px` into RTF 12 pt, but `12pt` into 16 pt.
+- `pbpaste` shows plain text only. To check the clipboard RTF, run `osascript -e 'clipboard info'`. It should list `«class RTF »`.
+- Needs macOS `textutil` and `pbcopy`. Python dependencies come from the `uv run --script` header.
+
+Test: `uv run --script scripts/test-md-to-rtf.py`
+
 ## `com.luisaceituno.reap-strays` (LaunchAgent, stowed)
 
 Runs `~/.local/bin/reap-strays --apply` every 900 seconds. The launcher uses `/opt/homebrew/bin/node` or `/usr/local/bin/node`, without relying on launchd's PATH. No extra dependencies are needed.

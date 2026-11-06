@@ -38,6 +38,26 @@ Do not apply from a disposable source checkout to the live package. Review and p
 
 Application stages files, serializes patch writers, preserves baseline source, and writes the marker last. Source drift fails closed. If application is interrupted, `pi-memory-hardening --recover --approved` accepts only a provably dead owner and known staging bytes. A live or reused PID, unknown owner, or unknown bytes requires manual inspection. Do not remove recovery locks just because they are old. A package update removes the patch. Revalidate before reapplying; an unsupported version needs review, not relaxed guards. The baseline contains package code only, never memory or credentials.
 
+## Rolling activation while agents run
+
+To avoid changing code under running agents, prepare a separate exact-version copy:
+
+```sh
+node scripts/prepare-hermes-rolling.mjs --approved
+node scripts/test-hermes-rolling.mjs
+node scripts/activate-hermes-rolling.mjs --approved
+```
+
+The copy lives at `~/.pi/agent/packages/pi-hermes-memory/0.10.0-evidence-v1`. Preparation copies runtime dependencies and patches only that copy. The rolling test also prepares the copy if missing, so run it only during an approved rollout. A source manifest rejects drift when preparation runs again. It is not a continuous runtime guard; Pi does not check it on normal loading. The npm package stays installed and unchanged, but its resources are disabled in settings. New sessions load the local package. Existing sessions keep their loaded npm code until they restart or explicitly reload while idle. Do not reload another worker.
+
+Trusted central HelloFresh intake disables both package sources. Its implementation repos keep the local package enabled. Memory locations, retention, providers, and session history remain unchanged. Old and new sessions can use the existing shared memory stores; the package rollout does not repair or delete those stores.
+
+The local package is pinned and does not auto-update. Run preparation before restoring these settings on a new machine. An npm update does not update this local copy. A newer Hermes release needs a new reviewed versioned copy and matching central override, not silent mutation of the active path.
+
+Activation uses Pi's settings lock and changes only the Hermes package entries. It preserves other fields and saves the original settings next to the copied package. The regression checks that a stale Pi session saving another setting does not overwrite the new package entries.
+
+Rollback changes the two Hermes package entries back to the original npm source. Keep the versioned copy while any session may still use it. Do not delete stores to roll back code.
+
 ## Verification
 
 ```sh

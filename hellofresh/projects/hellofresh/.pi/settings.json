@@ -4,6 +4,10 @@
     {
       "source": "npm:pi-hermes-memory",
       "extensions": []
+    },
+    {
+      "source": "~/.pi/agent/packages/pi-hermes-memory/0.10.0-evidence-v1",
+      "extensions": []
     }
   ]
 }

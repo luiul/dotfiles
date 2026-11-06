@@ -21,7 +21,14 @@
     "npm:pi-web-access",
     "npm:pi-mcp-adapter",
     "npm:context-mode@1.0.169",
-    "npm:pi-hermes-memory",
+    {
+      "source": "npm:pi-hermes-memory",
+      "extensions": [],
+      "skills": [],
+      "prompts": [],
+      "themes": []
+    },
+    "~/.pi/agent/packages/pi-hermes-memory/0.10.0-evidence-v1",
     "npm:pi-blackhole",
     "npm:@plannotator/pi-extension"
   ],

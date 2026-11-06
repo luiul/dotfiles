@@ -1,5 +1,17 @@
 #!/bin/sh
-# Validate first. --approved applies the reviewed patch after affected Pi sessions stop.
+# Default: validate the selected package. --rolling safely activates future sessions.
 set -eu
 base=$(node -e 'const fs=require("node:fs"),p=require("node:path");process.stdout.write(p.resolve(p.dirname(fs.realpathSync(process.argv[1])),"../.."))' "$0")
-exec node "$base/scripts/patch-hermes-memory.mjs" --package-dir "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/npm/node_modules/pi-hermes-memory" "$@"
+agent=${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}
+if [ "${1:-}" = "--rolling" ]; then
+  shift
+  exec node "$base/scripts/activate-hermes-rolling.mjs" "$@"
+fi
+package_dir=$(node -e 'const fs=require("node:fs"),p=require("node:path");const a=process.argv[1],s=JSON.parse(fs.readFileSync(p.join(a,"settings.json"),"utf8"));const local=s.packages?.find(x=>typeof x==="string"&&x.includes("packages/pi-hermes-memory/0.10.0-evidence-v1"));process.stdout.write(local?p.join(a,"packages/pi-hermes-memory/0.10.0-evidence-v1"):p.join(a,"npm/node_modules/pi-hermes-memory"))' "$agent")
+if [ "$package_dir" = "$agent/npm/node_modules/pi-hermes-memory" ] && printf '%s\n' "$*" | grep -q -- --approved; then
+  if pgrep -x pi >/dev/null 2>&1; then
+    echo 'Pi sessions are running. Use pi-memory-hardening --rolling --approved.' >&2
+    exit 1
+  fi
+fi
+exec node "$base/scripts/patch-hermes-memory.mjs" --package-dir "$package_dir" "$@"

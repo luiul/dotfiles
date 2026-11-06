@@ -27,8 +27,14 @@ try {
 		assert.equal(server.directTools, false);
 		assert.notEqual(server.lifecycle, "eager");
 	}
-	for (const file of ["settings.json", "npm/package.json"]) {
-		assert.equal(readFileSync(join(root, file), "utf8"), readFileSync(join(import.meta.dir, "../pi/.pi/agent", file), "utf8"));
-	}
+	const snapshot = JSON.parse(readFileSync(join(import.meta.dir, "../pi/.pi/agent/settings.json"), "utf8"));
+	// Git filters the runtime-only session default. Model pins and all other settings must match.
+	const persistentSettings = (value: Record<string, unknown>) => {
+		const { defaultThinkingLevel: _runtimeOnly, ...persistent } = value;
+		return persistent;
+	};
+	assert.deepEqual(persistentSettings(settings), persistentSettings(snapshot));
+	assert.equal(snapshot.modelThinkingLevels["ai-model-router/GPT-6.1 Terra"], "high");
+	assert.equal(readFileSync(join(root, "npm/package.json"), "utf8"), readFileSync(join(import.meta.dir, "../pi/.pi/agent/npm/package.json"), "utf8"));
 	console.log("ALL PASS live resource configuration and snapshots");
 } finally { rmSync(dir, { recursive: true, force: true }); }

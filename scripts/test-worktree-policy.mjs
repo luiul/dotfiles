@@ -28,6 +28,8 @@ check(preSwitch.includes('git fetch') && !/git[^\n]*(?:merge|reset|update-ref)/.
 const preRemove = wt.split('[pre-remove]')[1]?.split('[post-remove]')[0] ?? '';
 check(preRemove.includes('main|master|live') && !preRemove.includes('check-remove'), 'protected branch hook remains without remote gate');
 check(wt.includes('wt step copy-ignored') && wt.includes('known-repos'), 'setup and registry hooks remain');
+check(!wt.includes('dbt-deps =') && !wt.includes('.venv/bin/dbt" deps'), 'worktree setup does not rewrite Tardis dependency locks');
+check(wt.includes('using its committed lock file') && wt.includes('setup-env ='), 'explicit dependency setup and global-ops hook remain');
 check(guide.includes('Native wt checks dirty files') && guide.includes('does not prove remote publication'), 'native removal limits are stated');
 check(global.includes('## Background Processes') && global.includes('reap-strays'), 'process resource safeguards remain separate');
 check(global.includes('Preserve other workers'), 'other workers remain protected');

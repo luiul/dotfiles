@@ -68,20 +68,10 @@ esac
 # (macOS rmdir has no --ignore-fail-on-non-empty).
 [post-remove]
 prune-empty-branch-dir = 'rmdir "{{ worktree_path | dirname }}" 2>/dev/null || true'
-# tardis-community: many independent dbt projects live under pipelines/<tribe>/<squad>/dbt.
-# `wt step copy-ignored` (above) already reflinks each project's gitignored dbt_packages/ from
-# the base worktree, so this only self-heals the rare case where that cache is still missing
-# (first-ever worktree for a given dbt project, or base never ran `dbt deps`). Runs after the
-# global post-start step above (project hooks append after user hooks).
-[[projects."github.com/hellofresh/tardis-community".post-start]]
-dbt-deps = '''
-for f in "{{ worktree_path }}"/pipelines/*/*/dbt/dbt_project.yml; do
-  [ -e "$f" ] || continue
-  d=$(dirname "$f")
-  [ -d "$d/dbt_packages" ] && continue
-  ( cd "$d" && "{{ worktree_path }}/.venv/bin/dbt" deps )
-done
-'''
+# Tardis has independent dbt projects. Worktree setup must not run dbt deps
+# across them because dependency resolution rewrites tracked package locks.
+# Existing ignored package caches are copied above. Install missing dependencies
+# explicitly in the project being changed, using its committed lock file.
 
 # global-ops: `wt step copy-ignored` (above) reflinks .env.dev from the base worktree, but that
 # file carries ABSOLUTE machine paths of the checkout it was written in (REPO_ROOT, CHANGE_PATH,

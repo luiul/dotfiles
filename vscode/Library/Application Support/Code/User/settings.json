@@ -48,6 +48,7 @@
         "tree.inactiveIndentGuidesStroke": "#232a35",
         "editor.lineHighlightBackground": "#008cff28",
         "editor.lineHighlightBorder": "#9fced11f",
+        "modernSash.gripForeground": "#00000000"
     },
     "workbench.tree.enableStickyScroll": true,
     "workbench.sideBar.location": "right",

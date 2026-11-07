@@ -437,10 +437,115 @@ class Tests(unittest.TestCase):
         with self.assertRaises(w.Error):
             self.h.open(self.repo, self.target)
 
-    def test_mixed_open_requires_explicit_repair(self):
+    def test_mixed_open_repairs_without_restarting_existing_pi(self):
         self.mixed()
-        with self.assertRaisesRegex(w.Error, "repair"):
+        before = w.process_identity(self.h.terminals)
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        self.assertEqual(w.process_identity(self.h.terminals), before)
+        self.assertEqual(self.h.rpc_calls("doc.set"), 1)
+        self.assertFalse(any(a[:2] == ["hc", "run"] for a in self.h.calls))
+
+    def test_stale_space_folder_is_repaired_before_open(self):
+        self.ready()
+        self.h.doc["spaces"][1]["folder"] = self.h.other
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        self.assertEqual(self.h.doc["spaces"][1]["folder"], self.h.child)
+
+    def test_repo_repair_preserves_unrelated_mixed_space(self):
+        self.ready()
+        outside = space("sp-outside", "/outside", tab("tb-outside", "outside1", "outside2"))
+        self.h.doc["spaces"].append(outside)
+        self.h.terminals.update({"outside1": fact("outside1", "/outside/a"),
+                                 "outside2": fact("outside2", "/outside/b")})
+        original_git = self.h.git
+
+        def git(folder, required=True):
+            if folder.startswith("/outside"):
+                return {"path": folder, "common": "/outside/.git", "primary": "/outside", "name": folder}
+            return original_git(folder, required)
+
+        self.h.git = git
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        self.assertEqual(self.h.doc["spaces"][-1], outside)
+        self.assertEqual(self.h.terminals["outside1"]["labels"], {"herdr.pinned": "true"})
+
+    def test_unrelated_missing_terminal_does_not_block_open(self):
+        self.ready()
+        outside = space("sp-outside", "/unknown", tab("tb-outside", "missing"))
+        self.h.doc["spaces"].append(outside)
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        self.assertEqual(self.h.doc["spaces"][-1], outside)
+
+    def test_folder_only_relevance_repairs_populated_space(self):
+        self.ready()
+        self.h.doc["spaces"].append(space("sp-moved", self.h.child, tab("tb-moved", "moved")))
+        self.h.terminals["moved"] = fact("moved", "/other-repo")
+        original_git = self.h.git
+        self.h.git = lambda folder, required=True: (
+            {"path": folder, "common": "/other-repo/.git", "primary": folder, "name": "other"}
+            if folder == "/other-repo" else original_git(folder, required)
+        )
+        self.h.repair(repo=self.repo)
+        moved = next(s for s in self.h.doc["spaces"] if s["id"] == "sp-moved")
+        self.assertEqual(moved["folder"], "/other-repo")
+
+    def test_affected_other_pending_launch_blocks_automatic_repair(self):
+        self.mixed()
+        pending = self.h.state / "other.pending.json"
+        pending.write_text(json.dumps({"space": "sp-mixed", "path": self.h.primary}))
+        with self.assertRaisesRegex(w.Error, "uncertain launch"):
             self.h.open(self.repo, self.target)
+        self.assertEqual(self.h.rpc_calls("doc.set"), 0)
+
+    def test_scoped_repair_does_not_take_over_other_reconciliation(self):
+        self.h.save(self.h.reconcile, {"namespace": self.h.namespace, "core_id": self.h.core_id,
+                                      "scope": "/another/.git", "terminals_before": {}})
+        with self.assertRaisesRegex(w.Error, "Another repair"):
+            self.h.open(self.repo, self.target)
+        self.assertTrue(self.h.reconcile.exists())
+
+    def test_cross_repo_recovery_keeps_moved_foreign_addresses(self):
+        self.ready()
+        self.h.doc["spaces"][1]["tabs"][0] = tab("tb-child", "t1", "foreign")
+        self.h.terminals["foreign"] = fact("foreign", "/foreign")
+        original_git = self.h.git
+        self.h.git = lambda folder, required=True: (
+            {"path": folder, "common": "/foreign/.git", "primary": folder, "name": "foreign"}
+            if folder == "/foreign" else original_git(folder, required)
+        )
+        self.h.label_fail = True
+        with self.assertRaises(w.Error):
+            self.h.repair(repo=self.repo)
+        self.assertTrue(self.h.reconcile.exists())
+        self.h.repair(repo=self.repo)
+        placement = next((s, t) for a, s, t, _ in w.placements(self.h.doc) if a == "foreign")
+        labels = self.h.terminals["foreign"]["labels"]
+        self.assertEqual((labels["herdr.space"], labels["herdr.tab"]), placement)
+        self.assertFalse(self.h.reconcile.exists())
+
+    def test_stale_untouched_destination_is_not_used(self):
+        self.ready()
+        self.h.doc["spaces"][1]["tabs"][0] = tab("tb-child", "t1", "foreign")
+        self.h.terminals["foreign"] = fact("foreign", "/foreign")
+        self.h.doc["spaces"].append(space("sp-foreign", "/stale", tab("tb-foreign", "other")))
+        self.h.terminals["other"] = fact("other", "/foreign")
+        original_git = self.h.git
+        self.h.git = lambda folder, required=True: (
+            {"path": folder, "common": "/foreign/.git", "primary": folder, "name": "foreign"}
+            if folder == "/foreign" else original_git(folder, required)
+        )
+        with self.assertRaisesRegex(w.Error, "Destination space folder"):
+            self.h.repair(repo=self.repo)
+        self.assertEqual(self.h.rpc_calls("doc.set"), 0)
+
+    def test_automatic_repair_refuses_unclear_mixed_mods(self):
+        self.mixed()
+        self.h.doc["spaces"][1]["tabs"][0]["root"]["children"].append(
+            {"id": "pmod", "type": "block", "content": {"mod": "files", "props": {}}})
+        with self.assertRaisesRegex(w.Error, "mod"):
+            self.h.open(self.repo, self.target)
+        self.assertEqual(self.h.rpc_calls("doc.set"), 0)
+        self.assertFalse(any(a[:2] == ["hc", "run"] for a in self.h.calls))
 
     def test_wrong_pair_fails_before_write(self):
         self.h.bad_pair = True

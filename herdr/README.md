@@ -13,8 +13,8 @@ The old terminal Herdr configuration, Worktrunk plugin, manual helper, and named
 `wt-herdr` lives in the Worktrunk stow package at `worktrunk/.local/bin/wt-herdr`, not this package. It provides three explicit operations:
 
 - `check`: inspect app/Core readiness and repository validity. It does not inspect or repair the space structure.
-- `open`: open or reuse the intended worktree space and Pi terminal.
-- `repair`: repair approved structure problems explicitly, never as a global wt hook.
+- `open`: repair clear grouping drift for the requested repo, then open or reuse its worktree space and Pi terminal.
+- `repair`: inspect or repair layout problems across all spaces explicitly, never as a global wt hook.
 
 `cop herdr [repo]` creates or reuses a wt checkout, finishes setup, and calls `wt-herdr`. The repo defaults to the current directory. Use `--branch NAME` or answer the branch prompt. It focuses the verified Pi terminal and enters the checkout in the calling shell.
 

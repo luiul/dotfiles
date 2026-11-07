@@ -130,11 +130,13 @@ def space_paths(space, identities):
     return []
 
 
-def repair_layout(doc, identities, folders):
-    """Replan from fresh facts. Whole tabs stay intact; split rows keep pane blocks."""
+def repair_layout(doc, identities, folders, selected=None):
+    """Replan selected spaces. Whole tabs stay intact; split rows keep pane blocks."""
     validate(doc)
     result = copy.deepcopy(doc)
     targets = {}
+    untouched = {}
+    duplicates = set()
     groups = []
     for space in result["spaces"]:
         addresses = [a for a, _, _, _ in placements({"spaces": [space]})]
@@ -142,12 +144,23 @@ def repair_layout(doc, identities, folders):
         if addresses and not any(known):
             # A wholly non-Git space needs no worktree grouping.
             continue
+        if selected is not None and space["id"] not in selected and any(i is None for i in known):
+            continue
         paths = space_paths(space, identities) if addresses else []
         if not paths:
             identity = folders.get(space["id"])
             if identity:
                 paths = [identity["path"]]
         if not paths:
+            continue
+        if selected is not None and space["id"] not in selected:
+            # Existing homogeneous spaces can receive moves without being rewritten.
+            if len(paths) == 1:
+                if paths[0] in targets:
+                    duplicates.add(paths[0])
+                else:
+                    targets[paths[0]] = space
+                    untouched[paths[0]] = space
             continue
         if len(paths) > 1 and not all(terminal_tree(t["root"]) for t in space["tabs"]):
             raise Error("Mixed space contains mod or unclear panes; repair refused")
@@ -161,6 +174,11 @@ def repair_layout(doc, identities, folders):
         for path in paths:
             identity = all_identities[path]
             primary = identity["primary"]
+            if path in duplicates or primary in duplicates:
+                raise Error("Multiple destination spaces represent one checkout; repair refused")
+            for destination in (path, primary):
+                if destination in untouched and untouched[destination].get("folder") != destination:
+                    raise Error("Destination space folder is stale; automatic repair refused")
             if primary not in targets:
                 parent = files_space(primary, Path(primary).name)
                 targets[primary] = parent
@@ -398,12 +416,15 @@ class Helper:
                 raise Error("Path must be an existing local Git checkout") from None
             return None
 
-    def identities(self, doc, facts):
+    def identities(self, doc, facts, strict=True):
         identities = {}
         for address, *_ in placements(doc):
             fact = facts.get(address)
             if not fact or fact.get("state") != "live":
-                raise Error("Layout contains a missing or non-live terminal")
+                if strict:
+                    raise Error("Layout contains a missing or non-live terminal")
+                identities[address] = None
+                continue
             cwd = (fact.get("foreground") or {}).get("cwd")
             identities[address] = self.git(cwd, required=False) if cwd else None
         folders = {s["id"]: self.git(s.get("folder", ""), required=False)
@@ -475,16 +496,20 @@ class Helper:
     def open(self, repo, target):
         pending_key = hashlib.sha256((self.key + "\0" + target["path"]).encode()).hexdigest()
         self.pending = self.state / (pending_key + ".pending.json")
-        if self.reconcile.exists():
-            raise Error("Labels need reconciliation; run wt-herdr repair first")
         if repo["common"] != target["common"]:
             raise Error("Checkout does not belong to the requested repository")
+        # Shell navigation can mix spaces after an earlier repair. Normalize this repo
+        # before opening, but never move an uncertain launch out of its recorded tab.
+        if not self.pending.exists():
+            self.repair(repo=repo)
+        elif self.reconcile.exists():
+            raise Error("Labels need reconciliation; run wt-herdr repair first")
         for _ in range(4):
             if self.pending.exists():
                 return self.wait_open(repo, target)
             doc, version = self.snapshot()
             facts = self.facts()
-            identities, folders = self.identities(doc, facts)
+            identities, folders = self.identities(doc, facts, strict=False)
             parent, space = self.target_spaces(doc, identities, folders, repo, target)
             terminal = self.reusable(doc, facts, target)
             if parent is None or space is None:
@@ -548,8 +573,8 @@ class Helper:
                 if is_pi(fact, self.bins["pi"]) and cwd and canonical(cwd) == target["path"]:
                     if mapping is not None and mapping != (record["space"], record["tab"]):
                         raise Error("Owned Pi is outside its intended layout; pending record retained")
-                    if mapping is not None and all(a in facts and facts[a].get("state") == "live" for a, *_ in placements(doc)):
-                        identities, folders = self.identities(doc, facts)
+                    if mapping is not None:
+                        identities, folders = self.identities(doc, facts, strict=False)
                         self.target_spaces(doc, identities, folders, repo, target)
                         if self.reusable(doc, facts, target) != terminal:
                             raise Error("Owned Pi cannot be verified; pending record retained")
@@ -559,26 +584,53 @@ class Helper:
             time.sleep(min(0.4, self.remaining()))
         raise Error("Launch readiness is uncertain; pending record retained, no automatic relaunch")
 
-    def repair(self, dry_run=False):
+    def repair(self, dry_run=False, repo=None):
         baseline = None
         if self.reconcile.exists():
             record = json.loads(self.reconcile.read_text())
             if record.get("namespace") != self.namespace or record.get("core_id") != self.core_id:
                 raise Error("Reconciliation namespace differs; repair refused")
+            if repo is not None and record.get("scope") != repo["common"]:
+                raise Error("Another repair needs reconciliation; run wt-herdr repair first")
             baseline = record["terminals_before"]
         for _ in range(4):
             self.git_cache.clear()
             doc, version = self.snapshot()
             facts = self.facts()
-            identities, folders = self.identities(doc, facts)
-            value = repair_layout(doc, identities, folders)
-            labels = {a: {"herdr.space": s, "herdr.tab": t} for a, s, t, _ in placements(value)}
+            identities, folders = self.identities(doc, facts, strict=repo is None)
+            selected = None
+            if repo is not None:
+                selected = set()
+                for s in doc["spaces"]:
+                    folder = self.git(s.get("folder", ""), required=False)
+                    if (folder and folder["common"] == repo["common"]) or any(
+                        identities.get(a) and identities[a]["common"] == repo["common"]
+                        for a, *_ in placements({"spaces": [s]})
+                    ):
+                        selected.add(s["id"])
+            affected = {a for a, s, *_ in placements(doc) if selected is None or s in selected}
+            if baseline is not None:
+                placed = {a for a, *_ in placements(doc)}
+                if not set(baseline).issubset(placed):
+                    raise Error("A saved repair terminal is no longer placed; repair refused")
+                affected.update(baseline)
+            if any(identities.get(a) is None for a in affected) and repo is not None:
+                raise Error("Unclear terminal context in this repo; automatic repair refused")
+            value = repair_layout(doc, identities, folders, selected)
+            labels = {a: {"herdr.space": s, "herdr.tab": t} for a, s, t, _ in placements(value) if a in affected}
             needed = {a: v for a, v in labels.items() if any(facts[a].get("labels", {}).get(k) != x for k, x in v.items())}
+            if value != doc or needed:
+                touched = {s for a, s, *_ in placements(doc) if a in affected}
+                touched.update(s for a, s, *_ in placements(value) if a in affected)
+                for pending in self.state.glob("*.pending.json"):
+                    launch = json.loads(pending.read_text())
+                    if launch.get("space") in touched:
+                        raise Error("A touched space has an uncertain launch; automatic repair refused")
             if dry_run:
                 if baseline is not None and baseline != process_identity(facts, baseline):
                     raise Error("Terminal identity differs from saved repair baseline; repair refused")
                 return f"Repair dry run: layout change {value != doc}, {len(needed)} label updates; no writes"
-            before = process_identity(facts, [a for a, *_ in placements(doc)])
+            before = process_identity(facts, affected)
             if baseline is not None and baseline != process_identity(facts, baseline):
                 raise Error("Terminal identity differs from saved repair baseline; repair refused")
             baseline = before
@@ -591,6 +643,7 @@ class Helper:
             if value != doc or needed:
                 # Persist before CAS too: a lost doc.set reply can still be reconciled.
                 self.save(self.reconcile, {"namespace": self.namespace, "core_id": self.core_id,
+                                           "scope": repo["common"] if repo else None,
                                            "labels": labels, "terminals_before": before})
             if value != doc:
                 # Recheck processes immediately before writing. No agent command is ever sent.
@@ -613,8 +666,8 @@ class Helper:
                     if any(after[address].get("labels", {}).get(k) != v for k, v in new_labels.items()):
                         raise Error("Label reconciliation is incomplete")
                 self.app_layout(current)
-            except Error:
-                raise Error("Repair layout saved; labels or app need reconciliation. Run repair again") from None
+            except Error as exc:
+                raise Error(f"Repair saved but verification failed ({exc}). Run repair again") from None
             self.reconcile.unlink(missing_ok=True)
             return f"Repair complete: layout change {value != doc}, {len(needed)} label updates; terminal identities preserved"
         raise Error("Layout kept changing; repair stopped with reconciliation record retained")

@@ -19,6 +19,8 @@ The helper uses the running local app and Core. It never starts or updates them.
 
 Each checkout has its own space. Conversations in the same checkout stay in that space. A primary-checkout parent with a Files tab lets Herdr's shipped sidebar group linked-worktree spaces beneath it without starting an extra shell.
 
+Opening first repairs clear grouping drift in spaces connected to the requested repo. Shell navigation can change a space's checkout after an earlier repair. The helper preserves running terminals and uses the same backup, version check, and label reconciliation as explicit repair. Unrelated spaces stay unchanged. Unclear mod context or a touched pending launch still stops the command.
+
 The helper reuses a matching live Pi and focuses its pane. It stops if identity is ambiguous. A launch-specific Core label identifies the requested Pi even when its launch reply is lost. A pending launch record survives a lost reply, so a retry cannot blindly start another Pi. It does not submit a task or restart an existing agent.
 
 ## Layout repair

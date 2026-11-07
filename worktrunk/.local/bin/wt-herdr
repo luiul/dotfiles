@@ -1,0 +1,661 @@
+#!/usr/bin/env -S uv run --script
+"""Explicit local Herdr app/Core operations. Never called by a wt hook."""
+
+import argparse
+import copy
+import fcntl
+import hashlib
+import json
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import time
+import uuid
+from collections import Counter
+from contextlib import ExitStack, suppress
+from pathlib import Path
+
+
+class Error(Exception):
+    pass
+
+
+class Conflict(Error):
+    pass
+
+
+def clean(value):
+    """Remove private terminal fields, never apply this to layout documents."""
+    if isinstance(value, dict):
+        return {k: clean(v) for k, v in value.items() if k not in {"screen", "msg", "title"}}
+    if isinstance(value, list):
+        return [clean(v) for v in value]
+    return value
+
+
+def canonical(path):
+    return str(Path(path).expanduser().resolve(strict=True))
+
+
+def new_id(prefix):
+    return prefix + uuid.uuid4().hex
+
+
+def nodes(node):
+    yield node
+    for child in node.get("children", []):
+        yield from nodes(child)
+    for child in node.get("floating", []):
+        yield from nodes(child)
+
+
+def placements(doc):
+    for space in doc["spaces"]:
+        for tab in space["tabs"]:
+            for node in nodes(tab["root"]):
+                terminal = node.get("content", {}).get("terminal")
+                if terminal:
+                    yield terminal, space["id"], tab["id"], node["id"]
+
+
+def validate(doc):
+    if not isinstance(doc, dict) or not isinstance(doc.get("spaces"), list):
+        raise Error("Invalid local layout document")
+    ids = set()
+    refs = []
+    for space in doc["spaces"]:
+        if space.get("machine") not in (None, "") or "/" in space["id"]:
+            raise Error("Remote layout is not supported")
+        for item in [space, *space["tabs"]]:
+            if item["id"] in ids:
+                raise Error("Duplicate space or tab ID")
+            ids.add(item["id"])
+        for tab in space["tabs"]:
+            pane_ids = set()
+            for node in nodes(tab["root"]):
+                # Herdr normally uses the tab ID for its root row.
+                nid = node["id"]
+                if nid in pane_ids or (nid in ids and not (node is tab["root"] and nid == tab["id"])):
+                    raise Error("Duplicate layout node ID")
+                pane_ids.add(nid)
+                terminal = node.get("content", {}).get("terminal")
+                if terminal:
+                    if "/" in terminal:
+                        raise Error("Remote terminals are not supported")
+                    refs.append(terminal)
+            ids.update(pane_ids)
+    if len(refs) != len(set(refs)):
+        raise Error("A terminal has more than one layout pane")
+
+
+def files_space(path, name):
+    tab = new_id("tb")
+    return {"id": new_id("sp"), "name": name, "folder": path, "tabs": [
+        {"id": tab, "name": "Files", "root": {"id": tab, "type": "row", "children": [
+            {"id": new_id("p"), "type": "block", "content": {"mod": "files", "props": {}}}
+        ]}}
+    ]}
+
+
+def terminal_tree(node):
+    if node.get("floating"):
+        return False
+    if node.get("type") == "block":
+        return set(node.get("content", {})) == {"terminal"}
+    return (node.get("type") in {"row", "column"} and bool(node.get("children"))
+            and all(terminal_tree(c) for c in node["children"]))
+
+
+def prune(node, addresses, fresh_containers=False):
+    if node.get("type") == "block":
+        return copy.deepcopy(node) if node["content"]["terminal"] in addresses else None
+    children = [p for c in node["children"] if (p := prune(c, addresses, fresh_containers))]
+    if not children:
+        return None
+    result = copy.deepcopy(node)
+    result["children"] = children
+    if fresh_containers:
+        result["id"] = new_id("p")
+    return result
+
+
+def space_paths(space, identities):
+    addresses = [a for a, s, _, _ in placements({"spaces": [space]})]
+    if addresses:
+        if any(identities.get(a) is None for a in addresses):
+            raise Error("Unclear non-Git terminal context; layout left unchanged")
+        return list(dict.fromkeys(identities[a]["path"] for a in addresses))
+    return []
+
+
+def repair_layout(doc, identities, folders):
+    """Replan from fresh facts. Whole tabs stay intact; split rows keep pane blocks."""
+    validate(doc)
+    result = copy.deepcopy(doc)
+    targets = {}
+    groups = []
+    for space in result["spaces"]:
+        addresses = [a for a, _, _, _ in placements({"spaces": [space]})]
+        known = [identities.get(a) for a in addresses]
+        if addresses and not any(known):
+            # A wholly non-Git space needs no worktree grouping.
+            continue
+        paths = space_paths(space, identities) if addresses else []
+        if not paths:
+            identity = folders.get(space["id"])
+            if identity:
+                paths = [identity["path"]]
+        if not paths:
+            continue
+        if len(paths) > 1 and not all(terminal_tree(t["root"]) for t in space["tabs"]):
+            raise Error("Mixed space contains mod or unclear panes; repair refused")
+        anchor = paths[0]
+        if anchor in targets:
+            raise Error("Multiple spaces represent one checkout; repair refused")
+        targets[anchor] = space
+        groups.append((space, paths))
+    all_identities = {i["path"]: i for i in [*identities.values(), *folders.values()] if i}
+    for _, paths in groups:
+        for path in paths:
+            identity = all_identities[path]
+            primary = identity["primary"]
+            if primary not in targets:
+                parent = files_space(primary, Path(primary).name)
+                targets[primary] = parent
+                result["spaces"].append(parent)
+            if path not in targets:
+                child = {"id": new_id("sp"), "name": identity["name"], "folder": path, "tabs": []}
+                targets[path] = child
+                result["spaces"].append(child)
+    for space, paths in groups:
+        if len(paths) == 1:
+            # Files-only parents and correctly grouped tabs remain byte-for-byte unchanged.
+            if any(True for _ in placements({"spaces": [space]})):
+                space["folder"] = paths[0]
+            continue
+        old_tabs = space["tabs"]
+        space["tabs"] = []
+        space["folder"] = paths[0]
+        if not space.get("name"):
+            space["name"] = all_identities[paths[0]]["name"]
+        for tab in old_tabs:
+            refs = [a for a, _, _, _ in placements({"spaces": [{**space, "tabs": [tab]}]})]
+            tab_paths = list(dict.fromkeys(identities[a]["path"] for a in refs))
+            if len(tab_paths) == 1:
+                targets[tab_paths[0]]["tabs"].append(tab)
+                continue
+            for index, path in enumerate(tab_paths):
+                fragment = copy.deepcopy(tab)
+                addresses = {a for a in refs if identities[a]["path"] == path}
+                fragment["root"] = prune(tab["root"], addresses, index != 0)
+                if index:
+                    fragment["id"] = new_id("tb")
+                    fragment["root"]["id"] = fragment["id"]
+                targets[path]["tabs"].append(fragment)
+    validate(result)
+    if Counter(a for a, *_ in placements(doc)) != Counter(a for a, *_ in placements(result)):
+        raise Error("Repair would change terminal references")
+    return result
+
+
+def pi_program(fact, pi):
+    argv = (fact.get("foreground") or {}).get("argv") or []
+    if not argv:
+        return False
+    def exact(value):
+        return value == "pi" or (os.path.isabs(value) and os.path.realpath(value) == os.path.realpath(pi))
+    return exact(argv[0]) or (Path(argv[0]).name in {"node", "bun"} and len(argv) > 1 and exact(argv[1]))
+
+
+def is_pi(fact, pi):
+    return (fact.get("state") == "live" and fact.get("reported") is True
+            and (fact.get("status") or {}).get("app") == "pi" and pi_program(fact, pi)
+            and bool((fact.get("foreground") or {}).get("pid")))
+
+
+def process_identity(facts, addresses=None):
+    addresses = facts if addresses is None else addresses
+    return {a: {k: facts[a].get(k) for k in ("pid", "argv", "foreground", "keep")}
+            for a in addresses if a in facts and facts[a].get("state") == "live"}
+
+
+class Helper:
+    def __init__(self):
+        # Includes lock waits and every subprocess. Leave margin below the caller's 90 seconds.
+        self.deadline = time.monotonic() + 85
+        self.env = {k: v for k, v in os.environ.items()
+                    if not k.startswith(("HERDR_", "HC_", "GIT_"))}
+        self.home = canonical(os.environ.get("HERDR_APP_HOME", str(Path.home() / ".config/herdr-app")))
+        self.session = os.environ.get("HC_SESSION", "default")
+        default_home = canonical(str(Path.home() / ".config/herdr-app"))
+        if self.session != "default" or self.home != default_home:
+            raise Error("Only the verified default local app/Core pair is supported")
+        self.env.update(HERDR_APP_HOME=self.home, HC_SESSION=self.session)
+        self.bins = {}
+        for name in ("hc", "herdr-app", "pi", "git"):
+            path = shutil.which(name)
+            if not path:
+                raise Error(f"Missing installed binary: {name}")
+            self.bins[name] = os.path.abspath(path)
+        state_home = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))).expanduser().resolve()
+        self.state = state_home / "wt-herdr"
+        self.state.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.namespace = {"app_home": self.home, "core_session": self.session, "state_home": str(state_home)}
+        self.git_cache = {}
+        self.core_id = None
+
+    def remaining(self):
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise Error("Operation deadline reached; inspect pending state before retrying")
+        return remaining
+
+    def run(self, args, *, input=None, timeout=8):
+        env = {k: v for k, v in self.env.items() if not k.startswith("GIT_")} if args[0] == "git" else self.env
+        args = [self.bins.get(args[0], args[0]), *args[1:]]
+        limit = min(timeout, self.remaining())
+        try:
+            process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE, text=True, env=env, start_new_session=True)
+        except OSError:
+            raise Error(f"Cannot start {Path(args[0]).name}") from None
+        try:
+            stdout, _ = process.communicate(input, timeout=limit)
+        except BaseException:
+            # Kill the entire command group, including descendants holding captured pipes.
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            try:
+                process.communicate(timeout=1)
+            except subprocess.TimeoutExpired:
+                for stream in (process.stdin, process.stdout, process.stderr):
+                    if stream:
+                        stream.close()
+                with suppress(subprocess.TimeoutExpired):
+                    process.wait(timeout=1)
+            raise Error(f"{Path(args[0]).name} did not finish; result may be uncertain") from None
+        if process.returncode:
+            raise Error(f"{Path(args[0]).name} failed; terminal output discarded")
+        return stdout
+
+    def json_command(self, args, **kwargs):
+        try:
+            return json.loads(self.run(args, **kwargs))
+        except (ValueError, TypeError):
+            raise Error(f"Invalid JSON from {args[0]}") from None
+
+    def rpc(self, method, **params):
+        rid = uuid.uuid4().hex
+        request = {"jsonrpc": "2.0", "id": rid, "method": method, "params": params}
+        raw = self.run(["hc", "connect"], input=json.dumps(request) + "\n")
+        try:
+            replies = [json.loads(line) for line in raw.splitlines() if line.strip()]
+            replies = [r for r in replies if r.get("id") == rid]
+            if len(replies) != 1:
+                raise ValueError()
+            reply = replies[0]
+            if "error" in reply:
+                if reply["error"].get("data", {}).get("kind") == "conflict":
+                    raise Conflict("Layout changed concurrently")
+                raise Error(f"Core RPC {method} failed; response text discarded")
+            result = reply["result"]
+            return clean(result) if method.startswith("terminal.") else result
+        except (ValueError, KeyError, TypeError):
+            raise Error(f"Invalid Core RPC response for {method}") from None
+
+    def lock(self, stack):
+        # Only the default local app/Core pair is supported, so one lock is enough.
+        fd = os.open(self.state / "operation.lock", os.O_CREAT | os.O_RDWR, 0o600)
+        stream = stack.enter_context(os.fdopen(fd, "w"))
+        while True:
+            try:
+                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return
+            except BlockingIOError:
+                time.sleep(min(0.1, self.remaining()))
+
+    def save(self, path, value):
+        temp = path.with_name(path.name + "." + uuid.uuid4().hex)
+        fd = os.open(temp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        try:
+            with os.fdopen(fd, "w") as stream:
+                json.dump(value, stream, ensure_ascii=False)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temp, path)
+            directory = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            temp.unlink(missing_ok=True)
+
+    def verify_target(self):
+        core = self.json_command(["hc", "server", "status", "--json"])
+        if not core.get("pid") or not core.get("core", {}).get("id"):
+            raise Error("Selected Core is not running")
+        self.core_id = core["core"]["id"]
+        self.namespace["core_id"] = self.core_id
+        self.key = hashlib.sha256(json.dumps(self.namespace, sort_keys=True).encode()).hexdigest()
+        self.reconcile = self.state / (self.key + ".labels.json")
+        status = self.json_command(["herdr-app", "status"])
+        if status.get("errors"):
+            raise Error("Herdr app reports errors")
+        self.app_layout()
+
+    def app_layout(self, doc=None):
+        for _ in range(5):
+            current, _ = self.snapshot()
+            visible = self.json_command(["herdr-app", "ls"])
+            local = [s for s in visible["spaces"] if s.get("machine") in (None, "")]
+            expected = {(s["id"], t["id"]) for s in current["spaces"] for t in s["tabs"]}
+            actual = {(s["id"], t["id"]) for s in local for t in s["tabs"]}
+            panes = {(p["terminal"], s["id"], t["id"], p["pane"])
+                     for s in local for t in s["tabs"] for p in t.get("terminals", [])}
+            if actual == expected and panes == set(placements(current)) and (doc is None or doc == current):
+                return
+            time.sleep(min(0.2, self.remaining()))
+        raise Error("App and Core layouts differ; selected local pair cannot be verified")
+
+    def snapshot(self):
+        result = self.rpc("doc.get", name="herdr-app")
+        doc = result["value"] if result["value"] is not None else {"spaces": []}
+        validate(doc)
+        return doc, result["version"]
+
+    def facts(self):
+        result = self.rpc("terminal.list", all=True)
+        return {f["address"]: f for f in result["terminals"]}
+
+    def git(self, folder, required=True):
+        if not folder:
+            if required:
+                raise Error("Path must name an existing local Git checkout")
+            return None
+        try:
+            folder = canonical(folder)
+            if folder in self.git_cache:
+                return self.git_cache[folder]
+            def git(*args):
+                return self.run(["git", "-C", folder, *args]).strip()
+            path = canonical(git("rev-parse", "--show-toplevel"))
+            common = canonical(git("rev-parse", "--path-format=absolute", "--git-common-dir"))
+            entries = git("worktree", "list", "--porcelain", "-z").split("\0")
+            primary = canonical(next(x[len("worktree "):] for x in entries if x.startswith("worktree ")))
+            try:
+                name = git("symbolic-ref", "--quiet", "--short", "HEAD")
+            except Error:
+                name = Path(path).name
+            identity = {"path": path, "common": common, "primary": primary,
+                        "name": Path(path).name if path == primary else name}
+            self.git_cache[folder] = identity
+            return identity
+        except (Error, OSError, StopIteration):
+            if required:
+                raise Error("Path must be an existing local Git checkout") from None
+            return None
+
+    def identities(self, doc, facts):
+        identities = {}
+        for address, *_ in placements(doc):
+            fact = facts.get(address)
+            if not fact or fact.get("state") != "live":
+                raise Error("Layout contains a missing or non-live terminal")
+            cwd = (fact.get("foreground") or {}).get("cwd")
+            identities[address] = self.git(cwd, required=False) if cwd else None
+        folders = {s["id"]: self.git(s.get("folder", ""), required=False)
+                   for s in doc["spaces"] if not list(placements({"spaces": [s]}))}
+        return identities, folders
+
+    def target_spaces(self, doc, identities, folders, repo, target):
+        found = {}
+        for space in doc["spaces"]:
+            refs = [a for a, *_ in placements({"spaces": [space]})]
+            known = [identities.get(a) for a in refs]
+            relevant = any(i and i["common"] == repo["common"] for i in known)
+            folder = self.git(space.get("folder", ""), required=False)
+            relevant |= bool(folder and folder["common"] == repo["common"])
+            if not relevant:
+                continue
+            paths = space_paths(space, identities) if refs else [folders[space["id"]]["path"]] if folders.get(space["id"]) else []
+            if len(paths) != 1:
+                raise Error("Existing space mixes checkouts; run wt-herdr repair first")
+            path = paths[0]
+            if path in found:
+                raise Error("Multiple spaces represent this checkout; run wt-herdr repair")
+            found[path] = space
+            if folder and folder["path"] != path:
+                raise Error("Space folder disagrees with live checkout; run wt-herdr repair")
+            if refs and space.get("folder") != path:
+                raise Error("Space folder is stale; run wt-herdr repair")
+        return found.get(repo["primary"]), found.get(target["path"])
+
+    def reusable(self, doc, facts, target):
+        mapping = {a: (s, t, p) for a, s, t, p in placements(doc)}
+        candidates = []
+        for address, fact in facts.items():
+            if fact.get("state") != "live":
+                continue
+            cwd = (fact.get("foreground") or {}).get("cwd")
+            identity = self.git(cwd, required=False) if cwd else None
+            launch_cwd = self.git(fact.get("cwd", ""), required=False)
+            belongs = identity and identity["path"] == target["path"]
+            if not belongs:
+                if launch_cwd and launch_cwd["path"] == target["path"] and not identity:
+                    raise Error("Target has an unknown foreground process; no Pi launched")
+                continue
+            exact_cwd = canonical(cwd) == target["path"]
+            if is_pi(fact, self.bins["pi"]) and exact_cwd:
+                if address not in mapping:
+                    raise Error("Existing Pi has no layout pane; no Pi launched")
+                candidates.append(address)
+                continue
+            fg = fact.get("foreground") or {}
+            argv = fg.get("argv") or []
+            shells = {"zsh", "bash", "sh", "fish", "nu", "dash", "ksh"}
+            if (not exact_cwd or not fg.get("pid") or fg.get("name") not in shells or not argv
+                    or Path(argv[0]).name not in shells or fact.get("reported")
+                    or (fact.get("status") or {}).get("app") not in (None, "shell")):
+                raise Error("Target has a busy or unverified program; no Pi launched")
+        if len(candidates) > 1:
+            raise Error("Multiple live Pis match this checkout; no Pi launched")
+        return candidates[0] if candidates else None
+
+    def focus(self, doc, terminal):
+        self.app_layout(doc)
+        self.json_command(["herdr-app", "do", "pane.focus", json.dumps({"terminal": terminal})])
+        status = self.json_command(["herdr-app", "status"])
+        placement = next((s, t, p) for a, s, t, p in placements(doc) if a == terminal)
+        if status.get("errors") or (status.get("space"), status.get("tab"), status.get("focused_pane")) != placement:
+            raise Error("Pi is live but app focus could not be verified")
+
+    def open(self, repo, target):
+        pending_key = hashlib.sha256((self.key + "\0" + target["path"]).encode()).hexdigest()
+        self.pending = self.state / (pending_key + ".pending.json")
+        if self.reconcile.exists():
+            raise Error("Labels need reconciliation; run wt-herdr repair first")
+        if repo["common"] != target["common"]:
+            raise Error("Checkout does not belong to the requested repository")
+        for _ in range(4):
+            if self.pending.exists():
+                return self.wait_open(repo, target)
+            doc, version = self.snapshot()
+            facts = self.facts()
+            identities, folders = self.identities(doc, facts)
+            parent, space = self.target_spaces(doc, identities, folders, repo, target)
+            terminal = self.reusable(doc, facts, target)
+            if parent is None or space is None:
+                value = copy.deepcopy(doc)
+                if parent is None:
+                    value["spaces"].append(files_space(repo["primary"], Path(repo["primary"]).name))
+                if space is None and target["path"] != repo["primary"]:
+                    value["spaces"].append(files_space(target["path"], target["name"]))
+                validate(value)
+                self.app_layout(doc)
+                try:
+                    self.rpc("doc.set", name="herdr-app", value=value, version=version)
+                except Conflict:
+                    continue
+                continue
+            if terminal:
+                self.focus(doc, terminal)
+                return "Reused live Pi in " + target["path"]
+            self.app_layout(doc)
+            # The app can start a terminal outside our lock. Recheck before launch.
+            current, _ = self.snapshot()
+            refreshed = self.facts()
+            if current != doc or process_identity(refreshed) != process_identity(facts):
+                continue
+            record = {"namespace": self.namespace, "core_id": self.core_id, "path": target["path"],
+                      "token": uuid.uuid4().hex, "space": space["id"], "tab": new_id("tb"), "before": list(facts)}
+            self.save(self.pending, record)
+            with suppress(Error):
+                # The unique label, not a receipt or a new address, proves launch ownership.
+                self.run(["hc", "run", "--bg", "--keep", "--no-parent", "--no-notify",
+                          "--cwd", target["path"], "--label", "herdr.space=" + record["space"],
+                          "--label", "herdr.tab=" + record["tab"],
+                          "--label", "wt-herdr.launch=" + record["token"], "--", self.bins["pi"]], timeout=12)
+            return self.wait_open(repo, target)
+        raise Error("Layout kept changing; no Pi launched")
+
+    def wait_open(self, repo, target):
+        record = json.loads(self.pending.read_text())
+        if (record.get("namespace") != self.namespace or record.get("core_id") != self.core_id
+                or record.get("path") != target["path"]):
+            raise Error("Pending launch identity differs; no Pi launched")
+        while self.remaining() > 2:
+            doc, _ = self.snapshot()
+            facts = self.facts()
+            owned = [a for a, f in facts.items() if f.get("labels", {}).get("wt-herdr.launch") == record["token"]]
+            if len(owned) > 1 or any(a in record["before"] for a in owned):
+                raise Error("Launch token is ambiguous; pending record retained")
+            others = [a for a, f in facts.items() if a not in owned and is_pi(f, self.bins["pi"])
+                      and (f.get("foreground") or {}).get("cwd")
+                      and canonical(f["foreground"]["cwd"]) == target["path"]]
+            if others:
+                raise Error("Another Pi appeared in the checkout; pending record retained")
+            if owned:
+                terminal = owned[0]
+                fact = facts[terminal]
+                labels = fact.get("labels", {})
+                if labels.get("herdr.space") != record["space"] or labels.get("herdr.tab") != record["tab"]:
+                    raise Error("Launch labels disagree with pending identity; pending record retained")
+                mapping = next(((s, t) for a, s, t, _ in placements(doc) if a == terminal), None)
+                cwd = (fact.get("foreground") or {}).get("cwd")
+                if is_pi(fact, self.bins["pi"]) and cwd and canonical(cwd) == target["path"]:
+                    if mapping is not None and mapping != (record["space"], record["tab"]):
+                        raise Error("Owned Pi is outside its intended layout; pending record retained")
+                    if mapping is not None and all(a in facts and facts[a].get("state") == "live" for a, *_ in placements(doc)):
+                        identities, folders = self.identities(doc, facts)
+                        self.target_spaces(doc, identities, folders, repo, target)
+                        if self.reusable(doc, facts, target) != terminal:
+                            raise Error("Owned Pi cannot be verified; pending record retained")
+                        self.focus(doc, terminal)
+                        self.pending.unlink(missing_ok=True)
+                        return "Opened verified Pi in " + target["path"]
+            time.sleep(min(0.4, self.remaining()))
+        raise Error("Launch readiness is uncertain; pending record retained, no automatic relaunch")
+
+    def repair(self, dry_run=False):
+        baseline = None
+        if self.reconcile.exists():
+            record = json.loads(self.reconcile.read_text())
+            if record.get("namespace") != self.namespace or record.get("core_id") != self.core_id:
+                raise Error("Reconciliation namespace differs; repair refused")
+            baseline = record["terminals_before"]
+        for _ in range(4):
+            self.git_cache.clear()
+            doc, version = self.snapshot()
+            facts = self.facts()
+            identities, folders = self.identities(doc, facts)
+            value = repair_layout(doc, identities, folders)
+            labels = {a: {"herdr.space": s, "herdr.tab": t} for a, s, t, _ in placements(value)}
+            needed = {a: v for a, v in labels.items() if any(facts[a].get("labels", {}).get(k) != x for k, x in v.items())}
+            if dry_run:
+                if baseline is not None and baseline != process_identity(facts, baseline):
+                    raise Error("Terminal identity differs from saved repair baseline; repair refused")
+                return f"Repair dry run: layout change {value != doc}, {len(needed)} label updates; no writes"
+            before = process_identity(facts, [a for a, *_ in placements(doc)])
+            if baseline is not None and baseline != process_identity(facts, baseline):
+                raise Error("Terminal identity differs from saved repair baseline; repair refused")
+            baseline = before
+            if value != doc or needed:
+                backups = self.state / "backups"
+                backups.mkdir(mode=0o700, exist_ok=True)
+                backup = backups / (str(time.time_ns()) + "-" + uuid.uuid4().hex + ".json")
+                self.save(backup, {"namespace": self.namespace, "core_id": self.core_id,
+                                   "document": doc, "version": version, "facts": facts})
+            if value != doc or needed:
+                # Persist before CAS too: a lost doc.set reply can still be reconciled.
+                self.save(self.reconcile, {"namespace": self.namespace, "core_id": self.core_id,
+                                           "labels": labels, "terminals_before": before})
+            if value != doc:
+                # Recheck processes immediately before writing. No agent command is ever sent.
+                if process_identity(self.facts(), before) != before:
+                    raise Error("Terminal identity changed before repair; layout not written")
+                try:
+                    self.rpc("doc.set", name="herdr-app", value=value, version=version)
+                except Conflict:
+                    continue
+            current, _ = self.snapshot()
+            if current != value:
+                raise Error("Layout changed after repair; reconciliation record retained")
+            try:
+                for address, new_labels in needed.items():
+                    self.rpc("terminal.label", terminal=address, labels=new_labels)
+                after = self.facts()
+                if process_identity(after, before) != before:
+                    raise Error("Terminal identity changed during repair; inspect preserved backup")
+                for address, new_labels in labels.items():
+                    if any(after[address].get("labels", {}).get(k) != v for k, v in new_labels.items()):
+                        raise Error("Label reconciliation is incomplete")
+                self.app_layout(current)
+            except Error:
+                raise Error("Repair layout saved; labels or app need reconciliation. Run repair again") from None
+            self.reconcile.unlink(missing_ok=True)
+            return f"Repair complete: layout change {value != doc}, {len(needed)} label updates; terminal identities preserved"
+        raise Error("Layout kept changing; repair stopped with reconciliation record retained")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    check = commands.add_parser("check")
+    check.add_argument("--repo", required=True)
+    opening = commands.add_parser("open")
+    opening.add_argument("--repo", required=True)
+    opening.add_argument("--path", required=True)
+    repair = commands.add_parser("repair")
+    repair.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+    try:
+        helper = Helper()
+        with ExitStack() as stack:
+            helper.lock(stack)
+            helper.verify_target()
+            if args.command == "repair":
+                message = helper.repair(args.dry_run)
+            else:
+                repo = helper.git(args.repo)
+                if canonical(args.repo) != repo["path"]:
+                    raise Error("--repo must name a checkout root")
+                if args.command == "check":
+                    message = "Verified local Herdr app/Core and repository " + repo["path"]
+                else:
+                    target = helper.git(args.path)
+                    if canonical(args.path) != target["path"]:
+                        raise Error("--path must name the checkout root")
+                    message = helper.open(repo, target)
+        print(json.dumps({"message": message}))
+        return 0
+    except (Error, OSError, ValueError, KeyError, TypeError) as error:
+        message = str(error) if isinstance(error, Error) else "Invalid local state; operation refused"
+        print("wt-herdr: " + message, file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

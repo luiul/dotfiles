@@ -1,61 +1,46 @@
-# Herdr and Worktrunk
+# Herdr app and Core
 
-Herdr owns terminal workspaces and the sidebar. [Worktrunk](https://worktrunk.dev) owns checkout creation, setup hooks, and removal. [Coppice](https://github.com/luiul/coppice) remains the human CLI for worktree lifecycle.
+[Herdr app](https://github.com/herdrdev/herdr-app) owns the desktop window, spaces, tabs, and panes. [Herdr Core](https://github.com/herdrdev/herdr-core) owns terminal processes. [Worktrunk](https://worktrunk.dev) owns worktree creation, setup hooks, and removal. [Coppice](https://github.com/luiul/coppice) provides the daily commands.
 
-The installed [Herdr Worktrunk plugin](https://github.com/devashish2203/herdr-worktrunk) is pinned to `f9df9ba700b8a4f4d97ddfe3ea3eb345e80b880b`. It uses `wt` before opening an existing checkout with `herdr worktree open`. Workspace mode gives each checkout a native linked-worktree workspace under its repo in the sidebar.
+## Installation ownership
 
-## Keys
+Use the official app and Core installers or their supported package managers. The [app install guide](https://github.com/herdrdev/herdr-app/tree/v0.1.13#install) describes the signed macOS app and Core installation. The existing `herdr-app` and `hc` installation is sufficient. Dotfiles do not install, replace, or patch either executable or the signed app.
 
-- Ctrl+B, then Shift+G: select an existing checkout or create a new branch through wt.
-- Ctrl+B, then Shift+D: select a worktree for removal through wt, with its normal safety checks.
-- Escape: cancel the picker.
+The old terminal Herdr configuration, Worktrunk plugin, manual helper, and named-session tests are removed. No compatibility path remains. Do not install the old plugin or use its session commands.
 
-The native worktree keybindings are disabled. Native sidebar context-menu creation and `herdr worktree create/remove` still use Git directly. Do not use those for managed worktrees. Use the plugin actions, `cop new/remove`, or `wt switch/remove` instead.
+## Explicit Worktrunk integration
 
-## Coppice and agent commands
+`wt-herdr` lives in the Worktrunk stow package at `worktrunk/.local/bin/wt-herdr`, not this package. It provides three explicit operations:
 
-Use `cop herdr [repo]` from an interactive shell to create or reuse a worktree, finish wt setup, and open Pi in Herdr. The repo defaults to the current directory. Use `--branch NAME` or answer the branch prompt. Like `cop orca`, this explicit command focuses the verified Pi terminal and changes the calling shell to the checkout directory.
+- `check`: inspect app/Core readiness and repository validity. It does not inspect or repair the space structure.
+- `open`: open or reuse the intended worktree space and Pi terminal.
+- `repair`: repair approved structure problems explicitly, never as a global wt hook.
 
-Inside Herdr, `cop herdr` targets the calling session through `HERDR_SOCKET_PATH`. Outside Herdr, it targets the running default session. Use `--session NAME` to choose another running session. The command does not start a Herdr server. Reuse focuses an existing ready Pi instead of starting another one.
+`cop herdr [repo]` creates or reuses a wt checkout, finishes setup, and calls `wt-herdr`. The repo defaults to the current directory. Use `--branch NAME` or answer the branch prompt. It focuses the verified Pi terminal and enters the checkout in the calling shell.
 
 ```sh
 cop herdr
 cop herdr ~/projects/personal/example --branch feature-name
-cop herdr ~/projects/personal/example --branch feature-name --yes --session review
 ```
 
-`cop new` and direct `wt switch` calls remain worktree-only, even inside Herdr. They run normal setup without opening workspaces or Pi. There is no global Herdr post-switch hook. The plugin picker still opens its own workspace through `herdr worktree open`.
+There is no legacy `--session` option. App/Core is the integration target, not a named terminal Herdr server.
 
-`herdr-wt-open REPO_PATH WORKTREE_PATH` remains a manual legacy helper. It opens an existing checkout without changing focus or starting Pi. It needs an explicit calling Herdr socket and preserves custom workspace labels. Normal wt setup and `cop herdr` do not need this helper.
+Use one space per worktree. Nest linked-worktree spaces under their primary checkout's space using Git identity, not labels or path segments. Reuse Pi only for the exact worktree and terminal identity. A pending launch is not permission to start another Pi. Wait for readiness or report the pending state instead.
 
-The plugin closes a workspace after successful removal through its own picker. Removal through coppice or wt does not automatically close a Herdr workspace. Close its workspace explicitly before removing the checkout. An automatic close could kill an agent, so no teardown hook does that.
+`cop new` and direct `wt switch` remain worktree-only. No global wt hook opens Herdr, Core terminals, Pi, or an editor. Do not use native app worktree creation or deletion for wt-managed checkouts. Stop or hand off the worker and close its space before removal through coppice or wt. External removal does not close it automatically. Cmd+E inside Pi remains the manual editor shortcut. Orca is unchanged.
 
-Worktree creation does not open VS Code. Cmd+E inside pi remains the manual editor shortcut. Canopy and understory retain Ghostty-only title-based navigation.
+## Personal configuration
 
-## Limits
+Only `.config/herdr-app/settings.json` is tracked here. It copies the current personal display and sound preferences without changing their values. Stow individual files with `stow --no-folding herdr` after reviewing live conflicts. This cleanup does not run Stow or change live symlinks.
 
-The plugin opens a checkout at its root. It does not preserve a nested dbt project directory from the source pane. Change into that project before starting pi so its skills and manual Cmd+E use the intended scope. `cop herdr` also starts Pi at the checkout root. Upstream tracks plugin directory handling in https://github.com/devashish2203/herdr-worktrunk/issues/14.
+Symlink safety was checked against the installed app's official v0.1.13 source:
 
-No merge key is added. The plugin's merge action can stage and commit through wt, which conflicts with the agent commit review gate.
+- [Settings](https://github.com/herdrdev/herdr-app/blob/v0.1.13/src/settings.rs) writes through [persist](https://github.com/herdrdev/herdr-app/blob/v0.1.13/src/persist.rs), which resolves symlink targets before atomic replacement. Its tests cover link chains and missing targets.
+- [Keys](https://github.com/herdrdev/herdr-app/blob/v0.1.13/src/keys.rs) writes through file symlinks. The current keys match shipped macOS defaults, so no copy is needed.
+- [Programs](https://github.com/herdrdev/herdr-app/blob/v0.1.13/src/programs.rs) reads personal overrides. No personal `programs.json` exists, so none is added.
 
-## Installation and files
-
-```sh
-herdr plugin install devashish2203/herdr-worktrunk --ref f9df9ba700b8a4f4d97ddfe3ea3eb345e80b880b --yes
-stow herdr
-herdr config check
-herdr server reload-config
-```
-
-The package stows the helper, `config.toml`, and `plugins/config/worktrunk/config.toml`. Both live config files link to their tracked versions. Herdr's managed plugin installation and runtime state are not tracked. Back up conflicting live config files before stowing on another machine.
-
-To update the plugin, choose a new commit, review its source, install that ref, and rerun the test. A pinned install does not follow upstream main automatically.
+Never stow the whole live `~/.config/herdr-app` directory. Leave spaces, terminal data, sockets, window state, generated mods, icons, telemetry, and update records app-owned. Preserve Core state and signed applications. If a future version stops preserving file symlinks, use the live file vs snapshot pattern with `.stow-local-ignore` instead.
 
 ## Verification
 
-```sh
-bash scripts/test-herdr-worktrunk.sh
-uv run scripts/test-worktree-no-editor.py
-```
-
-The integration test starts an isolated named Herdr session in tmux. Both test tmux sessions have registered owners, 300-second deadlines, and explicit cleanup. It tests the real keybinding, installed picker, native workspace provenance, setup hooks, custom-label preservation, focus preservation, and plugin removal. It verifies that `cop new` and direct wt creation/reuse open no Herdr workspaces, even inside Herdr. It also checks the manual legacy helper with spaced paths, the absence of a global registration hook, and zero editor calls. Only fzf selection is scripted for deterministic lifecycle checks. The separate interactive picker check uses real fzf. Test workspaces, sessions, and fixtures are cleaned up without changing live user workspaces. This script does not exercise `cop herdr` Pi launch.
+Run the Worktrunk helper's maintained tests and `uv run --no-project --no-sync scripts/test-worktree-no-editor.py`. Do not use the removed terminal Herdr test harness. Check app integration separately without changing user spaces or settings.

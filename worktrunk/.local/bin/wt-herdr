@@ -90,13 +90,23 @@ def validate(doc):
         raise Error("A terminal has more than one layout pane")
 
 
-def files_space(path, name):
+def files_space(path, name, checkout=False):
     tab = new_id("tb")
     return {"id": new_id("sp"), "name": name, "folder": path, "tabs": [
         {"id": tab, "name": "Files", "root": {"id": tab, "type": "row", "children": [
-            {"id": new_id("p"), "type": "block", "content": {"mod": "files", "props": {}}}
+            {"id": new_id("p"), "type": "block", "content": {"mod": "files", "props": {} if checkout else {"wt_herdr_parent": path}}}
         ]}}
     ]}
+
+
+def repo_parent(space, primary):
+    """Only a marked terminal-free Files space is a stable repository anchor."""
+    blocks = [n for t in space.get("tabs", []) for n in nodes(t["root"]) if n.get("type") == "block"]
+    return bool(blocks) and space.get("folder") == primary and all(
+        n.get("content", {}).get("mod") == "files"
+        and n.get("content", {}).get("props", {}).get("wt_herdr_parent") == primary
+        for n in blocks
+    ) and not list(placements({"spaces": [space]}))
 
 
 def terminal_tree(node):
@@ -135,11 +145,16 @@ def repair_layout(doc, identities, folders, selected=None):
     validate(doc)
     result = copy.deepcopy(doc)
     targets = {}
+    parents = {}
     untouched = {}
-    duplicates = set()
     groups = []
     for space in result["spaces"]:
         addresses = [a for a, _, _, _ in placements({"spaces": [space]})]
+        if addresses and (selected is None or space["id"] in selected):
+            for t in space["tabs"]:
+                for n in nodes(t["root"]):
+                    if n.get("content", {}).get("mod") == "files":
+                        n.get("content", {}).get("props", {}).pop("wt_herdr_parent", None)
         known = [identities.get(a) for a in addresses]
         if addresses and not any(known):
             # A wholly non-Git space needs no worktree grouping.
@@ -153,35 +168,33 @@ def repair_layout(doc, identities, folders, selected=None):
                 paths = [identity["path"]]
         if not paths:
             continue
+        identity = folders.get(space["id"])
+        if identity and repo_parent(space, identity["primary"]):
+            if identity["primary"] in parents:
+                raise Error("Multiple repository parents; repair refused")
+            parents[identity["primary"]] = space
+            continue
         if selected is not None and space["id"] not in selected:
             # Existing homogeneous spaces can receive moves without being rewritten.
-            if len(paths) == 1:
-                if paths[0] in targets:
-                    duplicates.add(paths[0])
-                else:
-                    targets[paths[0]] = space
-                    untouched[paths[0]] = space
+            if len(paths) == 1 and paths[0] not in targets:
+                targets[paths[0]] = space
+                untouched[paths[0]] = space
             continue
         if len(paths) > 1 and not all(terminal_tree(t["root"]) for t in space["tabs"]):
             raise Error("Mixed space contains mod or unclear panes; repair refused")
         anchor = paths[0]
-        if anchor in targets:
-            raise Error("Multiple spaces represent one checkout; repair refused")
-        targets[anchor] = space
+        targets.setdefault(anchor, space)
         groups.append((space, paths))
     all_identities = {i["path"]: i for i in [*identities.values(), *folders.values()] if i}
     for _, paths in groups:
         for path in paths:
             identity = all_identities[path]
             primary = identity["primary"]
-            if path in duplicates or primary in duplicates:
-                raise Error("Multiple destination spaces represent one checkout; repair refused")
-            for destination in (path, primary):
-                if destination in untouched and untouched[destination].get("folder") != destination:
-                    raise Error("Destination space folder is stale; automatic repair refused")
-            if primary not in targets:
+            if path in untouched and untouched[path].get("folder") != path:
+                raise Error("Destination space folder is stale; automatic repair refused")
+            if primary not in parents:
                 parent = files_space(primary, Path(primary).name)
-                targets[primary] = parent
+                parents[primary] = parent
                 result["spaces"].append(parent)
             if path not in targets:
                 child = {"id": new_id("sp"), "name": identity["name"], "folder": path, "tabs": []}
@@ -191,6 +204,8 @@ def repair_layout(doc, identities, folders, selected=None):
         if len(paths) == 1:
             # Files-only parents and correctly grouped tabs remain byte-for-byte unchanged.
             if any(True for _ in placements({"spaces": [space]})):
+                if not space.get("name"):
+                    space["name"] = all_identities[paths[0]]["name"]
                 space["folder"] = paths[0]
             continue
         old_tabs = space["tabs"]
@@ -212,6 +227,13 @@ def repair_layout(doc, identities, folders, selected=None):
                     fragment["id"] = new_id("tb")
                     fragment["root"]["id"] = fragment["id"]
                 targets[path]["tabs"].append(fragment)
+    for primary in {all_identities[p]["primary"] for _, paths in groups for p in paths}:
+        parent = parents[primary]
+        related = {s["id"] for s, paths in groups if any(all_identities[p]["primary"] == primary for p in paths)}
+        remaining = [s for s in result["spaces"] if s["id"] != parent["id"]]
+        index = next((i for i, s in enumerate(remaining) if s["id"] in related), len(remaining))
+        remaining.insert(index, parent)
+        result["spaces"] = remaining
     validate(result)
     if Counter(a for a, *_ in placements(doc)) != Counter(a for a, *_ in placements(result)):
         raise Error("Repair would change terminal references")
@@ -433,26 +455,30 @@ class Helper:
 
     def target_spaces(self, doc, identities, folders, repo, target):
         found = {}
+        parent = None
         for space in doc["spaces"]:
             refs = [a for a, *_ in placements({"spaces": [space]})]
             known = [identities.get(a) for a in refs]
             relevant = any(i and i["common"] == repo["common"] for i in known)
             folder = self.git(space.get("folder", ""), required=False)
             relevant |= bool(folder and folder["common"] == repo["common"])
+            if folder and repo_parent(space, repo["primary"]):
+                if parent is not None:
+                    raise Error("Multiple stable repository parents; repair refused")
+                parent = space
+                continue
             if not relevant:
                 continue
             paths = space_paths(space, identities) if refs else [folders[space["id"]]["path"]] if folders.get(space["id"]) else []
             if len(paths) != 1:
                 raise Error("Existing space mixes checkouts; run wt-herdr repair first")
             path = paths[0]
-            if path in found:
-                raise Error("Multiple spaces represent this checkout; run wt-herdr repair")
-            found[path] = space
+            found.setdefault(path, space)
             if folder and folder["path"] != path:
                 raise Error("Space folder disagrees with live checkout; run wt-herdr repair")
             if refs and space.get("folder") != path:
                 raise Error("Space folder is stale; run wt-herdr repair")
-        return found.get(repo["primary"]), found.get(target["path"])
+        return parent, found.get(target["path"])
 
     def reusable(self, doc, facts, target):
         mapping = {a: (s, t, p) for a, s, t, p in placements(doc)}
@@ -478,7 +504,7 @@ class Helper:
             argv = fg.get("argv") or []
             shells = {"zsh", "bash", "sh", "fish", "nu", "dash", "ksh"}
             if (not exact_cwd or not fg.get("pid") or fg.get("name") not in shells or not argv
-                    or Path(argv[0]).name not in shells or fact.get("reported")
+                    or Path(argv[0]).name not in shells
                     or (fact.get("status") or {}).get("app") not in (None, "shell")):
                 raise Error("Target has a busy or unverified program; no Pi launched")
         if len(candidates) > 1:
@@ -516,8 +542,8 @@ class Helper:
                 value = copy.deepcopy(doc)
                 if parent is None:
                     value["spaces"].append(files_space(repo["primary"], Path(repo["primary"]).name))
-                if space is None and target["path"] != repo["primary"]:
-                    value["spaces"].append(files_space(target["path"], target["name"]))
+                if space is None:
+                    value["spaces"].append(files_space(target["path"], target["name"], checkout=True))
                 validate(value)
                 self.app_layout(doc)
                 try:

@@ -176,7 +176,7 @@ class Tests(unittest.TestCase):
         ids, folders = self.h.identities(original, self.h.terminals)
         result = w.repair_layout(original, ids, folders)
         self.assertEqual(result["spaces"][0]["tabs"][0], original["spaces"][0]["tabs"][0])
-        self.assertEqual(list(a for a, *_ in w.placements(result)), ["t2", "t1"])
+        self.assertEqual(list(a for a, *_ in w.placements(result)), ["t1", "t2"])
         before_blocks = {n["id"]: n for s in original["spaces"] for t in s["tabs"] for n in w.nodes(t["root"]) if n["type"] == "block"}
         after_blocks = {n["id"]: n for s in result["spaces"] for t in s["tabs"] for n in w.nodes(t["root"]) if n["type"] == "block"}
         self.assertEqual(before_blocks, after_blocks)
@@ -228,14 +228,18 @@ class Tests(unittest.TestCase):
     def test_layout_properties_survive_rpc_repair_and_backup(self):
         self.mixed()
         props = {"title": "Keep custom title", "msg": "Keep custom message", "screen": "custom"}
-        self.h.doc["spaces"][0]["tabs"][0]["root"]["children"][0]["content"]["props"] = props
+        original = self.h.doc["spaces"][0]
+        original_id = original["id"]
+        original["tabs"][0]["root"]["children"][0]["content"]["props"].update(props)
         self.h.doc["title"] = "Whole layout"
         self.h.repair()
         self.assertEqual(self.h.doc["title"], "Whole layout")
-        self.assertEqual(self.h.doc["spaces"][0]["tabs"][0]["root"]["children"][0]["content"]["props"], props)
+        actual = next(s for s in self.h.doc["spaces"] if s["id"] == original_id)
+        self.assertEqual(actual["tabs"][0]["root"]["children"][0]["content"]["props"], {"wt_herdr_parent": self.h.primary, **props})
         backup = json.loads(next((self.h.state / "backups").glob("*.json")).read_text())
         self.assertEqual(backup["document"]["title"], "Whole layout")
-        self.assertEqual(backup["document"]["spaces"][0]["tabs"][0]["root"]["children"][0]["content"]["props"], props)
+        saved = next(s for s in backup["document"]["spaces"] if s["id"] == original_id)
+        self.assertEqual(saved["tabs"][0]["root"]["children"][0]["content"]["props"], {"wt_herdr_parent": self.h.primary, **props})
         self.assertNotIn("PRIVATE", json.dumps(backup["facts"]))
 
     def test_missing_state_home_is_created(self):
@@ -294,8 +298,98 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.h.doc, original)
         self.assertFalse(list(self.h.state.iterdir()))
 
+    def test_parent_survives_shell_cd_after_open(self):
+        self.h.doc["spaces"] = [space("sp-caller", self.h.primary, tab("tb-caller", "caller"))]
+        self.h.terminals["caller"] = fact("caller", self.h.primary, False)
+        self.h.open(self.repo, self.target)
+        parent = next(s for s in self.h.doc["spaces"] if w.repo_parent(s, self.h.primary))
+        self.assertFalse(list(w.placements({"spaces": [parent]})))
+        self.h.terminals["caller"]["foreground"]["cwd"] = self.h.child
+        self.assertTrue(w.repo_parent(parent, self.h.primary))
+        self.assertFalse(list(w.placements({"spaces": [parent]})))
+        self.assertEqual(self.h.doc["spaces"][0]["id"], parent["id"])
+        self.h.repair(repo=self.repo)
+        self.assertTrue(w.repo_parent(next(s for s in self.h.doc["spaces"] if s["id"] == parent["id"]), self.h.primary))
+        self.assertEqual(len(self.h.doc["spaces"]), 3)
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        self.assertEqual(sum(a[:2] == ["hc", "run"] for a in self.h.calls), 1)
+
+    def test_drift_preserves_same_checkout_spaces_and_names(self):
+        self.ready()
+        old = space("sp-caller", self.h.primary, tab("tb-caller", "caller"))
+        self.h.doc["spaces"].insert(0, old)
+        self.h.terminals["caller"] = fact("caller", self.h.child, False)
+        before = w.process_identity(self.h.terminals)
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        self.assertEqual(w.process_identity(self.h.terminals), before)
+        caller = next(s for s in self.h.doc["spaces"] if s["id"] == "sp-caller")
+        self.assertEqual(caller["name"], old["name"])
+        self.assertEqual(caller["tabs"], old["tabs"])
+        self.assertEqual(caller["folder"], self.h.child)
+        self.assertTrue(w.repo_parent(self.h.doc["spaces"][0], self.h.primary))
+
+    def test_open_primary_never_launches_into_parent(self):
+        self.h.open(self.repo, self.repo)
+        parent = next(s for s in self.h.doc["spaces"] if w.repo_parent(s, self.h.primary))
+        placement = next(s for a, s, *_ in w.placements(self.h.doc) if a == "tnew")
+        self.assertNotEqual(placement, parent["id"])
+        self.assertFalse(list(w.placements({"spaces": [parent]})))
+
+    def test_parent_with_added_terminal_is_demoted(self):
+        parent = self.h.doc["spaces"][0]
+        parent["tabs"].append(tab("tb-caller", "caller"))
+        self.h.terminals["caller"] = fact("caller", self.h.primary, False)
+        self.h.repair(repo=self.repo)
+        stable = [s for s in self.h.doc["spaces"] if w.repo_parent(s, self.h.primary)]
+        self.assertEqual(len(stable), 1)
+        self.assertNotEqual(stable[0]["id"], parent["id"])
+        self.assertIn("caller", {a for a, *_ in w.placements(self.h.doc)})
+
+    def test_explicit_repo_basename_name_survives_drift(self):
+        self.ready()
+        space = self.h.doc["spaces"][1]
+        space["name"] = Path(self.h.primary).name
+        space["folder"] = self.h.primary
+        self.h.repair(repo=self.repo)
+        actual = next(s for s in self.h.doc["spaces"] if s["id"] == space["id"])
+        self.assertEqual(actual["name"], Path(self.h.primary).name)
+        self.assertEqual(actual["folder"], self.h.child)
+
+    def test_demoted_parent_does_not_resurrect(self):
+        parent = self.h.doc["spaces"][0]
+        props = parent["tabs"][0]["root"]["children"][0]["content"]["props"]
+        props["custom"] = "keep"
+        parent["tabs"].append(tab("tb-caller", "caller"))
+        self.h.terminals["caller"] = fact("caller", self.h.primary, False)
+        self.h.repair(repo=self.repo)
+        former = next(s for s in self.h.doc["spaces"] if s["id"] == parent["id"])
+        self.assertEqual(former["tabs"][0]["root"]["children"][0]["content"]["props"], {"custom": "keep"})
+        former["tabs"].pop()
+        del self.h.terminals["caller"]
+        self.h.repair(repo=self.repo)
+        self.assertEqual(sum(w.repo_parent(s, self.h.primary) for s in self.h.doc["spaces"]), 1)
+
+    def test_empty_unmarked_space_is_not_parent(self):
+        empty = space("sp-empty", self.h.primary, {"id": "tb-empty", "root": {"id": "tb-empty", "type": "row", "children": []}})
+        self.assertFalse(w.repo_parent(empty, self.h.primary))
+
+    def test_parent_is_ordered_before_new_primary_shell(self):
+        stable = self.h.doc["spaces"][0]
+        self.h.doc["spaces"].insert(0, space("sp-shell", self.h.primary, tab("tb-shell", "caller")))
+        self.h.terminals["caller"] = fact("caller", self.h.primary, False)
+        self.h.repair(repo=self.repo)
+        self.assertEqual(self.h.doc["spaces"][0]["id"], stable["id"])
+
     def test_reuse_active_pi_without_launch(self):
         self.ready()
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        self.assertFalse(any(a[:2] == ["hc", "run"] for a in self.h.calls))
+
+    def test_returned_shell_with_old_reporting_reuses_pi(self):
+        self.ready()
+        self.h.doc["spaces"][1]["tabs"].append(tab("tb-shell", "shell"))
+        self.h.terminals["shell"] = fact("shell", self.h.child, False)
+        self.h.terminals["shell"]["reported"] = True
         self.assertIn("Reused", self.h.open(self.repo, self.target))
         self.assertFalse(any(a[:2] == ["hc", "run"] for a in self.h.calls))
 

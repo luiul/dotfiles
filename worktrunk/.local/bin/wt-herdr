@@ -387,17 +387,22 @@ class Helper:
         self.app_layout()
 
     def app_layout(self, doc=None):
-        for _ in range(5):
-            current, _ = self.snapshot()
+        end = time.monotonic() + min(5, self.remaining())
+        while time.monotonic() < end:
             visible = self.json_command(["herdr-app", "ls"])
+            # Read Core after the app, so an edit during the app read is not missed.
+            current, _ = self.snapshot()
             local = [s for s in visible["spaces"] if s.get("machine") in (None, "")]
             expected = {(s["id"], t["id"]) for s in current["spaces"] for t in s["tabs"]}
             actual = {(s["id"], t["id"]) for s in local for t in s["tabs"]}
             panes = {(p["terminal"], s["id"], t["id"], p["pane"])
                      for s in local for t in s["tabs"] for p in t.get("terminals", [])}
-            if actual == expected and panes == set(placements(current)) and (doc is None or doc == current):
+            if actual == expected and panes == set(placements(current)):
+                if doc is not None and doc != current:
+                    raise Conflict("Layout changed concurrently during app verification")
                 return
-            time.sleep(min(0.2, self.remaining()))
+            delay = min(0.2, max(0, end - time.monotonic()), self.remaining())
+            time.sleep(delay)
         raise Error("App and Core layouts differ; selected local pair cannot be verified")
 
     def snapshot(self):
@@ -681,7 +686,7 @@ class Helper:
                     continue
             current, _ = self.snapshot()
             if current != value:
-                raise Error("Layout changed after repair; reconciliation record retained")
+                continue
             try:
                 for address, new_labels in needed.items():
                     self.rpc("terminal.label", terminal=address, labels=new_labels)
@@ -692,6 +697,9 @@ class Helper:
                     if any(after[address].get("labels", {}).get(k) != v for k, v in new_labels.items()):
                         raise Error("Label reconciliation is incomplete")
                 self.app_layout(current)
+            except Conflict:
+                # Replan from the accepted layout without dropping the saved baseline.
+                continue
             except Error as exc:
                 raise Error(f"Repair saved but verification failed ({exc}). Run repair again") from None
             self.reconcile.unlink(missing_ok=True)

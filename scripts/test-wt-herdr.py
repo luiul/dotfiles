@@ -271,6 +271,104 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.h.rpc_calls("doc.set"), writes)
         self.assertFalse(self.h.reconcile.exists())
 
+    def test_app_layout_waits_for_delayed_propagation(self):
+        self.ready()
+        original = self.h.run
+        reads = 0
+
+        def delayed(args, **kwargs):
+            nonlocal reads
+            result = original(args, **kwargs)
+            if args == ["herdr-app", "ls"]:
+                reads += 1
+                if reads <= 6:
+                    return '{"spaces": []}'
+            return result
+
+        self.h.run = delayed
+        with patch.object(w.time, "sleep"):
+            self.h.app_layout(self.h.doc)
+        self.assertEqual(reads, 7)
+
+    def test_matching_newer_layout_is_a_conflict_not_a_pair_mismatch(self):
+        self.ready()
+        earlier = copy.deepcopy(self.h.doc)
+        self.h.doc["unrelated"] = "concurrent edit"
+        with self.assertRaisesRegex(w.Conflict, "concurrently"):
+            self.h.app_layout(earlier)
+
+    def test_repair_replans_after_concurrent_app_edit(self):
+        self.mixed()
+        original = self.h.run
+        changed = False
+
+        def concurrent(args, **kwargs):
+            nonlocal changed
+            if args == ["herdr-app", "ls"] and not changed:
+                changed = True
+                self.h.doc["unrelated"] = "concurrent edit"
+                self.h.version += 1
+            return original(args, **kwargs)
+
+        self.h.run = concurrent
+        self.h.repair()
+        self.assertTrue(changed)
+        self.assertEqual(self.h.doc["unrelated"], "concurrent edit")
+        self.assertEqual(self.h.rpc_calls("doc.set"), 1)
+        self.assertFalse(self.h.reconcile.exists())
+
+    def test_repair_rechecks_baseline_after_concurrent_edit(self):
+        self.mixed()
+        original = self.h.run
+        changed = False
+
+        def concurrent(args, **kwargs):
+            nonlocal changed
+            if args == ["herdr-app", "ls"] and not changed:
+                changed = True
+                self.h.doc["unrelated"] = "concurrent edit"
+                self.h.terminals["t1"]["pid"] += 1
+            return original(args, **kwargs)
+
+        self.h.run = concurrent
+        with self.assertRaisesRegex(w.Error, "baseline"):
+            self.h.repair()
+        self.assertTrue(self.h.reconcile.exists())
+
+    def test_repair_rechecks_protected_placement_after_concurrent_edit(self):
+        self.mixed()
+        original = self.h.run
+        changed = False
+
+        def concurrent(args, **kwargs):
+            nonlocal changed
+            if args == ["herdr-app", "ls"] and not changed:
+                changed = True
+                target = next(s for s in self.h.doc["spaces"]
+                              if any(a == "t1" for a, *_ in w.placements({"spaces": [s]})))
+                target["tabs"] = []
+                self.h.version += 1
+            return original(args, **kwargs)
+
+        self.h.run = concurrent
+        with self.assertRaisesRegex(w.Error, "no longer placed"):
+            self.h.repair()
+        self.assertTrue(self.h.reconcile.exists())
+
+    def test_persistent_pair_mismatch_is_bounded_and_retains_recovery(self):
+        self.mixed()
+        self.h.bad_pair = True
+        now = time.monotonic()
+        with patch.object(w.time, "monotonic", side_effect=lambda: now), patch.object(w.time, "sleep") as sleep:
+            def advance(seconds):
+                nonlocal now
+                now += seconds
+            sleep.side_effect = advance
+            with self.assertRaisesRegex(w.Error, "App and Core layouts differ"):
+                self.h.repair()
+            self.assertLessEqual(sleep.call_count, 26)
+        self.assertTrue(self.h.reconcile.exists())
+
     def test_recovery_ignores_unrelated_terminal_activity(self):
         self.mixed()
         self.h.terminals["outside"] = fact("outside", self.h.other)

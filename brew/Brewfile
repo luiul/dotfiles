@@ -142,7 +142,7 @@ cask "iina"
 cask "jordanbaird-ice"
 # Open-source keystroke visualiser
 cask "keycastr"
-# Shows the next meeting in the menu bar
+# Meetings in your menu bar
 cask "meetingbar"
 # Knowledge base that works on top of a local folder of plain text Markdown files
 cask "obsidian"

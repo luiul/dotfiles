@@ -162,10 +162,10 @@ Work in two modes: planning and execution. Pick the mode from the request.
 
 ## Browser Automation
 
-- One way only: playwriter CLI (`playwriter -s <session> -e '<playwright JS>'`) driving Google Chrome through the Playwriter extension. Never use another browser, Playwright MCP, or a second automation profile. Full reference: `~/.pi/agent/skills/playwriter/SKILL.md` (context-mode source `playwriter-skill`); setup doc: `docs/browser-automation.md` in the dotfiles repo.
+- General browser automation uses only the playwriter CLI (`playwriter -s <session> -e '<playwright JS>'`) with Google Chrome through the Playwriter extension. Never use another browser, Playwright MCP, or a second general automation profile. Slack's managed reader below is the separate exception. Full reference: `~/.pi/agent/skills/playwriter/SKILL.md` (context-mode source `playwriter-skill`); setup doc: `docs/browser-automation.md` in the dotfiles repo.
 - Surface: the Chrome profile "Your Chrome" (`--profile-directory=Default`, the personal Google account) has the extension. Logins that exist in that profile apply. Start Chrome with `open -a "Google Chrome" --args --profile-directory=Default` if no window is open, then `playwriter session new`.
 - If `playwriter browser list` shows more than one browser, stop and report it. Do not guess a key.
 - Consent model: agent-created tabs (`context.newPage()`) work directly. Pre-existing tabs need one manual extension-icon click each.
 - Read-only scraping of bot-protected sites: cookie replay via curl stays the fallback (skill `scrape-logged-in-site-via-browser-cookie-replay`).
 - Keep the playwriter MCP entry out of the live config. Its `execute` tool description is 53KB and would bloat the standing prompt. Use the CLI.
-- Slack reads use `slack-reader`, a separate managed browser path (see `docs/browser-automation.md`).
+- Slack reads use the Go `slack-reader` CLI, which reads rendered UI only via CDP in a separate managed Chrome profile. Never use Playwriter's shared tabs for Slack reads. See `docs/browser-automation.md` for the profile, shared auth pause, manual migration login, and explicit scope rules.

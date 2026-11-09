@@ -178,7 +178,7 @@ This repo uses the schemachange tool to manage Snowflake objects.
 
 ## Connecting to HelloFresh Systems
 
-CLI-first. Reach every system through its CLI, or a documented `curl` REST recipe where no CLI exists. Exceptions: prefer an approved official Slack MCP for read-only access, as described below. Use the HelloDev knowledge base MCP only when I explicitly ask (see **HelloDev Knowledge Base** below). Never consult the HelloDev KB MCP eagerly or on your own initiative. All tokens live in `~/dotfiles/.env` and are exported into the shell by `.zshrc` (`set -a; source ~/dotfiles/.env`), so any command run here already sees them, including from pi.
+CLI-first. Reach every system through its CLI, or a documented `curl` REST recipe where no CLI exists. Exception: Slack reads use Playwriter with the already open Chrome and rendered DOM only, as described below. Use the HelloDev knowledge base MCP only when I explicitly ask (see **HelloDev Knowledge Base** below). Never consult the HelloDev KB MCP eagerly or on your own initiative. All tokens live in `~/dotfiles/.env` and are exported into the shell by `.zshrc` (`set -a; source ~/dotfiles/.env`), so any command run here already sees them, including from pi.
 
 | System | Tool | Auth |
 | --- | --- | --- |
@@ -189,7 +189,7 @@ CLI-first. Reach every system through its CLI, or a documented `curl` REST recip
 | Databricks | `databricks` CLI | OAuth |
 | AWS (S3, etc.) | `aws` CLI | SSO (`hfsso` session, browser) |
 | Google Docs | `md2gdoc` to replace the body of an existing doc (service account); `gdoc-publish` to create or refresh a styled private doc (gcloud work account) | service account; gcloud |
-| Slack | approved official Slack MCP first; `slack-reader` browser fallback (shim: `slack-hf-read`) | separate OAuth for the current client; no credential capture or replay |
+| Slack | Playwriter CLI in the existing connected Chrome, read-only rendered DOM | existing browser sign-in; no credential capture or replay |
 | HelloDev KB | MCP (Pi, via `pi-mcp-adapter`) | none required |
 
 Do not use the Atlassian MCP for Jira or Confluence; the `jira` CLI recipes below and the REST recipes in `docs/confluence-rest.md` replace it.
@@ -235,46 +235,73 @@ Conventions:
     --data '{"fields":{"fixVersions":[{"id":"59925"}]}}'
   ```
 
-## Slack: READ ONLY, official MCP first, browser fallback
+## Slack: READ ONLY through Playwriter
 
-**Pi reads only.** Never post, react, upload, change membership, or enter message drafts. Prefer an approved, authenticated [official Slack MCP](https://docs.slack.dev/ai/slack-mcp-server) at `https://mcp.slack.com/mcp`, available to the current Pi session. Use only verified read tools. Do not assume Claude's Slack plugin is accessible or authenticated in Pi. Each client needs its own authorized OAuth connection. Do not copy credentials or borrow another client's identity.
+**Pi reads only.** Never post, react, upload, change membership, or enter message drafts.
+Use Playwriter in the already open Google Chrome, which is solely for agents, including Slack reads.
+Reuse its existing sign-in. Do not create a dedicated reader profile or window, or run recurring manual sign-in.
+Normal navigation may change read state.
 
-No Slack MCP is configured in Pi. The official endpoint was removed because it requires an approved OAuth client and rejects dynamic registration. Do not add it again without explicit user approval and a supported auth setup.
+### Browser and task ownership
 
-If no authorized MCP read path is available, use `slack-reader` (`~/projects/personal/slack-reader`, https://github.com/luiul/slack-reader) as the browser fallback. The Go CLI reads rendered UI only through a dedicated Google Chrome profile via CDP. It uses no token capture, cookie extraction, or hand-built APIs. It re-derives the browser from the live loopback CDP listener on every command instead of trusting recorded PIDs or tab IDs. The legacy names `slack-hf-read` and `slack-hf-session-login` remain as shims into it. Normal navigation may change read state. Do not restore the retired credential-replay `slack-mcp-server`, or use `slackcli`, `slack-relogin`, `slack-hf-session`, or `slackdump`. Shared manual tools remain unchanged.
+- Run `playwriter browser list`. Continue only when exactly one connected Chrome is shown. Otherwise stop and report it.
+- Use the connected browser discovered at runtime. Do not hardcode an account, profile, or browser key, or infer extension status from account labels.
+- Create a task-specific Playwriter session and your own pages with `context.newPage()`. Store owned pages in `state` and pass them explicitly to helpers.
+- Sessions isolate state, not tabs or authentication. Do not reuse another worker's session or tab, including blank pages, without an explicit handoff.
+- Close only pages you created, then delete only your own session. Never close the browser, context, windows, or other workers' tabs.
+- Do not clear shared browser state or stop the relay. See `docs/browser-automation.md` in dotfiles and `~/.pi/agent/skills/playwriter/SKILL.md`.
 
-The reader uses `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`, a fresh dedicated `~/.pi/agent/data/slack-chrome-session` profile, and `127.0.0.1:9223`. The existing `~/.pi/agent/data/slack-reader` state, owned lock, and auth pause remain shared across reader commands. Do not copy or reuse the Brave profile or standard Chrome user data. Migration does not clear the pause or sign in. Manual `slack-reader login` followed by `slack-reader await-login` is required. Never use Playwriter's shared tabs for Slack reads.
+### DOM only and explicit scope
 
-Fallback is for an unavailable integration or unsupported read operation, not a way around access controls. On MCP auth loss, access denial, rate limiting, or suspected account-wide revocation, stop and report the error. Do not switch clients or retry credentials to work around it. Keep the browser's persistent auth pause and explicit recovery rules.
+Read only rendered DOM through Playwriter.
+Do not read or copy cookies, tokens, browser storage, hidden application state, or network request/response bodies.
+Do not call Slack APIs, use authenticated fetches, replay APIs or credentials, or borrow another client's identity.
+These restrictions override general browser skill examples, including cookie replay and network interception.
+Shared manual directory tools remain unchanged, but are not Pi read paths or fallbacks.
 
-**Default Pi workflow is exact-message only.** Unless the user explicitly requests broader scope, read only the supplied permalink with the approved MCP exact-message tool or `slack-reader read '<url>' --scope message`. The CLI itself defaults to thread scope, so always pass the scope. `--limit 1` does not select message scope. Do not substitute a thread or nearby message when the exact linked message is missing.
+**Default scope is only the supplied exact permalink.** Read that message only, not nearby history, its parent, or replies unless requested.
+Do not substitute another message when the exact linked message is missing.
+Verify workspace and channel from the rendered UI and the linked timestamp from structural DOM evidence.
+Use message attributes or timestamp permalinks, not displayed clock text alone.
+Convert a permalink's `p<digits>` timestamp by inserting a decimal before its last six digits.
+If the exact message or its structure cannot be verified, report that it was not read safely.
 
-**Explicit broader requests are permitted.** A request to read a thread permits its parent and replies with `--scope thread`. A request to read a named channel or supplied channel ID or URL permits that channel's accessible history and thread replies with `slack-reader channel <channel-id|url>`. Apply any requested date and author filters. Do not discover other channels, search unrelated content, or expand scope on your own. Filters apply to each returned message, so older or other-author parents may be inspected to find matching replies. Report partial coverage and unread threads. Never claim an entire channel or thread was read unless `coverage.complete:true` proves it.
+**Explicit broader requests are permitted.** A thread request permits the parent and replies.
+A named channel or supplied channel ID or URL permits that channel's accessible history and replies.
+Apply requested date and author filters to each returned message, including replies.
+Use UTC for date boundaries, with an inclusive start and exclusive end.
+Use exact author identity, not fuzzy name matches. Report missing or ambiguous identity as partial coverage.
+Do not discover other channels, search unrelated content, or expand scope on your own.
 
-Channel and DM permalinks use the browser-only `/messages/` route; thread permalinks use the thread route. Both require the exact rendered timestamp. A `ui_changed` result means the requested content was not read safely, not permission to use another read path or credential replay.
+### Coverage checks
 
-| Command | Purpose |
-|---|---|
-| `slack-reader read '<url>' --scope message` | Exact linked message only, fails closed if not rendered |
-| `slack-reader read '<url>' --scope thread` | Parent and replies, only when explicitly requested |
-| `slack-reader channel <channel-id|url> --since 6months --user U0123456789` | Requested channel history and replies, with optional date and author filters |
-| `slack-reader status` | Local diagnostics only, no Slack traffic |
-| `slack-reader pause` | Stop reads across Pi runs |
-| `slack-reader login` | Open the managed window for manual SSO |
-| `slack-reader await-login` | Verify manual sign-in, clear the safety pause, close the managed window by default |
-| `slack-reader reset` | Terminate the validated managed browser and clear stale singletons/hints |
+- Verify the thread parent timestamp and each unique reply timestamp against structural DOM evidence.
+- Compare unique collected replies with the rendered reply count. Count one parent plus replies, not the linked reply twice.
+- Claim a complete thread only when the parent and all counted replies are verified. A missing count or mismatched count means partial coverage.
+- Bound scrolling and wait time. Virtualized DOM and a visible subset do not prove complete history.
+- For a channel, verify date boundaries, scroll continuity, and requested thread coverage before claiming completeness.
+- Report observed date range, collected counts, unread threads, gaps, and any limit or timeout. Unseen history may contain more replies.
+- A failed read is not an empty result. Do not hide errors or turn missing content into a success claim.
 
-Message and thread limits range from 1 through 1000, with a default thread limit of 100. Channel reads have no default result limit. They have a ten-minute budget, at most 2000 channel scroll actions, and a collection bound of 100000 messages. Use `--limit` from 1 through 100000 or `--timeout` from 1 through 3600 seconds to bound a channel read further. Each thread has 1000-message, 50-scroll, and 30-second bounds. A limit keeps the newest collected matches in chronological output, not necessarily the newest messages across unseen older threads. A bounded or interrupted collection is partial. `unread_threads` lists only discovered threads; unseen history may contain more.
+### Stop and preserve access
 
-Check `ok` and `error` before reading `data` or summarizing coverage. A failed read is not an empty result. Do not suppress failure fields, hide stderr, or let a shell pipeline mask the reader's exit status. On failure, stop and report the structured error instead of running the same read again to inspect its shape. Use channel IDs from Slack URLs. Convert a permalink's `p<digits>` timestamp by inserting a decimal before its last six digits. Results use `schema_version:1`, `source:"headed_ui"`, `data`, and `coverage`. A thread result counts its parent and replies in `data.messages`; `data.message` repeats the linked message, not an extra result. Message scope returns exactly one message. Treat `coverage.complete:false` as partial and report the reason. There are no automatic retries or resumable cursor.
+On auth loss, sign-in redirection, access denial, rate limiting, or suspected revocation, stop and report once.
+Do not retry in a loop, repeatedly open tabs or sign-in windows, switch clients, or replay credentials.
+Manual recovery needs a separate explicit request. Do not run login or verification before every read.
 
-Channel date filters use UTC: `--after YYYY-MM-DD` is inclusive, `--before YYYY-MM-DD` is exclusive, and `--since 6months` uses a calendar-relative start date. Do not combine `--since` with `--after`. `--user` accepts a Slack user ID or an exact rendered name, not a fuzzy match. Prefer IDs because names can be ambiguous. Missing or ambiguous author identity produces partial coverage.
+A separate profile does not protect sessions from [Slack Anomaly Event Response](https://slack.engineering/building-slacks-anomaly-event-response/).
+[Enterprise session policy](https://slack.com/help/articles/115005223763-Manage-session-duration) can force sign-in.
+Keeping a window open or waiting a fixed cooldown does not bypass policy.
+If reads correlate with desktop sign-outs, stop automation and report the cause as unknown without stronger evidence.
+Do not add background keepalives or synthetic health polling.
 
-**Recovery:** Confirm desktop Slack is signed in. Run `slack-reader login` for manual SSO, then `slack-reader await-login` to verify the workspace and clear the safety pause. This is recovery, not a prerequisite for every read. Verification closes the managed window by default but does not request Slack sign-out or prove session persistence. Reads open and close that window on demand. Startup time varies with browser and Slack loading. For a short batch, set `SLACK_READER_KEEP_OPEN=1` on verification and each read, then run `slack-reader reset` for cleanup. Never add keepalives. Do not close regular Chrome or unrelated tabs. The dedicated Slack profile is separate from Playwriter's profiles.
+### Historical tools
 
-Auth loss or sign-in redirection persists a shared pause. Give one actionable recovery warning, then do not retry reads, reopen login windows, or loop login attempts. Only explicit successful login verification clears the pause. Valid sign-in is reused without a timed login cycle. Normal commands return one structured result after cleanup, without progress chatter or background polling. A `wrong_workspace` result can indicate an unrecognized Enterprise route; do not repeatedly request SSO or widen the trusted identity list without verification. The shared owned lock covers both reads and recovery. Do not remove a lock manually while its owner may be alive. `status` reports local lock and pause information without testing Slack credentials.
-
-A dedicated profile does not protect desktop sessions from [Slack Anomaly Event Response](https://slack.engineering/building-slacks-anomaly-event-response/). [Enterprise session policy](https://slack.com/help/articles/115005223763-Manage-session-duration) can also force sign-in. Keeping a window open cannot override policy. Do not claim a fixed cooldown cures revocation. Report the cause as unknown without stronger evidence. If reads still correlate with desktop sign-outs, pause automation rather than adding evasion or credential replay. Do not add background keepalives or synthetic health polling.
+[slack-reader](https://github.com/luiul/slack-reader) remains installed for now, with the `slack-hf-read` and `slack-hf-session-login` compatibility shims.
+It is retired from Pi's default workflow and is not a fallback.
+Do not run `slack-reader login` or `slack-reader await-login`, clear its persisted auth pause, or remove its owned lock.
+Do not restore the retired credential-replay `slack-mcp-server` or use `slackcli`, `slack-relogin`, `slack-hf-session`, or `slackdump`.
+No Slack MCP is configured in Pi. Adding one needs explicit approval and supported authentication, not a read-failure workaround.
 
 **Separate manual directory tooling, not a Pi fallback:** The existing `curl` recipes use `SLACK_TOKEN` from `.env` with directory-read scopes. Leave these tools unchanged. Manual examples:
 
@@ -286,11 +313,11 @@ curl -s -H "Authorization: Bearer $SLACK_TOKEN" -G --data-urlencode 'limit=20' \
 curl -s -H "Authorization: Bearer $SLACK_TOKEN" https://slack.com/api/auth.test | jq .  # identity
 ```
 
-That token cannot read message history or search. Pi uses the approved official MCP first, with the managed browser fallback described above.
+That token cannot read message history or search. Pi uses Playwriter with rendered DOM only.
 
 ## HelloDev Knowledge Base
 
-The internal KB is exposed only as an HTTP MCP endpoint (`hellofresh-kb`, `.../mcp/v2`) with no REST or CLI equivalent. Unlike the approved Slack MCP read path, KB use always needs an explicit request.
+The internal KB is exposed only as an HTTP MCP endpoint (`hellofresh-kb`, `.../mcp/v2`) with no REST or CLI equivalent. KB use always needs an explicit request.
 
 **Do not consult the HelloDev KB / `kb_*` MCP tools eagerly.** Only query it when I explicitly ask (e.g. "check HelloDev", "ask the KB", "search the knowledge base"). For everything else, prefer the repo checkout, the CLIs/REST recipes above, and what is already in context. Do not reach for these tools on your own initiative just because a question is HelloFresh-related.
 

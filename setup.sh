@@ -147,6 +147,10 @@ git config filter.strip-pi-thinkinglevel.clean "jq 'del(.defaultThinkingLevel)'"
 git config filter.strip-pi-thinkinglevel.smudge cat
 git config filter.strip-pi-thinkinglevel.required true
 ok "pi defaultThinkingLevel strip filter configured"
+git config filter.strip-herdr-zoom.clean "jq 'del(.zoom)'"
+git config filter.strip-herdr-zoom.smudge cat
+git config filter.strip-herdr-zoom.required true
+ok "Herdr zoom strip filter configured"
 
 # --- .env ---
 step "Environment file"

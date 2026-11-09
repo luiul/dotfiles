@@ -36,6 +36,32 @@ cat draft.md | md-to-rtf - --no-copy -o draft.rtf  # stdin to a file
 
 Test: `uv run --script scripts/test-md-to-rtf.py`
 
+## `mail-repair` (command, stowed)
+
+Backs up Apple Mail and repairs the known IMAP copy crash (`UIDs are required for UID command`). Run it from zsh after quitting Mail. After publication and live deployment, `stow macos` installs the command into `~/.local/bin`, which is already on the zsh path. It needs `uv` and no extra Python packages.
+
+```sh
+mail-repair --dry-run       # inspect only, no backup or repair
+mail-repair                # preview, confirm, back up, then repair
+mail-repair --backup-only   # verified backup, no repair
+```
+
+The repair needs a matching Mail crash report from the last seven days. It accepts only the checked V10 database layout. It removes an invalid copy or move operation only when that operation has one item, no valid UID, no dependent flags or labels, and a retained local message. Mixed or unknown operations stop without repair.
+
+Type `repair` at the prompt to confirm. There is no `--yes` flag. A private lock blocks concurrent repairs. The command checks that Mail stays closed before backup and before commit. Do not open Mail while it runs.
+
+Each backup goes in a new private directory under `~/Library/Application Support/Mail Repair Backups/`. It includes the database with committed WAL data, the current rule files, `PersistenceInfo.plist`, and a manifest with file hashes and table counts. Database integrity is checked before and after backup. The repair runs in a transaction and compares every table against the backup before commit. Only the approved queue rows may change.
+
+Messages, accounts, and rules stay unchanged. SQLite may create temporary WAL coordination files even during `--dry-run`; it does not change message or queue rows during inspection. A removed pending move or copy may not finish. Unlike the one-time diagnosis, this command does not disable the GitHub Notifications rule or any other rule. It never rebuilds mailboxes, restores backups, or opens or quits Mail.
+
+Full Disk Access is needed for the terminal app or Herdr Core that runs the command. If access is blocked, enable it in System Settings, Privacy & Security, Full Disk Access.
+
+After repair, open Mail and check syncing. If Mail asks about restoring windows after a crash, choose **Don’t Reopen** for a fresh window. Keep the backup. Do not restore it over newer mail changes without checking those changes first. The backup is local Mail state, not an export of all message files or a backup of server mail.
+
+The Mail database is private Apple storage. A future layout change stops the command rather than applying an old repair.
+
+Test: `uv run --script scripts/test-mail-repair.py`. Tests use isolated databases and never change real Mail data.
+
 ## `com.luisaceituno.reap-strays` (LaunchAgent, stowed)
 
 Runs `~/.local/bin/reap-strays --apply` every 900 seconds. The launcher uses `/opt/homebrew/bin/node` or `/usr/local/bin/node`, without relying on launchd's PATH. No extra dependencies are needed.

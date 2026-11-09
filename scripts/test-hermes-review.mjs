@@ -53,6 +53,7 @@ function childEnv(home, runtime, hermes, root) {
   // Do not forward credentials, proxies, NODE_OPTIONS, or extension markers.
   return {
     HOME: home, PATH: process.env.PATH ?? '/usr/bin:/bin', LANG: 'en_US.UTF-8',
+    AI_MODEL_ROUTER_API_KEY: 'local-fixture-only',
     TMPDIR: root, XDG_CACHE_HOME: join(root, 'cache'), JITI_CACHE_DIR: join(root, 'jiti'),
     PI_CODING_AGENT_DIR: join(home, '.pi/agent'),
     PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1',
@@ -259,7 +260,7 @@ export default function (pi) {
   const modelsPath = join(root, 'models.json');
   const models = { providers: { 'ai-model-router': {
     // Copy only checked protocol metadata, never endpoint, key, headers, or commands.
-    baseUrl, api: router.api, apiKey: 'local-fixture-only',
+    baseUrl, api: router.api, apiKey: '$AI_MODEL_ROUTER_API_KEY',
     compat: { supportsReasoningEffort: router.compat.supportsReasoningEffort }, models: [
       { id: modelId, name: 'Review fixture', reasoning: declaredReviewModel.reasoning, input: ['text'], contextWindow: 128000,
         maxTokens: 1024, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
@@ -270,6 +271,7 @@ export default function (pi) {
     ],
   } } };
   privateJson(modelsPath, models);
+  process.env.AI_MODEL_ROUTER_API_KEY = 'local-fixture-only';
   const runtime = await ModelRuntime.create({ modelsPath, authPath: join(root, 'auth.json'),
     modelsStorePath: join(root, 'catalog.json'), allowModelNetwork: false, refreshOnCreate: false });
   const registry = new ModelRegistry(runtime);
@@ -484,7 +486,7 @@ export default function (pi) {
     const childAgent = join(root, 'child-agent');
     const childMemory = join(root, 'child-memory');
     const childAudit = join(root, 'child-audit.ts');
-    const bin = join(root, 'bin');
+    const bin = join(agentDir, 'bin');
     mkdirSync(childAgent, { mode: 0o700 }); mkdirSync(bin, { mode: 0o700 });
     privateJson(join(childAgent, 'models.json'), models);
     privateJson(join(childAgent, 'settings.json'), { packages: [], cacheWarming: 'off', compaction: { enabled: false },
@@ -534,9 +536,9 @@ export default async function (pi) {
     rpc = spawn(process.execPath, [join(runtimePath, 'dist/cli.js'), '--offline', '--mode', 'rpc', '--no-session',
       '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-context-files', '--no-mcp',
       '--no-themes', '--no-tools', '--no-approve', '--provider', 'ai-model-router', '--model', 'fixture-active',
-      '--thinking', 'high', '-e', hostExtension], {
+      '--thinking', 'high', '-e', join(repo, 'pi/.pi/agent/extensions/gui-environment.ts'), '-e', hostExtension], {
       cwd: root, env: { ...childEnv(rpcHome, runtimePath, hermesPath, root), PI_CODING_AGENT_DIR: agentDir,
-        PATH: bin + ':' + (process.env.PATH ?? '/usr/bin:/bin') },
+        PATH: '/usr/bin:/bin' },
       // Keep the RPC host in the suite's group, so the supervisor owns descendants.
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -629,7 +631,7 @@ export default async function (pi) {
     assert(toolReply.body.messages.some((message) => message.role === 'tool' && JSON.stringify(message.content).includes('Entry added.')),
       'Child must receive a successful memory_add result before its final completion');
     assert(!readdirSync(root).some((name) => name.startsWith('pi-hermes-prompt-')));
-    console.log('PASS actual execChildPrompt fallback: direct parse failure, production watchdog, full Hermes memory-only child, persisted preference and completion');
+    console.log('PASS actual execChildPrompt fallback: stripped GUI PATH restored, env-key auth, production watchdog, full Hermes memory-only child, persisted preference and completion');
     rpc.stdin.end();
     const [exit] = await within(close, 'RPC orderly stdin shutdown');
     assert.equal(exit, 0, `RPC host failed: ${stderr}`);

@@ -16,6 +16,22 @@ node scripts/test-scoped-agent-context-live.mjs
 uv run scripts/test-worktree-no-editor.py
 ```
 
+## GUI launch environment
+
+`gui-environment.ts` runs before model selection. It preserves an inherited router key. If the key is missing on macOS, it checks the GUI environment set by `gui-env-sync.sh`, then parses only `AI_MODEL_ROUTER_API_KEY` from the canonical `~/dotfiles/.env`. It never executes that file, reads a worktree copy, prints secrets, or saves credentials.
+
+When an executable managed Pi launcher exists, the extension adds its directory and the current Node directory to `PATH`. This lets Hermes start its memory-only child from a GUI launch without login-shell setup. The review models, transport fallback, watchdog, and shared Hermes package stay unchanged.
+
+```sh
+bun scripts/test-gui-environment.ts
+node scripts/test-gui-environment-live.mjs
+node scripts/test-gui-environment-live.mjs --live
+node scripts/test-gui-environment-live.mjs --cancel-before-ready
+node scripts/test-hermes-review.mjs
+```
+
+The live test starts a separate real Pi TUI with a stripped environment and private settings. It checks router authentication and `pi --version`, without external model requests or live memory writes. Signal cleanup and an independent 60-second guard remove test-owned processes and the private tmux server, including cancellation before readiness.
+
 ## Hermes memory reviews
 
 `pi/.pi/agent/hermes-memory-config.json` uses direct completion through `ai-model-router/zai-org/GLM-5.3-Flash`, with `ai-model-router/gpt-6-luna` as its model fallback. Thinking stays off. This replaces the invalid review model with cheaper models tested on preference, correction, project-lesson, no-op, and longer-context reviews. Hermes tries the model fallback before its subprocess fallback on direct transport errors. Retention, integrity-check settings, and the trusted auth extension remain unchanged.

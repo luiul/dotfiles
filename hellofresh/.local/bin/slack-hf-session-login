@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Compatibility shim. The implementation moved to slack-reader
 # (~/projects/personal/slack-reader, https://github.com/luiul/slack-reader).
-# Starts (or adopts) the managed headed Brave Beta profile; the user completes SSO.
+# Starts (or adopts) the managed headed Chrome profile; the user completes SSO.
 set -euo pipefail
 if [[ $# != 0 ]]; then
   printf '%s\n' 'Usage: slack-hf-session-login' >&2

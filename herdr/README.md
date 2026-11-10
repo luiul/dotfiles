@@ -13,8 +13,8 @@ The old terminal Herdr configuration, Worktrunk plugin, manual helper, and named
 `wt-herdr` lives in the Worktrunk stow package at `worktrunk/.local/bin/wt-herdr`, not this package. It provides three explicit operations:
 
 - `check`: inspect app/Core readiness and repository validity. It does not inspect or repair the space structure.
-- `open`: open or reuse the intended worktree space and Pi terminal.
-- `repair`: repair approved structure problems explicitly, never as a global wt hook.
+- `open`: repair clear grouping drift for the requested repo, then open or reuse its worktree space and Pi terminal.
+- `repair`: inspect or repair layout problems across all spaces explicitly, never as a global wt hook.
 
 `cop herdr [repo]` creates or reuses a wt checkout, finishes setup, and calls `wt-herdr`. The repo defaults to the current directory. Use `--branch NAME` or answer the branch prompt. It focuses the verified Pi terminal and enters the checkout in the calling shell.
 
@@ -25,7 +25,7 @@ cop herdr ~/projects/personal/example --branch feature-name
 
 There is no legacy `--session` option. App/Core is the integration target, not a named terminal Herdr server.
 
-Use one space per worktree. Nest linked-worktree spaces under their primary checkout's space using Git identity, not labels or path segments. Reuse Pi only for the exact worktree and terminal identity. A pending launch is not permission to start another Pi. Wait for readiness or report the pending state instead.
+Use a dedicated Files-only repo parent with no terminals, separate from checkout conversations. It stays at the primary checkout even when a calling shell enters a linked worktree. Nest linked-worktree conversation spaces under it using Git identity, not names or path segments. Preserve existing conversation spaces and custom names. Reuse Pi only for the exact worktree and terminal identity. A pending launch is not permission to start another Pi. Wait for readiness or report the pending state instead.
 
 `cop new` and direct `wt switch` remain worktree-only. No global wt hook opens Herdr, Core terminals, Pi, or an editor. Do not use native app worktree creation or deletion for wt-managed checkouts. Stop or hand off the worker and close its space before removal through coppice or wt. External removal does not close it automatically. Cmd+E inside Pi remains the manual editor shortcut. Orca is unchanged.
 

@@ -176,7 +176,7 @@ class Tests(unittest.TestCase):
         ids, folders = self.h.identities(original, self.h.terminals)
         result = w.repair_layout(original, ids, folders)
         self.assertEqual(result["spaces"][0]["tabs"][0], original["spaces"][0]["tabs"][0])
-        self.assertEqual(list(a for a, *_ in w.placements(result)), ["t2", "t1"])
+        self.assertEqual(list(a for a, *_ in w.placements(result)), ["t1", "t2"])
         before_blocks = {n["id"]: n for s in original["spaces"] for t in s["tabs"] for n in w.nodes(t["root"]) if n["type"] == "block"}
         after_blocks = {n["id"]: n for s in result["spaces"] for t in s["tabs"] for n in w.nodes(t["root"]) if n["type"] == "block"}
         self.assertEqual(before_blocks, after_blocks)
@@ -228,14 +228,18 @@ class Tests(unittest.TestCase):
     def test_layout_properties_survive_rpc_repair_and_backup(self):
         self.mixed()
         props = {"title": "Keep custom title", "msg": "Keep custom message", "screen": "custom"}
-        self.h.doc["spaces"][0]["tabs"][0]["root"]["children"][0]["content"]["props"] = props
+        original = self.h.doc["spaces"][0]
+        original_id = original["id"]
+        original["tabs"][0]["root"]["children"][0]["content"]["props"].update(props)
         self.h.doc["title"] = "Whole layout"
         self.h.repair()
         self.assertEqual(self.h.doc["title"], "Whole layout")
-        self.assertEqual(self.h.doc["spaces"][0]["tabs"][0]["root"]["children"][0]["content"]["props"], props)
+        actual = next(s for s in self.h.doc["spaces"] if s["id"] == original_id)
+        self.assertEqual(actual["tabs"][0]["root"]["children"][0]["content"]["props"], {"wt_herdr_parent": self.h.primary, **props})
         backup = json.loads(next((self.h.state / "backups").glob("*.json")).read_text())
         self.assertEqual(backup["document"]["title"], "Whole layout")
-        self.assertEqual(backup["document"]["spaces"][0]["tabs"][0]["root"]["children"][0]["content"]["props"], props)
+        saved = next(s for s in backup["document"]["spaces"] if s["id"] == original_id)
+        self.assertEqual(saved["tabs"][0]["root"]["children"][0]["content"]["props"], {"wt_herdr_parent": self.h.primary, **props})
         self.assertNotIn("PRIVATE", json.dumps(backup["facts"]))
 
     def test_missing_state_home_is_created(self):
@@ -267,6 +271,104 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.h.rpc_calls("doc.set"), writes)
         self.assertFalse(self.h.reconcile.exists())
 
+    def test_app_layout_waits_for_delayed_propagation(self):
+        self.ready()
+        original = self.h.run
+        reads = 0
+
+        def delayed(args, **kwargs):
+            nonlocal reads
+            result = original(args, **kwargs)
+            if args == ["herdr-app", "ls"]:
+                reads += 1
+                if reads <= 6:
+                    return '{"spaces": []}'
+            return result
+
+        self.h.run = delayed
+        with patch.object(w.time, "sleep"):
+            self.h.app_layout(self.h.doc)
+        self.assertEqual(reads, 7)
+
+    def test_matching_newer_layout_is_a_conflict_not_a_pair_mismatch(self):
+        self.ready()
+        earlier = copy.deepcopy(self.h.doc)
+        self.h.doc["unrelated"] = "concurrent edit"
+        with self.assertRaisesRegex(w.Conflict, "concurrently"):
+            self.h.app_layout(earlier)
+
+    def test_repair_replans_after_concurrent_app_edit(self):
+        self.mixed()
+        original = self.h.run
+        changed = False
+
+        def concurrent(args, **kwargs):
+            nonlocal changed
+            if args == ["herdr-app", "ls"] and not changed:
+                changed = True
+                self.h.doc["unrelated"] = "concurrent edit"
+                self.h.version += 1
+            return original(args, **kwargs)
+
+        self.h.run = concurrent
+        self.h.repair()
+        self.assertTrue(changed)
+        self.assertEqual(self.h.doc["unrelated"], "concurrent edit")
+        self.assertEqual(self.h.rpc_calls("doc.set"), 1)
+        self.assertFalse(self.h.reconcile.exists())
+
+    def test_repair_rechecks_baseline_after_concurrent_edit(self):
+        self.mixed()
+        original = self.h.run
+        changed = False
+
+        def concurrent(args, **kwargs):
+            nonlocal changed
+            if args == ["herdr-app", "ls"] and not changed:
+                changed = True
+                self.h.doc["unrelated"] = "concurrent edit"
+                self.h.terminals["t1"]["pid"] += 1
+            return original(args, **kwargs)
+
+        self.h.run = concurrent
+        with self.assertRaisesRegex(w.Error, "baseline"):
+            self.h.repair()
+        self.assertTrue(self.h.reconcile.exists())
+
+    def test_repair_rechecks_protected_placement_after_concurrent_edit(self):
+        self.mixed()
+        original = self.h.run
+        changed = False
+
+        def concurrent(args, **kwargs):
+            nonlocal changed
+            if args == ["herdr-app", "ls"] and not changed:
+                changed = True
+                target = next(s for s in self.h.doc["spaces"]
+                              if any(a == "t1" for a, *_ in w.placements({"spaces": [s]})))
+                target["tabs"] = []
+                self.h.version += 1
+            return original(args, **kwargs)
+
+        self.h.run = concurrent
+        with self.assertRaisesRegex(w.Error, "no longer placed"):
+            self.h.repair()
+        self.assertTrue(self.h.reconcile.exists())
+
+    def test_persistent_pair_mismatch_is_bounded_and_retains_recovery(self):
+        self.mixed()
+        self.h.bad_pair = True
+        now = time.monotonic()
+        with patch.object(w.time, "monotonic", side_effect=lambda: now), patch.object(w.time, "sleep") as sleep:
+            def advance(seconds):
+                nonlocal now
+                now += seconds
+            sleep.side_effect = advance
+            with self.assertRaisesRegex(w.Error, "App and Core layouts differ"):
+                self.h.repair()
+            self.assertLessEqual(sleep.call_count, 26)
+        self.assertTrue(self.h.reconcile.exists())
+
     def test_recovery_ignores_unrelated_terminal_activity(self):
         self.mixed()
         self.h.terminals["outside"] = fact("outside", self.h.other)
@@ -294,6 +396,88 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.h.doc, original)
         self.assertFalse(list(self.h.state.iterdir()))
 
+    def test_parent_survives_shell_cd_after_open(self):
+        self.h.doc["spaces"] = [space("sp-caller", self.h.primary, tab("tb-caller", "caller"))]
+        self.h.terminals["caller"] = fact("caller", self.h.primary, False)
+        self.h.open(self.repo, self.target)
+        parent = next(s for s in self.h.doc["spaces"] if w.repo_parent(s, self.h.primary))
+        self.assertFalse(list(w.placements({"spaces": [parent]})))
+        self.h.terminals["caller"]["foreground"]["cwd"] = self.h.child
+        self.assertTrue(w.repo_parent(parent, self.h.primary))
+        self.assertFalse(list(w.placements({"spaces": [parent]})))
+        self.assertEqual(self.h.doc["spaces"][0]["id"], parent["id"])
+        self.h.repair(repo=self.repo)
+        self.assertTrue(w.repo_parent(next(s for s in self.h.doc["spaces"] if s["id"] == parent["id"]), self.h.primary))
+        self.assertEqual(len(self.h.doc["spaces"]), 3)
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        self.assertEqual(sum(a[:2] == ["hc", "run"] for a in self.h.calls), 1)
+
+    def test_drift_preserves_same_checkout_spaces_and_names(self):
+        self.ready()
+        old = space("sp-caller", self.h.primary, tab("tb-caller", "caller"))
+        self.h.doc["spaces"].insert(0, old)
+        self.h.terminals["caller"] = fact("caller", self.h.child, False)
+        before = w.process_identity(self.h.terminals)
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        self.assertEqual(w.process_identity(self.h.terminals), before)
+        caller = next(s for s in self.h.doc["spaces"] if s["id"] == "sp-caller")
+        self.assertEqual(caller["name"], old["name"])
+        self.assertEqual(caller["tabs"], old["tabs"])
+        self.assertEqual(caller["folder"], self.h.child)
+        self.assertTrue(w.repo_parent(self.h.doc["spaces"][0], self.h.primary))
+
+    def test_open_primary_never_launches_into_parent(self):
+        self.h.open(self.repo, self.repo)
+        parent = next(s for s in self.h.doc["spaces"] if w.repo_parent(s, self.h.primary))
+        placement = next(s for a, s, *_ in w.placements(self.h.doc) if a == "tnew")
+        self.assertNotEqual(placement, parent["id"])
+        self.assertFalse(list(w.placements({"spaces": [parent]})))
+
+    def test_parent_with_added_terminal_is_demoted(self):
+        parent = self.h.doc["spaces"][0]
+        parent["tabs"].append(tab("tb-caller", "caller"))
+        self.h.terminals["caller"] = fact("caller", self.h.primary, False)
+        self.h.repair(repo=self.repo)
+        stable = [s for s in self.h.doc["spaces"] if w.repo_parent(s, self.h.primary)]
+        self.assertEqual(len(stable), 1)
+        self.assertNotEqual(stable[0]["id"], parent["id"])
+        self.assertIn("caller", {a for a, *_ in w.placements(self.h.doc)})
+
+    def test_explicit_repo_basename_name_survives_drift(self):
+        self.ready()
+        space = self.h.doc["spaces"][1]
+        space["name"] = Path(self.h.primary).name
+        space["folder"] = self.h.primary
+        self.h.repair(repo=self.repo)
+        actual = next(s for s in self.h.doc["spaces"] if s["id"] == space["id"])
+        self.assertEqual(actual["name"], Path(self.h.primary).name)
+        self.assertEqual(actual["folder"], self.h.child)
+
+    def test_demoted_parent_does_not_resurrect(self):
+        parent = self.h.doc["spaces"][0]
+        props = parent["tabs"][0]["root"]["children"][0]["content"]["props"]
+        props["custom"] = "keep"
+        parent["tabs"].append(tab("tb-caller", "caller"))
+        self.h.terminals["caller"] = fact("caller", self.h.primary, False)
+        self.h.repair(repo=self.repo)
+        former = next(s for s in self.h.doc["spaces"] if s["id"] == parent["id"])
+        self.assertEqual(former["tabs"][0]["root"]["children"][0]["content"]["props"], {"custom": "keep"})
+        former["tabs"].pop()
+        del self.h.terminals["caller"]
+        self.h.repair(repo=self.repo)
+        self.assertEqual(sum(w.repo_parent(s, self.h.primary) for s in self.h.doc["spaces"]), 1)
+
+    def test_empty_unmarked_space_is_not_parent(self):
+        empty = space("sp-empty", self.h.primary, {"id": "tb-empty", "root": {"id": "tb-empty", "type": "row", "children": []}})
+        self.assertFalse(w.repo_parent(empty, self.h.primary))
+
+    def test_parent_is_ordered_before_new_primary_shell(self):
+        stable = self.h.doc["spaces"][0]
+        self.h.doc["spaces"].insert(0, space("sp-shell", self.h.primary, tab("tb-shell", "caller")))
+        self.h.terminals["caller"] = fact("caller", self.h.primary, False)
+        self.h.repair(repo=self.repo)
+        self.assertEqual(self.h.doc["spaces"][0]["id"], stable["id"])
+
     def test_reuse_active_pi_without_launch(self):
         self.ready()
         self.assertIn("Reused", self.h.open(self.repo, self.target))
@@ -317,6 +501,14 @@ class Tests(unittest.TestCase):
             self.assertEqual(w.agent_argv(["pi"])[0], "/bin/zsh")
         with patch.dict(w.os.environ, {}, clear=True):
             self.assertEqual(w.agent_argv(["pi"])[0], "/bin/sh")
+
+    def test_returned_shell_with_old_reporting_reuses_pi(self):
+        self.ready()
+        self.h.doc["spaces"][1]["tabs"].append(tab("tb-shell", "shell"))
+        self.h.terminals["shell"] = fact("shell", self.h.child, False)
+        self.h.terminals["shell"]["reported"] = True
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        self.assertFalse(any(a[:2] == ["hc", "run"] for a in self.h.calls))
 
     def test_shell_adds_tab_never_types(self):
         self.ready(False)
@@ -456,10 +648,115 @@ class Tests(unittest.TestCase):
         with self.assertRaises(w.Error):
             self.h.open(self.repo, self.target)
 
-    def test_mixed_open_requires_explicit_repair(self):
+    def test_mixed_open_repairs_without_restarting_existing_pi(self):
         self.mixed()
-        with self.assertRaisesRegex(w.Error, "repair"):
+        before = w.process_identity(self.h.terminals)
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        self.assertEqual(w.process_identity(self.h.terminals), before)
+        self.assertEqual(self.h.rpc_calls("doc.set"), 1)
+        self.assertFalse(any(a[:2] == ["hc", "run"] for a in self.h.calls))
+
+    def test_stale_space_folder_is_repaired_before_open(self):
+        self.ready()
+        self.h.doc["spaces"][1]["folder"] = self.h.other
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        self.assertEqual(self.h.doc["spaces"][1]["folder"], self.h.child)
+
+    def test_repo_repair_preserves_unrelated_mixed_space(self):
+        self.ready()
+        outside = space("sp-outside", "/outside", tab("tb-outside", "outside1", "outside2"))
+        self.h.doc["spaces"].append(outside)
+        self.h.terminals.update({"outside1": fact("outside1", "/outside/a"),
+                                 "outside2": fact("outside2", "/outside/b")})
+        original_git = self.h.git
+
+        def git(folder, required=True):
+            if folder.startswith("/outside"):
+                return {"path": folder, "common": "/outside/.git", "primary": "/outside", "name": folder}
+            return original_git(folder, required)
+
+        self.h.git = git
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        self.assertEqual(self.h.doc["spaces"][-1], outside)
+        self.assertEqual(self.h.terminals["outside1"]["labels"], {"herdr.pinned": "true"})
+
+    def test_unrelated_missing_terminal_does_not_block_open(self):
+        self.ready()
+        outside = space("sp-outside", "/unknown", tab("tb-outside", "missing"))
+        self.h.doc["spaces"].append(outside)
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        self.assertEqual(self.h.doc["spaces"][-1], outside)
+
+    def test_folder_only_relevance_repairs_populated_space(self):
+        self.ready()
+        self.h.doc["spaces"].append(space("sp-moved", self.h.child, tab("tb-moved", "moved")))
+        self.h.terminals["moved"] = fact("moved", "/other-repo")
+        original_git = self.h.git
+        self.h.git = lambda folder, required=True: (
+            {"path": folder, "common": "/other-repo/.git", "primary": folder, "name": "other"}
+            if folder == "/other-repo" else original_git(folder, required)
+        )
+        self.h.repair(repo=self.repo)
+        moved = next(s for s in self.h.doc["spaces"] if s["id"] == "sp-moved")
+        self.assertEqual(moved["folder"], "/other-repo")
+
+    def test_affected_other_pending_launch_blocks_automatic_repair(self):
+        self.mixed()
+        pending = self.h.state / "other.pending.json"
+        pending.write_text(json.dumps({"space": "sp-mixed", "path": self.h.primary}))
+        with self.assertRaisesRegex(w.Error, "uncertain launch"):
             self.h.open(self.repo, self.target)
+        self.assertEqual(self.h.rpc_calls("doc.set"), 0)
+
+    def test_scoped_repair_does_not_take_over_other_reconciliation(self):
+        self.h.save(self.h.reconcile, {"namespace": self.h.namespace, "core_id": self.h.core_id,
+                                      "scope": "/another/.git", "terminals_before": {}})
+        with self.assertRaisesRegex(w.Error, "Another repair"):
+            self.h.open(self.repo, self.target)
+        self.assertTrue(self.h.reconcile.exists())
+
+    def test_cross_repo_recovery_keeps_moved_foreign_addresses(self):
+        self.ready()
+        self.h.doc["spaces"][1]["tabs"][0] = tab("tb-child", "t1", "foreign")
+        self.h.terminals["foreign"] = fact("foreign", "/foreign")
+        original_git = self.h.git
+        self.h.git = lambda folder, required=True: (
+            {"path": folder, "common": "/foreign/.git", "primary": folder, "name": "foreign"}
+            if folder == "/foreign" else original_git(folder, required)
+        )
+        self.h.label_fail = True
+        with self.assertRaises(w.Error):
+            self.h.repair(repo=self.repo)
+        self.assertTrue(self.h.reconcile.exists())
+        self.h.repair(repo=self.repo)
+        placement = next((s, t) for a, s, t, _ in w.placements(self.h.doc) if a == "foreign")
+        labels = self.h.terminals["foreign"]["labels"]
+        self.assertEqual((labels["herdr.space"], labels["herdr.tab"]), placement)
+        self.assertFalse(self.h.reconcile.exists())
+
+    def test_stale_untouched_destination_is_not_used(self):
+        self.ready()
+        self.h.doc["spaces"][1]["tabs"][0] = tab("tb-child", "t1", "foreign")
+        self.h.terminals["foreign"] = fact("foreign", "/foreign")
+        self.h.doc["spaces"].append(space("sp-foreign", "/stale", tab("tb-foreign", "other")))
+        self.h.terminals["other"] = fact("other", "/foreign")
+        original_git = self.h.git
+        self.h.git = lambda folder, required=True: (
+            {"path": folder, "common": "/foreign/.git", "primary": folder, "name": "foreign"}
+            if folder == "/foreign" else original_git(folder, required)
+        )
+        with self.assertRaisesRegex(w.Error, "Destination space folder"):
+            self.h.repair(repo=self.repo)
+        self.assertEqual(self.h.rpc_calls("doc.set"), 0)
+
+    def test_automatic_repair_refuses_unclear_mixed_mods(self):
+        self.mixed()
+        self.h.doc["spaces"][1]["tabs"][0]["root"]["children"].append(
+            {"id": "pmod", "type": "block", "content": {"mod": "files", "props": {}}})
+        with self.assertRaisesRegex(w.Error, "mod"):
+            self.h.open(self.repo, self.target)
+        self.assertEqual(self.h.rpc_calls("doc.set"), 0)
+        self.assertFalse(any(a[:2] == ["hc", "run"] for a in self.h.calls))
 
     def test_wrong_pair_fails_before_write(self):
         self.h.bad_pair = True

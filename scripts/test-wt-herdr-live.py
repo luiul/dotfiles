@@ -80,7 +80,8 @@ def main():
         pi_shim.chmod(0o755)
         shim = bin_dir / "cop"
         shim.write_text("#!/bin/sh\nexec env PYTHONPATH=" + shlex.quote(str(source / "src"))
-                        + " uv run --directory " + shlex.quote(str(source)) + " --no-sync cop \"$@\"\n")
+                        + " uv run --no-project --python " + shlex.quote(str(source / ".venv/bin/python"))
+                        + " python -c 'from coppice.cli import app; app()' \"$@\"\n")
         shim.chmod(0o755)
         config = fixture / "wt.toml"
         config.write_text("worktree-path = " + json.dumps(str(fixture / "trees/{{ branch }}")) + "\n")
@@ -100,7 +101,35 @@ def main():
         owned_spaces = set()
         confirm_mod = Path.home() / ".config/herdr-app/mods" / f"ag-wt-herdr-close-{os.getpid()}"
         confirm_mod_created = False
+        caller = None
         try:
+            # A real caller inside Herdr reproduces post-command shell cd drift.
+            caller_doc = rpc("doc.get", name="herdr-app")
+            caller_space = {
+                "id": "sp-test-" + str(os.getpid()), "name": "Fixture caller", "folder": str(repo),
+                "tabs": [{"id": "tb-test-" + str(os.getpid()), "name": "Shell", "root": {
+                    "id": "tb-test-" + str(os.getpid()), "type": "row", "children": [{
+                        "id": "p-test-" + str(os.getpid()), "type": "block",
+                        "content": {"mod": "files", "props": {}}
+                    }]
+                }}]
+            }
+            caller_doc["value"]["spaces"].append(caller_space)
+            rpc("doc.set", name="herdr-app", value=caller_doc["value"], version=caller_doc["version"])
+            owned_spaces.add(caller_space["id"])
+            caller_receipt = data("hc", "run", "--bg", "--keep", "--no-parent", "--no-notify", "--cwd", str(repo),
+                                  "--label", "herdr.space=" + caller_space["id"],
+                                  "--label", "herdr.tab=" + caller_space["tabs"][0]["id"], "--", "/bin/zsh", "-f")
+            caller = caller_receipt["address"]
+            owned_terminals.add(caller)
+            end = time.monotonic() + 15
+            while time.monotonic() < end:
+                shown = data("herdr-app", "ls")["spaces"]
+                if any(p["terminal"] == caller for s in shown for t in s["tabs"] for p in t.get("terminals", [])):
+                    break
+                time.sleep(0.2)
+            else:
+                raise RuntimeError("Herdr caller did not appear")
             run("tmux", "new-session", "-d", "-s", session, "-x", "140", "-y", "38", "/bin/zsh -f")
             run(str(Path.home() / ".local/bin/reap-strays"), "--register-tmux", session,
                 "--owner", str(os.getpid()), "--deadline", str(deadline))
@@ -119,8 +148,11 @@ def main():
                 shell = (prefix + command + " >" + shlex.quote(str(result))
                          + " 2>&1; result_code=$?; pwd >" + shlex.quote(str(pwd_file))
                          + "; printf '%s' $result_code >" + shlex.quote(str(exit_file)))
-                run("tmux", "send-keys", "-t", session, "-l", shell)
-                run("tmux", "send-keys", "-t", session, "Enter")
+                if index == 0:
+                    run("hc", "send", caller, shell)
+                else:
+                    run("tmux", "send-keys", "-t", session, "-l", shell)
+                    run("tmux", "send-keys", "-t", session, "Enter")
                 end = min(time.monotonic() + 110, time.monotonic() + max(1, deadline - time.time()))
                 while not exit_file.exists() and time.monotonic() < end:
                     time.sleep(0.3)
@@ -140,11 +172,15 @@ def main():
                 for space in test_spaces:
                     for tab in space["tabs"]:
                         owned_terminals.update(t["terminal"] for t in tab.get("terminals", []))
-                assert len(test_spaces) == 2, "Expected exactly one Files parent and one topic child"
-                assert len(owned_terminals) == 1, "Create/reuse or ordinary wt launched an extra terminal"
-                child = next(s for s in test_spaces if s["folder"] == str(fixture / "trees/topic"))
-                assert child["name"] == "topic"
-                terminal = next(iter(owned_terminals))
+                assert len(test_spaces) == 3, "Expected one stable parent, caller conversation and topic conversation: " + repr([(s["name"], s["folder"], s["id"]) for s in test_spaces])
+                assert len(owned_terminals) == 2, "Expected exactly the original shell and one Pi"
+                parent = next(s for s in test_spaces if s["name"] == "fixture repo")
+                assert not any(t.get("terminals") for t in parent["tabs"]), "Repo parent gained a terminal"
+                assert parent["folder"] == str(repo)
+                child = next(s for s in test_spaces if s["name"] == "topic")
+                terminal = next(t for t in owned_terminals if t != caller)
+                caller_fact = rpc("terminal.get", terminal=caller)
+                assert caller_fact["foreground"]["cwd"] == str(fixture / "trees/topic"), "Herdr caller shell did not cd"
                 fact = rpc("terminal.get", terminal=terminal)
                 assert fact["foreground"]["cwd"] == str(fixture / "trees/topic")
                 assert fact["status"]["app"] == "pi" and fact["reported"] is True
@@ -152,6 +188,7 @@ def main():
                     selected = data("herdr-app", "status")
                     assert selected["space"] == child["id"] and selected["agent"] == terminal
             print("PASS: source cop herdr creates, groups, reuses and focuses one real Pi; shell cd path matches")
+            print("PASS: parent remains terminal-free after the actual Herdr caller shell enters the worktree")
             print("PASS: cop new and direct wt add no app spaces or terminals")
             placement = next((s, t, p) for s in data("herdr-app", "ls")["spaces"]
                              for t in s["tabs"] for p in t.get("terminals", []) if p["terminal"] == terminal)

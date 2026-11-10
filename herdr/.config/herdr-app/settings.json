@@ -1,10 +1,8 @@
 {
-  "zoom": 0.8,
   "sounds": {
     "enabled": true
   },
   "font_size": 14.0,
   "font_ligatures": false,
-  "ui_font": "JetBrainsMono Nerd Font Mono",
   "minimum_contrast": 1.0
 }

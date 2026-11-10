@@ -9,9 +9,11 @@ try {
 	const root = join(home, ".pi", "agent");
 	const config = JSON.parse(readFileSync(join(root, "subagents.json"), "utf8"));
 	// Load the installed parser through the real Pi host's extension module resolver.
-	const { createJiti } = await import(join(home, ".pi/agent/install/releases/1.4.0/node_modules/jiti/lib/jiti.mjs"));
+	const managed = join(home, ".pi/agent/install");
+	const modules = join(managed, "releases", readFileSync(join(managed, "current-version"), "utf8").trim(), "node_modules");
+	const { createJiti } = await import(join(modules, "jiti/lib/jiti.mjs"));
 	const jiti = createJiti(import.meta.url, {
-		alias: { "@earendil-works/pi-coding-agent": join(home, ".pi/agent/install/releases/1.4.0/node_modules/@earendil-works/pi-coding-agent/dist/index.js") },
+		alias: { "@earendil-works/pi-coding-agent": join(modules, "@earendil-works/pi-coding-agent/dist/index.js") },
 	});
 	const { loadSettings } = await jiti.import(join(root, "npm/node_modules/@tintinweb/pi-subagents/src/settings.ts"));
 	const loaded = loadSettings(dir);

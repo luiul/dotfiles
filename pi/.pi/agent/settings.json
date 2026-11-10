@@ -13,7 +13,7 @@
   "enableAnalytics": false,
   "quietStartup": true,
   "fullscreenCopyOnSelect": false,
-  "lastChangelogVersion": "1.5.0",
+  "lastChangelogVersion": "1.5.1",
   "theme": "dark",
   "outputPad": 0,
   "packages": [
@@ -49,7 +49,7 @@
   "tuiMode": "fullscreen",
   "hideThinkingBlock": true,
   "extensionChangelogVersions": {
-    "{\"source\":\"npm:@tintinweb/pi-subagents\",\"scope\":\"user\"}": "0.23.1",
+    "{\"source\":\"npm:@tintinweb/pi-subagents\",\"scope\":\"user\"}": "0.23.2",
     "{\"source\":\"npm:pi-web-access\",\"scope\":\"user\"}": "0.47.0",
     "{\"source\":\"npm:pi-mcp-adapter\",\"scope\":\"user\"}": "7.0.1",
     "{\"source\":\"npm:pi-blackhole\",\"scope\":\"user\"}": "0.5.17"

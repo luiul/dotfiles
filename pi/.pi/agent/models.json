@@ -526,9 +526,9 @@
           "reasoning": true,
           "input": ["text"],
           "cost": {
-            "input": 0.117,
-            "output": 0.234,
-            "cacheRead": 0.0252,
+            "input": 0.13,
+            "output": 0.26,
+            "cacheRead": 0.028,
             "cacheWrite": 0
           },
           "contextWindow": 1048576,
@@ -539,9 +539,9 @@
           "reasoning": true,
           "input": ["text"],
           "cost": {
-            "input": 1.19,
-            "output": 3.56,
-            "cacheRead": 0.119,
+            "input": 1.32,
+            "output": 3.96,
+            "cacheRead": 0.132,
             "cacheWrite": 0
           },
           "contextWindow": 1048576,
@@ -552,34 +552,21 @@
           "reasoning": true,
           "input": ["text", "image"],
           "cost": {
-            "input": 0.27,
-            "output": 1.08,
-            "cacheRead": 0.0063,
+            "input": 0.3,
+            "output": 1.2,
+            "cacheRead": 0.007,
             "cacheWrite": 0
           },
           "contextWindow": 1048576,
           "maxTokens": 262144
         },
         {
-          "id": "DeepSeek V4.1 Flash Fast",
-          "reasoning": true,
-          "input": ["text", "image"],
-          "cost": {
-            "input": 0.54,
-            "output": 2.16,
-            "cacheRead": 0.0126,
-            "cacheWrite": 0
-          },
-          "contextWindow": 1048576,
-          "maxTokens": 131072
-        },
-        {
           "id": "Fast",
           "input": ["text", "image"],
           "cost": {
-            "input": 0.27,
-            "output": 1.08,
-            "cacheRead": 0.0063,
+            "input": 0.6,
+            "output": 2.4,
+            "cacheRead": 0.014,
             "cacheWrite": 0
           },
           "contextWindow": 1048576,
@@ -591,9 +578,9 @@
           "reasoning": true,
           "input": ["text", "image"],
           "cost": {
-            "input": 1.26,
-            "output": 3.96,
-            "cacheRead": 0.126,
+            "input": 1.4,
+            "output": 4.4,
+            "cacheRead": 0.14,
             "cacheWrite": 0
           },
           "contextWindow": 1048576,
@@ -605,9 +592,9 @@
           "reasoning": true,
           "input": ["text", "image"],
           "cost": {
-            "input": 0.135,
-            "output": 0.45,
-            "cacheRead": 0.027,
+            "input": 0.15,
+            "output": 0.5,
+            "cacheRead": 0.03,
             "cacheWrite": 0
           },
           "contextWindow": 1048576,
@@ -672,9 +659,9 @@
           "reasoning": true,
           "input": ["text", "image"],
           "cost": {
-            "input": 2.7,
-            "output": 13.5,
-            "cacheRead": 0.27,
+            "input": 3,
+            "output": 15,
+            "cacheRead": 0.3,
             "cacheWrite": 0
           },
           "contextWindow": 1048576,
@@ -696,7 +683,7 @@
     }
   },
   "grove": {
-    "generatedAt": "2026-11-03T14:05:12Z",
+    "generatedAt": "2026-11-10T11:47:37Z",
     "bedrock": {
       "defaultRegion": "eu-west-1",
       "regions": {

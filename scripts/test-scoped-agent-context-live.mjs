@@ -198,14 +198,62 @@ async function main() {
         assert(JSON.stringify(call.systems).includes('SC_HF'), 'Pi history retains the obsolete baseline system, which this extension does not erase');
       });
     } finally {await stale.stop();}
+    // Simulate one slow worktree listing without touching real Git metadata.
+    const realGit=run('which',['git'],f.env), slowBin=join(f.root,'slow-bin'), slowMark=join(f.root,'slow-once');
+    const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
+    put(join(slowBin,'git'),`#!/bin/sh\ncase "$*" in\n  *'worktree list --porcelain -z'*) if [ ! -e ${quote(slowMark)} ]; then touch ${quote(slowMark)}; exec sleep 3; fi;;\nesac\nexec ${quote(realGit)} "$@"\n`);
+    run('chmod',['+x',join(slowBin,'git')],f.env);
+    const slow=json(f.p.linked,true,[],{PATH:`${slowBin}:${f.env.PATH}`});
+    check('one timed-out worktree listing is retried with correct scoped instructions',()=>{
+      assert(existsSync(slowMark));assert(slow.provider.prompt.includes('SC_DOMAIN'));assert(!slow.provider.prompt.includes('SC_HF'));
+    });
+    // Exercise the same retry in a real interactive Pi host with a private fixture provider.
+    unlinkSync(slowMark);
+    const tmuxName=`ag-scoped-context-${process.pid}`, tuiLog=join(f.root,'tui.jsonl');
+    const target=`=${tmuxName}:0.0`;
+    const tmux=(...a)=>run('tmux',a,process.env);
+    const until=async(predicate,label)=>{const deadline=Date.now()+30_000;while(Date.now()<deadline){if(predicate())return;await new Promise(r=>setTimeout(r,200));}throw Error(`TUI timeout: ${label}`);};
+    let started=false;
+    try {
+      tmux('new-session','-d','-s',tmuxName,'-x','120','-y','40','-c',f.p.linked,'env','-i',...Object.entries({...f.env,SC_LOG:tuiLog,PATH:`${slowBin}:${f.env.PATH}`}).map(([k,v])=>`${k}=${v}`),node,...args(true));started=true;
+      run(join(homedir(),'dotfiles/macos/.local/bin/reap-strays'),['--register-tmux',tmuxName,'--owner',String(process.pid),'--deadline',String(Math.floor(Date.now()/1000)+120)],process.env);
+      await until(()=>records(tuiLog).some(e=>e.type==='ready'),'startup');
+      tmux('send-keys','-t',target,'-l','SC_TUI');tmux('send-keys','-t',target,'Enter');
+      await until(()=>records(tuiLog).some(e=>e.type==='provider'),'provider');
+      await until(()=>tmux('capture-pane','-t',target,'-p').includes('SC_DONE'),'response');
+      check('interactive Pi retries a delayed Git check and receives scoped instructions',()=>{
+        const call=records(tuiLog).find(e=>e.type==='provider');assert(existsSync(slowMark));assert(call.prompt.includes('SC_DOMAIN'));assert(!call.prompt.includes('SC_HF'));
+        assert(!/Scoped instructions unavailable|Extension error/.test(tmux('capture-pane','-t',target,'-p')));
+      });
+      const pid=records(tuiLog).find(e=>e.type==='ready').pid;
+      tmux('send-keys','-t',target,'-l','/quit');tmux('send-keys','-t',target,'Enter');
+      await until(()=>records(tuiLog).some(e=>e.type==='shutdown'),'shutdown');
+      await until(()=>{try{process.kill(pid,0);return false;}catch(e){return e.code==='ESRCH';}},'process exit');
+    } finally {
+      const pid=records(tuiLog).find(e=>e.type==='ready')?.pid;
+      if(started && spawnSync('tmux',['has-session','-t',`=${tmuxName}`],{env:process.env}).status===0)tmux('kill-session','-t',`=${tmuxName}`);
+      if(pid) await until(()=>{try{process.kill(pid,0);return false;}catch(e){return e.code==='ESRCH';}},'process cleanup');
+    }
+    check('interactive fixture session is stopped',()=>{assert.notEqual(spawnSync('tmux',['has-session','-t',`=${tmuxName}`],{env:process.env}).status,0);});
+    // Permanent timeouts remain fail closed after exactly two bounded attempts.
+    const timeoutBin=join(f.root,'timeout-bin'), timeoutCalls=join(f.root,'timeout-calls');
+    put(join(timeoutBin,'git'),`#!/bin/sh\ncase "$*" in *'worktree list --porcelain -z'*) printf 'timeout\\n' >> ${quote(timeoutCalls)}; exec sleep 15;; esac\nexec ${quote(realGit)} "$@"\n`);run('chmod',['+x',join(timeoutBin,'git')],f.env);
+    const timedOut=await rpc(f.p.linked,[],{PATH:`${timeoutBin}:${f.env.PATH}`});
+    try {
+      const settled=await timedOut.prompt('SC_PERMANENT_TIMEOUT');
+      check('repeated timeout reports its cause and aborts before provider access',()=>{
+        assert(settled.aborted);assert(timedOut.events.some(e=>e.type==='extension_error'&&/worktree list.*ETIMEDOUT/.test(e.error)));
+        assert.equal(timedOut.notes().filter(e=>e.type==='provider').length,0);assert.equal(readFileSync(timeoutCalls,'utf8'),'timeout\ntimeout\n');
+      });
+    } finally {await timedOut.stop();}
     // A PATH-local failing Git reproduces metadata errors, without damaging real metadata.
-    const bin=join(f.root,'failing-bin');put(join(bin,'git'),'#!/bin/sh\nprintf "metadata unavailable\\n" >&2\nexit 73\n');run('chmod',['+x',join(bin,'git')],f.env);
+    const failedCalls=join(f.root,'failed-git-calls'),bin=join(f.root,'failing-bin');put(join(bin,'git'),`#!/bin/sh\ncase "$*" in *'worktree list --porcelain -z'*) printf 'failure\\n' >> ${quote(failedCalls)}; exit 73;; esac\nexec ${quote(realGit)} "$@"\n`);run('chmod',['+x',join(bin,'git')],f.env);
     const broken=await rpc(f.p.linked,[],{PATH:`${bin}:${f.env.PATH}`});
     try {
       const settled=await broken.prompt('SC_METADATA_FAILURE');
       check('metadata failure explicitly aborts before any provider request',()=>{
-        assert(settled.aborted);assert(broken.events.some(e=>e.type==='extension_error'&&/Scoped instructions unavailable/.test(e.error)));
-        assert.equal(broken.notes().filter(e=>e.type==='provider').length,0);
+        assert(settled.aborted);assert(broken.events.some(e=>e.type==='extension_error'&&/Scoped instructions unavailable:.*worktree list.*exit 73/.test(e.error)));
+        assert.equal(broken.notes().filter(e=>e.type==='provider').length,0);assert.equal(readFileSync(failedCalls,'utf8'),'failure\n');
       });
     } finally {await broken.stop();}
   } finally {

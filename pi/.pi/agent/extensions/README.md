@@ -150,6 +150,31 @@ scripts/bench-zen-startup.sh startup bare zen1
 
 The E2E asserts: compact start (success one line with suffix, failure one line with error text, native thinking label), native `ctrl+o` expand and collapse, `/zen` off restoring the native transcript, `/zen` on again, `/reload` keeping compact mode, and a line-for-line parity diff between a `--no-zen` capture and a bare-pi capture of the same seeded session. Design and decision history: https://github.com/luiul/dotfiles/issues/67.
 
+## Reply code blocks
+
+`code-blocks/index.ts` adds a compact language header and subtle frame to fenced code in assistant replies. It keeps Pi's parser, syntax colors, block-owned highlighting cache, and Mermaid renderer. Long lines wrap without clipping. Other Markdown surfaces keep native code rendering.
+
+This is a small adaptation of [pi-markdown-blocks](https://github.com/FasalZein/pi-markdown-blocks/tree/2403950d2916c67559f108f3cc11770123d4bb59), with its MIT notice in `code-blocks/LICENSE`. The extra parser dependency, custom shell highlighter, environment settings, automatic block scans, and picker shortcut are removed. No workers, timers, network requests, or runtime dependencies are added.
+
+- Pi has no public code-token frame hook. The private boundary is isolated and enabled only for verified Pi 1.5.1. Other versions warn and retain native rendering.
+- The public assistant-only Markdown transformer sets render scope without parsing or changing text. Native Mermaid runs first, so rendered diagrams never enter the code-frame hook.
+- Very narrow and indented blocks keep native rendering. Source control sequences are stripped from framed display before trusted syntax colors are added.
+- `/copyblock [number]` copies original fenced source from the latest reply, without visual wrapping or frame characters. Block parsing happens only when requested. Terminal text selection still copies display rows, so use this command for long executable lines.
+- Reply guidance favors top-level Mermaid, short labels, vertical layouts, and language-only fences. Saved documentation keeps its existing diagram conventions.
+- Shutdown removes only this extension's prototype hooks. `/reload` reinstalls one instance. Session files and model context retain original Markdown.
+
+Verification:
+
+```sh
+node scripts/test-code-blocks.mjs
+node scripts/test-code-blocks-live.mjs
+node scripts/bench-code-blocks.mjs
+```
+
+The live harness uses isolated settings, a local streaming provider, registered bounded tmux sessions, and a fake clipboard. It checks resize, themes, reload, original session text, copying, regular mode, and fullscreen mode. Benchmarks alternate native and framed rendering, including first paint, cached repaint, resize, streaming prose, and changing code. The live comparison also measures startup, RSS, idle CPU, and terminal writes. Optional report paths are `CODEBLOCK_BENCH_REPORT` and `CODEBLOCK_LIVE_REPORT`. Acceptance criteria and recorded results: https://github.com/luiul/dotfiles/issues/102.
+
+Captured tmux images are not a deployment check. Load the source with `-e` in an isolated review host before updating the live Stow deployment checkout.
+
 ## Enhanced status bar
 
 `status-bar.ts` replaces the footer with three rows. Terminals below 80 columns use four rows so the model and context have separate space. `/statusbar` toggles it.

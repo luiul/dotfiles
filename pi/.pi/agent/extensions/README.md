@@ -168,7 +168,7 @@ The E2E asserts: compact start (success one line with suffix, failure one line w
 
 ## Reply code blocks
 
-`code-blocks/index.ts` adds a compact language header and subtle frame to fenced code in assistant replies. It keeps Pi's parser, syntax colors, block-owned highlighting cache, and Mermaid renderer. Long lines wrap without clipping. Other Markdown surfaces keep native code rendering.
+`code-blocks/index.ts` adds a compact language header and muted frame to fenced code in assistant replies. Code uses the terminal's normal background, without a success tint. It keeps Pi's parser, syntax colors, block-owned highlighting cache, and Mermaid renderer. Long lines wrap without clipping. Other Markdown surfaces keep native code rendering.
 
 This is a small adaptation of [pi-markdown-blocks](https://github.com/FasalZein/pi-markdown-blocks/tree/2403950d2916c67559f108f3cc11770123d4bb59), with its MIT notice in `code-blocks/LICENSE`. The extra parser dependency, custom shell highlighter, environment settings, automatic block scans, and picker shortcut are removed. No workers, timers, network requests, or runtime dependencies are added.
 
@@ -187,7 +187,7 @@ node scripts/test-code-blocks-live.mjs
 node scripts/bench-code-blocks.mjs
 ```
 
-The live harness uses isolated settings, a local streaming provider, registered bounded tmux sessions, and a fake clipboard. It checks resize, themes, reload, original session text, copying, regular mode, and fullscreen mode. Benchmarks alternate native and framed rendering, including first paint, cached repaint, resize, streaming prose, and changing code. The live comparison also measures startup, RSS, idle CPU, and terminal writes. Optional report paths are `CODEBLOCK_BENCH_REPORT` and `CODEBLOCK_LIVE_REPORT`. Acceptance criteria and recorded results: https://github.com/luiul/dotfiles/issues/102.
+The live harness uses isolated settings, a local streaming provider, registered bounded tmux sessions, and a fake clipboard. It checks resize, themes, reload, original session text, copying, regular mode, and fullscreen mode. Benchmarks alternate native and framed rendering, including first paint, cached repaint, resize, streaming prose, and changing code. The live comparison also measures startup, RSS, idle CPU, and terminal writes. Optional report paths are `CODEBLOCK_BENCH_REPORT` and `CODEBLOCK_LIVE_REPORT`. Set `CODEBLOCK_BENCH_BASELINE` or `CODEBLOCK_LIVE_BASELINE` to a saved extension file for direct comparisons against an earlier version. `CODEBLOCK_LIVE_TRIALS` controls the live sample count. Acceptance criteria and recorded results: https://github.com/luiul/dotfiles/issues/102.
 
 Captured tmux images are not a deployment check. Load the source with `-e` in an isolated review host before updating the live Stow deployment checkout.
 

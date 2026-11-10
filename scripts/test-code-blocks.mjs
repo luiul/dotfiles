@@ -13,7 +13,6 @@ assert.equal(tui.Markdown.prototype.render, before);
 pass('Unsupported Pi versions leave native Markdown untouched');
 const installed = candidate.installCodeFrames();
 assert(installed.patch);
-installed.patch.theme = themeModule.theme;
 try {
   for (const width of [1, 2, 4, 5, 6, 12, 36, 60, 96, 160]) {
     for (const [name, source] of Object.entries(fixtures)) {
@@ -87,6 +86,14 @@ try {
   assert.notDeepEqual(light, snapshot);
   assert.equal(plain(light), plain(snapshot));
   pass('Theme changes update styles without changing text');
+  for (const name of ['dark', 'light', 'system']) {
+    themeModule.setTheme(name);
+    const colors = markdown(fixtures.small, installed.patch).render(96);
+    assert(!colors.join('').match(/\x1b\[48[;m]/), name + ': code must not emit colored backgrounds');
+    assert(colors.slice(1, -1).every(line => line.includes('\x1b[49m')), name + ': reset to terminal background');
+  }
+  themeModule.setTheme('dark');
+  pass('Dark, light, and system themes use the terminal background, never success green');
   const narrow = plain(markdown(fixtures.small, installed.patch).render(5));
   assert(narrow.includes('```'));
   assert(!narrow.includes('╭'));

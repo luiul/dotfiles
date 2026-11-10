@@ -4,7 +4,7 @@
  * See LICENSE. No added dependencies, timers, workers, or second Markdown parser.
  * The private code-token hook is isolated and restricted to the verified Pi version.
  */
-import { VERSION, copyToClipboard, type ExtensionAPI, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
+import { VERSION, copyToClipboard, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Markdown, Marked, stripTerminalSequences, truncateToWidth, visibleWidth, wrapTextWithAnsi, type MarkdownTheme } from "@earendil-works/pi-tui";
 
 const STATE = Symbol.for("dotfiles.reply-code-blocks.v1");
@@ -14,7 +14,7 @@ type Token = { type: string; text: string; lang?: string; codeBlockStyle?: strin
 type Runtime = { theme: MarkdownTheme; blockHighlightedCode?: Map<string, string[]> };
 type RenderToken = (this: Runtime, token: Token, width: number, next?: string, style?: unknown) => string[];
 type Render = (this: Markdown, width: number) => string[];
-type Patch = { original: RenderToken; render: Render; patched: RenderToken; wrapped: Render; active: boolean; scopes: boolean[]; theme?: Theme };
+type Patch = { original: RenderToken; render: Render; patched: RenderToken; wrapped: Render; active: boolean; scopes: boolean[] };
 type Prototype = { renderToken: RenderToken; render: Render; [STATE]?: Patch };
 
 /** Strip source control codes before adding trusted syntax colors. Copy keeps original source. */
@@ -28,7 +28,7 @@ function header(theme: MarkdownTheme, label: string, width: number): string {
 }
 
 /** Native block-owned highlighting cache survives streaming and width changes. */
-function frame(owner: Runtime, token: Token, width: number, next: string | undefined, runtimeTheme?: Theme): string[] {
+function frame(owner: Runtime, token: Token, width: number, next: string | undefined): string[] {
 	const theme = owner.theme;
 	const label = displayText(token.lang ?? "").trim().split(/\s+/, 1)[0] || "text";
 	const key = `${label}\0${token.text}`;
@@ -43,15 +43,13 @@ function frame(owner: Runtime, token: Token, width: number, next: string | undef
 	const pad = " ".repeat(padding);
 	const left = theme.codeBlockBorder("│");
 	const right = left;
-	const background = runtimeTheme?.getBgAnsi("toolSuccessBg") ?? "";
 	const output = [header(theme, label, width)];
 	for (const line of highlighted) {
 		const lineWidth = visibleWidth(line);
 		const parts = lineWidth <= innerWidth ? [line] : wrapTextWithAnsi(line, innerWidth);
 		for (const part of parts) {
 			const partWidth = parts.length === 1 ? lineWidth : visibleWidth(part);
-			const safe = background ? part.replace(/\x1b\[(?:0|49)m/g, reset => reset + background) : part;
-			output.push(`${left}${background}${pad}${safe}${" ".repeat(Math.max(0, innerWidth - partWidth))}${pad}${RESET_BG}${right}`);
+			output.push(`${left}${RESET_BG}${pad}${part}${" ".repeat(Math.max(0, innerWidth - partWidth))}${pad}${right}`);
 		}
 	}
 	output.push(theme.codeBlockBorder(`╰${"─".repeat(width - 2)}╯`));
@@ -79,7 +77,7 @@ export function installCodeFrames(version = VERSION): { patch?: Patch; reason?: 
 		if (!patch.active || !patch.scopes.at(-1) || token?.type !== "code" || token.codeBlockStyle === "indented" || typeof token.text !== "string" || width < 6) {
 			return original.call(this, token, width, next, style);
 		}
-		try { return frame(this, token, width, next, patch.theme); }
+		try { return frame(this, token, width, next); }
 		catch { return original.call(this, token, width, next, style); }
 	};
 	prototype.render = patch.wrapped;
@@ -89,7 +87,6 @@ export function installCodeFrames(version = VERSION): { patch?: Patch; reason?: 
 		patch,
 		dispose() {
 			patch.active = false;
-			patch.theme = undefined;
 			if (prototype.renderToken === patch.patched) prototype.renderToken = original;
 			if (prototype.render === patch.wrapped) prototype.render = render;
 			if (prototype[STATE] === patch) delete prototype[STATE];
@@ -131,8 +128,7 @@ export default function codeBlocks(pi: ExtensionAPI): void {
 	pi.on("session_start", (_event, ctx) => {
 		if (ctx.mode !== "tui") return;
 		installed = installCodeFrames();
-		if (installed.patch) installed.patch.theme = ctx.ui.theme;
-		else ctx.ui.notify(`Code frames disabled: ${installed.reason}`, "warning");
+		if (!installed.patch) ctx.ui.notify(`Code frames disabled: ${installed.reason}`, "warning");
 	});
 	pi.on("session_shutdown", () => { installed?.dispose(); installed = undefined; });
 	pi.on("before_agent_start", event => { event.systemPromptOptions.promptGuidelines.push(GUIDANCE); });

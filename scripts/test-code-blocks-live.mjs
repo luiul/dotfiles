@@ -6,13 +6,16 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { repo, cli, version, fixtures, candidate as _candidate } from './fixtures/code-blocks-runtime.mjs';
+import { repo, cli, version, fixtures, tui } from './fixtures/code-blocks-runtime.mjs';
 const root = mkdtempSync('/tmp/pi-codeblocks-live-');
 const deadline = Date.now() + 8 * 60_000;
 const sleep = ms => new Promise(done => setTimeout(done, ms));
 const quote = text => "'" + String(text).replaceAll("'", "'\\''") + "'";
 const owned = new Map();
-const report = { root, pi: version, checks: [], hosts: [], bench: [] };
+const baselinePath = process.env.CODEBLOCK_LIVE_BASELINE;
+const baselineVariant = baselinePath ? 'baseline' : 'native';
+const trials = Number(process.env.CODEBLOCK_LIVE_TRIALS ?? 5);
+const report = { root, pi: version, baselinePath, trials, checks: [], hosts: [], bench: [] };
 function run(bin, args, optional = false) {
   try { return execFileSync(bin, args, { encoding: 'utf8', timeout: 15_000, stdio: ['ignore', 'pipe', 'pipe'] }); }
   catch (error) { if (optional) return ''; throw new Error(`${bin}: ${error.stderr ?? error.message}`); }
@@ -59,7 +62,7 @@ async function start(variant, mode, trial) {
   const host = { name: `ag-codeblocks-${process.pid}-${variant}-${mode}-${trial}`, area, events: join(area, 'events.jsonl'), log: join(area, 'ansi.log'), variant, mode };
   const preload = join(repo, 'scripts/fixtures/status-bar-clipboard.cjs');
   const env = { HOME: area, PATH: process.env.PATH, TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'en_US.UTF-8', PI_CODING_AGENT_DIR: config, PI_SKIP_VERSION_CHECK: '1', PI_OFFLINE: '1', PI_TRUE_COLOR: '1', PI_IMAGE_PROTOCOL: 'none', PI_PROGRAM_STATUS: '0', PI_TUI_WRITE_LOG: host.log, SB_LIVE_EVENTS: host.events, NODE_OPTIONS: `--require ${JSON.stringify(preload)}` };
-  const args = [process.execPath, cli, '--offline', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-context-files', '--no-approve', '--no-mcp', '--no-themes', '--no-tools', '--provider', 'codeblocks-fixture', '--model', 'fixture', '--thinking', 'off', '--session-dir', join(area, 'sessions'), '--session', seed(area, cwd), ...(variant !== 'native' ? ['-e', join(repo, 'pi/.pi/agent/extensions/code-blocks/index.ts')] : []), ...(variant === 'integration' ? ['zen.ts', 'status-bar.ts', 'filechanges.ts'].flatMap(name => ['-e', join(repo, 'pi/.pi/agent/extensions', name)]) : []), '-e', join(repo, 'scripts/fixtures/code-blocks-live.ts')];
+  const args = [process.execPath, cli, '--offline', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-context-files', '--no-approve', '--no-mcp', '--no-themes', '--no-tools', '--provider', 'codeblocks-fixture', '--model', 'fixture', '--thinking', 'off', '--session-dir', join(area, 'sessions'), '--session', seed(area, cwd), ...(variant !== 'native' ? ['-e', variant === 'baseline' ? baselinePath : join(repo, 'pi/.pi/agent/extensions/code-blocks/index.ts')] : []), ...(variant === 'integration' ? ['zen.ts', 'status-bar.ts', 'filechanges.ts'].flatMap(name => ['-e', join(repo, 'pi/.pi/agent/extensions', name)]) : []), '-e', join(repo, 'scripts/fixtures/code-blocks-live.ts')];
   const launch = `cd ${quote(cwd)} && exec env -i ${Object.entries(env).map(([k, v]) => quote(k + '=' + v)).join(' ')} ${args.map(quote).join(' ')}`;
   tmux('new-session', '-d', '-s', host.name, '-x', '96', '-y', '58', '/bin/sleep 480'); owned.set(host.name, host);
   run('reap-strays', ['--register-tmux', host.name, '--owner', String(process.pid), '--deadline', String(Math.ceil(deadline / 1000))]);
@@ -81,13 +84,19 @@ async function stop(host) {
   while (alive(host.pid) && Date.now() < until) await sleep(100);
   assert(!alive(host.pid), `Test Pi ${host.pid} remains alive`); owned.delete(host.name);
 }
+function assertNeutralCode(host, theme) {
+  const raw = tmux('capture-pane', '-p', '-e', '-t', host.name);
+  const code = raw.split('\n').filter(line => /(?:const answer|function greet|return .*Hello|printf)/.test(tui.stripTerminalSequences(line)));
+  assert(code.length >= 4, 'Code cells missing');
+  assert(code.every(line => !/\x1b\[48[;m]/.test(line)), theme + ': tinted code background');
+}
 function stats(host) {
   const rows = run('ps', ['-p', String(host.pid), '-o', 'rss=', '-o', 'time=']).trim().split(/\s+/);
   const parts = rows[1].split(':').map(Number);
   return { rssKB: Number(rows[0]), cpuMs: parts.reduce((n, x) => n * 60 + x, 0) * 1000, ansiBytes: existsSync(host.log) ? readFileSync(host.log).length : 0 };
 }
 try {
-  for (let trial = 0; trial < 5; trial++) for (const variant of trial % 2 ? ['candidate', 'native'] : ['native', 'candidate']) {
+  for (let trial = 0; trial < trials; trial++) for (const variant of trial % 2 ? ['candidate', baselineVariant] : [baselineVariant, 'candidate']) {
     const host = await start(variant, 'fullscreen', trial);
     if (trial === 0) {
       if (variant === 'candidate') {
@@ -103,7 +112,7 @@ try {
       await command(host, 'Stream the fixture reply');
       const screen = await wait(host, (text, list) => text.includes('CODEBLOCK_REVIEW_READY') && list.some(x => x.type === 'settled'), 'streaming settlement');
       assert(screen.includes('│ Pi reply │'));
-      assert.equal(screen.includes('╭─ typescript'), variant === 'candidate');
+      assert.equal(screen.includes('╭─ typescript'), variant !== 'native');
       const records = readFileSync(events(host).filter(x => x.type === 'ready').at(-1).session, 'utf8');
       assert(records.includes('```typescript example.ts'), 'Session source changed');
       if (variant === 'candidate') assert(events(host).find(x => x.type === 'guidance').rules.some(x => x.includes('top-level Mermaid')));
@@ -120,8 +129,15 @@ try {
       if (variant === 'candidate') {
         await command(host, '/visual-theme light');
         await wait(host, (_screen, list) => list.some(x => x.type === 'theme'), 'light theme');
+        await sleep(200);
+        assertNeutralCode(host, 'light');
+        writeFileSync(join(host.area, 'reply-light.ansi'), tmux('capture-pane', '-p', '-e', '-t', host.name));
         await command(host, '/visual-theme dark');
         await wait(host, (_screen, list) => list.filter(x => x.type === 'theme').length === 2, 'dark theme');
+        await sleep(200);
+        assertNeutralCode(host, 'dark');
+        writeFileSync(join(host.area, 'reply-dark.ansi'), tmux('capture-pane', '-p', '-e', '-t', host.name));
+        pass('Real dark and light code frames use terminal background without success tint');
       }
       pass(`${variant}: resize from 36 to 96 columns remains readable`);
     }

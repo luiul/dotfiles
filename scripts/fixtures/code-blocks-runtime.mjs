@@ -17,7 +17,8 @@ const jiti = createJiti(import.meta.url, { alias: {
   '@earendil-works/pi-tui': join(modules, '@earendil-works/pi-tui/dist/index.js'),
   '@earendil-works/pi-coding-agent': join(base, 'index.js'),
 } });
-export const candidate = await jiti.import(join(repo, 'pi/.pi/agent/extensions/code-blocks/index.ts'));
+export const loadExtension = path => jiti.import(path);
+export const candidate = await loadExtension(join(repo, 'pi/.pi/agent/extensions/code-blocks/index.ts'));
 export const fence = (language, text) => '```' + language + '\n' + text + '\n```';
 export const fixtures = {
   small: fence('typescript', 'const answer: number = 42;\n\nfunction greet(name: string): string {\n  return `Hello, ${name}`;\n}'),
@@ -28,12 +29,12 @@ export const fixtures = {
   pie: fence('mermaid', 'pie title Work\n "Done" : 60\n "Pending" : 40'),
   invalidMermaid: fence('mermaid', 'flowchart TD\n A --> B\n NOT_MERMAID &%$'),
 };
-export function markdown(source, patch, { pad = 0, mermaid = false, surface = 'assistant' } = {}) {
+export function markdown(source, patch, { pad = 0, mermaid = false, surface = 'assistant', extension = candidate } = {}) {
   const nativeMermaid = createMermaidMarkdownTransformer({ getMode: () => 'streaming', theme: themeModule.theme });
   return new tui.Markdown(source, pad, 0, { ...themeModule.getMarkdownTheme(), codeBlockIndent: '' }, undefined, {
     transform(text, width) {
       if (mermaid) text = nativeMermaid(text, { messageType: surface, isStreaming: false, availableWidth: width });
-      return patch && surface === 'assistant' ? candidate.replyScope(patch, text) : text;
+      return patch && surface === 'assistant' ? extension.replyScope(patch, text) : text;
     },
   });
 }

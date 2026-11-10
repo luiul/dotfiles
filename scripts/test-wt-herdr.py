@@ -125,7 +125,7 @@ class Harness(w.Helper):
             labels = dict(args[i + 1].split("=", 1) for i, arg in enumerate(args) if arg == "--label")
             assert labels["wt-herdr.launch"] == record["token"]
             assert "--no-parent" in args and "--no-notify" in args and "--keep" in args
-            assert args[-2:] == ["--", self.bins["pi"]]
+            assert args[args.index("--") + 1:] == w.agent_argv([self.bins["pi"]])
             if not self.no_launch:
                 target = next(s for s in self.doc["spaces"] if s["id"] == record["space"])
                 target["tabs"].append(tab(record["tab"], "tnew"))
@@ -299,6 +299,25 @@ class Tests(unittest.TestCase):
         self.assertIn("Reused", self.h.open(self.repo, self.target))
         self.assertFalse(any(a[:2] == ["hc", "run"] for a in self.h.calls))
 
+    def test_agent_launch_keeps_argv_out_of_shell_source(self):
+        command = ["/tmp/a 'quoted' pi; $(not-a-command)", "", "task\nnext line"]
+        for shell in ("/bin/sh", "/bin/bash", "/bin/zsh", "/usr/local/bin/fish"):
+            for platform in ("darwin", "linux"):
+                with self.subTest(shell=shell, platform=platform), patch.object(w.sys, "platform", platform):
+                    argv = w.agent_argv(command, shell)
+                    login = platform == "darwin"
+                    self.assertEqual(argv[:2], [shell, "-lic" if login else "-ic"])
+                    self.assertEqual(argv[3:], [shell, *command])
+                    expected = ('command $argv[2..]; exec $argv[1] ' if shell.endswith("/fish")
+                                else '\"$@\"; exec \"$0\" ')
+                    self.assertEqual(argv[2], expected + ("-li" if login else "-i"))
+
+    def test_agent_launch_uses_personal_shell_with_safe_default(self):
+        with patch.dict(w.os.environ, {"SHELL": "/bin/zsh"}):
+            self.assertEqual(w.agent_argv(["pi"])[0], "/bin/zsh")
+        with patch.dict(w.os.environ, {}, clear=True):
+            self.assertEqual(w.agent_argv(["pi"])[0], "/bin/sh")
+
     def test_shell_adds_tab_never_types(self):
         self.ready(False)
         self.assertIn("Opened", self.h.open(self.repo, self.target))
@@ -451,6 +470,14 @@ class Tests(unittest.TestCase):
     def test_null_status_safe(self):
         f = fact("t", self.h.child, False)
         self.assertFalse(w.is_pi(f, "/installed/pi"))
+
+    def test_returned_shell_is_not_pi_even_with_stale_status(self):
+        self.ready(False)
+        returned = self.h.terminals["t1"]
+        returned.update(reported=True, status={"app": "pi", "state": "idle"})
+        self.assertFalse(w.is_pi(returned, self.h.bins["pi"]))
+        with self.assertRaisesRegex(w.Error, "unverified"):
+            self.h.reusable(self.h.doc, self.h.terminals, self.target)
 
     def test_remote_refused(self):
         self.h.doc["spaces"][0]["machine"] = "remote"

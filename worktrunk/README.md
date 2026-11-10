@@ -21,6 +21,8 @@ Each checkout has its own space. Conversations in the same checkout stay in that
 
 The helper reuses a matching live Pi and focuses its pane. It stops if identity is ambiguous. A launch-specific Core label identifies the requested Pi even when its launch reply is lost. A pending launch record survives a lost reply, so a retry cannot blindly start another Pi. It does not submit a task or restart an existing agent.
 
+New Pi terminals use the same shell behavior as Herdr's app launcher. Ctrl+C keeps its normal Pi behavior. Exiting Pi returns to a shell in the checkout, so the terminal, tab and space stay open. This applies to new launches only. Herdr still asks before an explicit close of the last tab in a space.
+
 ## Layout repair
 
 ```sh

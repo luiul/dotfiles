@@ -59,6 +59,7 @@ Normal navigation may change Slack read state.
 - Read rendered DOM only. Do not read or copy cookies, tokens, browser storage, hidden application state, or network request/response bodies.
 - Do not use Slack APIs, authenticated fetches, API replay, credential replay, or another client as a workaround. General skill examples do not override these rules.
 - Default scope is only the supplied exact permalink. Read its message only, not nearby history, its parent, or replies unless requested.
+- The Enterprise workspace host is `https://hellofreshgroup.enterprise.slack.com/` (older permalinks may still use `https://hellofresh.slack.com/`). An `/archives/<channel>/p<digits>` URL opens a desktop-app redirect page (`Redirecting… | Slack`); open `https://hellofreshgroup.enterprise.slack.com/messages/<channel>/p<digits>` (preserving any `?thread_ts=...&cid=...` query) and wait for `location.hostname === "app.slack.com"` before reading message containers.
 - Verify workspace and channel from the rendered UI. Match the linked timestamp against structural DOM evidence, such as message attributes or timestamp permalinks.
 - Convert a permalink's `p<digits>` timestamp by inserting a decimal before its last six digits. Displayed clock text alone is not exact-message proof.
 - An explicit thread request permits its parent and replies. Verify the parent timestamp, each reply timestamp, and the rendered reply count.

@@ -261,6 +261,8 @@ Shared manual directory tools remain unchanged, but are not Pi read paths or fal
 
 **Default scope is only the supplied exact permalink.** Read that message only, not nearby history, its parent, or replies unless requested.
 Do not substitute another message when the exact linked message is missing.
+The Enterprise workspace host is `https://hellofreshgroup.enterprise.slack.com/` (older permalinks may still use `https://hellofresh.slack.com/`).
+An `/archives/<channel>/p<digits>` URL opens a desktop-app redirect page (`Redirecting… | Slack`); open `https://hellofreshgroup.enterprise.slack.com/messages/<channel>/p<digits>` (preserving any `?thread_ts=...&cid=...` query) and wait for `location.hostname === "app.slack.com"` before reading message containers.
 Verify workspace and channel from the rendered UI and the linked timestamp from structural DOM evidence.
 Use message attributes or timestamp permalinks, not displayed clock text alone.
 Convert a permalink's `p<digits>` timestamp by inserting a decimal before its last six digits.

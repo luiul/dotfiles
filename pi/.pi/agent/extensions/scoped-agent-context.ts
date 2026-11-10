@@ -21,35 +21,37 @@ function gitEnvironment(): NodeJS.ProcessEnv {
 	for (const key of ["GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_PREFIX"]) delete env[key];
 	return env;
 }
-function git(cwd: string, args: string[]): string {
-	const result = spawnSync("git", ["-C", cwd, ...args], {
-		encoding: "utf8", timeout: 2000, maxBuffer: 64 * 1024,
-		env: gitEnvironment(),
+function git(cwd: string, args: string[], allowNotRepository = false): string | undefined {
+	// Endpoint security can occasionally delay Git startup. Retry only timeouts, not Git errors.
+	let result = spawnSync("git", ["-C", cwd, ...args], {
+		encoding: "utf8", timeout: 2000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024, env: gitEnvironment(),
 	});
-	if (result.error || result.status !== 0) throw new Error("Cannot validate checkout identity with Git.");
-	return result.stdout.trim();
+	if ((result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT") {
+		result = spawnSync("git", ["-C", cwd, ...args], {
+			encoding: "utf8", timeout: 10000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024, env: gitEnvironment(),
+		});
+	}
+	if (!result.error && result.status === 0) return result.stdout.trim();
+	if (!result.error && allowNotRepository && /not a git repository/i.test(result.stderr)) return undefined;
+	const command = args[0] === "worktree" ? "worktree list" : "rev-parse";
+	const reason = result.error ? ((result.error as NodeJS.ErrnoException).code ?? "process error")
+		: result.signal ? `signal ${result.signal}` : `exit ${result.status}`;
+	throw new Error(`Cannot validate checkout identity: git ${command} failed (${reason}).`);
 }
 
 /** Git metadata is authoritative, including custom layouts and calls from nested folders. */
 export function resolveCheckout(cwd: string): CheckoutIdentity | undefined {
-	const result = spawnSync("git", ["-C", cwd, "rev-parse", "--show-toplevel", "--path-format=absolute", "--git-common-dir"], {
-		encoding: "utf8", timeout: 2000, maxBuffer: 64 * 1024,
-		env: gitEnvironment(),
-	});
-	if (result.error) throw new Error("Checkout identity check timed out or failed to start.");
-	if (result.status !== 0) {
-		if (/not a git repository/i.test(result.stderr)) return undefined;
-		throw new Error("Cannot resolve checkout identity with Git.");
-	}
-	const paths = result.stdout.trim().split("\n");
+	const output = git(cwd, ["rev-parse", "--show-toplevel", "--path-format=absolute", "--git-common-dir"], true);
+	if (output === undefined) return undefined;
+	const paths = output.split("\n");
 	const [root, common] = paths;
 	if (paths.length !== 2 || !root || !common || !isAbsolute(root) || !isAbsolute(common)) throw new Error("Invalid checkout identity from Git.");
-	const listing = git(cwd, ["worktree", "list", "--porcelain", "-z"]).split("\0");
+	const listing = git(cwd, ["worktree", "list", "--porcelain", "-z"])!.split("\0");
 	const first = listing.find((line) => line.startsWith("worktree "));
 	if (!first || listing.slice(0, listing.indexOf("")).includes("bare")) throw new Error("No primary working checkout is available.");
 	const primary = first.slice("worktree ".length);
 	if (!isAbsolute(primary)) throw new Error("Invalid primary checkout path.");
-	const primaryPaths = git(primary, ["rev-parse", "--show-toplevel", "--path-format=absolute", "--git-common-dir"]).split("\n");
+	const primaryPaths = git(primary, ["rev-parse", "--show-toplevel", "--path-format=absolute", "--git-common-dir"])!.split("\n");
 	if (primaryPaths.length !== 2 || canonical(primaryPaths[0]) !== canonical(primary)
 		|| canonical(primaryPaths[1]) !== canonical(common)) throw new Error("Primary checkout belongs to another repository.");
 	return { root: canonical(root), primary: canonical(primary) };

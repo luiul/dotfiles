@@ -2,8 +2,8 @@
   "name": "pi-extensions",
   "private": true,
   "dependencies": {
-    "@plannotator/pi-extension": "^0.28.50",
-    "@tintinweb/pi-subagents": "^0.23.1",
+    "@plannotator/pi-extension": "^0.28.59",
+    "@tintinweb/pi-subagents": "^0.23.2",
     "context-mode": "1.0.169",
     "pi-blackhole": "^0.5.17",
     "pi-hermes-memory": "^0.10.0",

@@ -37,21 +37,43 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Always link to PRs and online resources. When you mention a PR, Jira ticket, Slack thread, doc, or any resource with a URL, include the full clickable URL (e.g. https://github.com/hellofresh/schema-registry/pull/4222), not just `schema-registry#4222` or `GLOA-338`.
 - In scratch files and Markdown drafts for Slack, write links as [text](URL). Never put backticks inside link text. Keep backticks outside links. Native Slack posting, where permitted, uses Slack's own link format.
 
+## Engineering Practices
+
+- Use the repo's established patterns, documented commands, formatters, linters, and test tools. Check actual APIs and installed versions rather than guessing.
+- Prefer the smallest clear solution that meets the request. Keep changes easy to review. Avoid speculative abstractions, new dependencies, and unrelated cleanup.
+- Treat AI-generated code and reviews as unverified input. Inspect the full diff and tests against the acceptance criteria, contracts, failure paths, security, and resource cleanup. A second agent review supplements, not replaces, verification and human review.
+- Before editing, identify acceptance criteria whose failure could cause data loss, security exposure, broken consumer contracts, or material service disruption. State what must stay unchanged.
+- For data or API changes, check keys, populated values, types, ordering, metadata, and consumer behavior as applicable. Counts and green tests alone do not prove compatibility.
+
+### Comments and documentation
+
+- Simplify code and use clear names first. Add comments for non-obvious logic: explain why, contracts, data flow, fallback order, safeguards, and tradeoffs. Do not comment every line or restate obvious syntax.
+- For complex SQL or template code, add a short reading guide where names and structure do not explain the phases. Explain non-obvious preservation and fallback rules.
+- Explain why code preserves legacy behavior or defers a correction. State known limits without claiming guarantees that have not been verified.
+- Keep comments close to the code and update stale comments with behavior changes. Document public behavior and test commands in the relevant code-adjacent docs.
+
+Sources: [Google code review guidance](https://google.github.io/eng-practices/review/reviewer/looking-for.html), [GitHub responsible AI use](https://docs.github.com/en/copilot/responsible-use/agents), [DORA small batches](https://dora.dev/capabilities/working-in-small-batches/).
+
 ## Reporting Back
 
 - Start substantial replies with a `TLDR:` line at the top. One or two short sentences: the outcome, the answer, or what changed. Details go below.
 - Use separate headings in substantial replies. `Next steps:` lists required in-scope actions and open decisions. `Open ideas:` lists optional out-of-scope suggestions. Never mix them or nest one inside the other. Omit empty sections.
 - Add the TLDR and applicable closing sections when reporting work, research findings, or a plan. Skip them for short answers, questions, and quick confirmations.
-- For implementation work, report review readiness, commit, remote publication, and live deployment separately. Passing tests means ready for review, not published. Name the source worktree and any preserved unrelated changes. Do not say the repo is clean unless you checked it.
+- For implementation work, report review readiness, commit, remote publication, and live deployment separately. Passing tests provides verification evidence, not proof that all acceptance criteria are met. Name the source worktree and any preserved unrelated changes. Do not say the repo is clean unless you checked it.
 - State pending review, publication, or deployment clearly. Before closing, stop task-owned background work and preserve unfinished changes in a named checkout. Remove completed task worktrees through wt only after checking remote preservation and valuable ignored files. Preserve other workers' checkouts.
 
 ## Verification
 
 - Do not guess. Before you state a fact about a change you made, or answer a question about a system, file, or state, check it with the relevant tool. Examples: `aws`, `snow` (Snowflake CLI), `databricks`, `tmux`, `gh`, `jira`. If a claim is checkable with a command, run the command first.
-- Test after every change: run the code, query, or command and check the output before reporting done.
-- Check for regressions: rerun the existing test suite and check the config and files the change touches. A green new test is not enough.
+- After each coherent change, run checks appropriate to its behavior and risk before reporting done. Check the output, not just the exit code.
+- Run relevant existing regression checks and inspect affected config. Run the full suite when shared behavior changes or repo policy requires it. Explain narrower coverage. A green new test is not enough.
 - For changes that affect live behavior (extensions, shell config, notifications, model settings), verify in the real running setup: a new shell, a tmux session, a real run. Unit tests and print mode are not enough.
-- If the repo has a test setup, write or update tests that pin the changed behavior. If you skip tests, say why.
+- Verification does not grant permission to deploy, change shared data, or bypass approval, authentication, or ownership rules. Report blocked checks and the acceptance criteria left unverified.
+- For behavior changes, add or update focused automated tests in the same change whenever feasible. Use the existing test setup. If none exists, use the smallest maintainable check rather than a new framework by default.
+- For bug fixes, add a regression test that fails before the fix and passes after it when feasible. Assert expected behavior from the requirements, not just the new implementation. Cover relevant boundaries, invalid inputs, failure paths, cleanup, and compatibility.
+- Keep tests clear and deterministic. Prefer isolated fixtures and local services. Mock external boundaries when useful, but run the real integration or live check when mocks cannot prove the changed behavior.
+- Run the relevant formatter, lint, type, and existing regression checks. A comment-only change needs syntax checks and proof that executable content is unchanged, not an unnecessary live data rebuild.
+- Report exact check commands, outcomes, warnings, skipped checks, and their reasons. Distinguish sampled or mocked evidence from full-data and live verification. Never call an unrun or blocked check passed. Unverified criteria involving data loss, security exposure, consumer contracts, or material service disruption block a deployment recommendation.
 - For performance claims, measure before and after. Report the numbers.
 - Before replacing a working setup, record the known good baseline (commit, file copy, settings) so you can revert.
 - For data changes: run the query, check row counts, and spot-check values against a known baseline.

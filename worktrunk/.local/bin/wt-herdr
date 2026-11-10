@@ -39,6 +39,16 @@ def canonical(path):
     return str(Path(path).expanduser().resolve(strict=True))
 
 
+def agent_argv(command, shell=None):
+    """Match Herdr's Unix launcher: Pi exits into a shell, not a closed tab."""
+    shell = shell or os.environ.get("SHELL") or "/bin/sh"
+    login = sys.platform == "darwin"
+    tail = "-li" if login else "-i"
+    script = (f"command $argv[2..]; exec $argv[1] {tail}" if Path(shell).name == "fish"
+              else f'"$@"; exec "$0" {tail}')
+    return [shell, "-lic" if login else "-ic", script, shell, *command]
+
+
 def new_id(prefix):
     return prefix + uuid.uuid4().hex
 
@@ -573,7 +583,8 @@ class Helper:
                 self.run(["hc", "run", "--bg", "--keep", "--no-parent", "--no-notify",
                           "--cwd", target["path"], "--label", "herdr.space=" + record["space"],
                           "--label", "herdr.tab=" + record["tab"],
-                          "--label", "wt-herdr.launch=" + record["token"], "--", self.bins["pi"]], timeout=12)
+                          "--label", "wt-herdr.launch=" + record["token"], "--",
+                          *agent_argv([self.bins["pi"]])], timeout=12)
             return self.wait_open(repo, target)
         raise Error("Layout kept changing; no Pi launched")
 

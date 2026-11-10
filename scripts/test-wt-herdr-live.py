@@ -37,6 +37,16 @@ def rpc(method, **params):
     return response["result"]
 
 
+def wait_for(check, message, timeout=15):
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        value = check()
+        if value:
+            return value
+        time.sleep(0.2)
+    raise RuntimeError(message)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--coppice-source", type=Path, required=True)
@@ -50,7 +60,8 @@ def main():
     source = args.coppice_source.resolve(strict=True)
     helper = ROOT / "worktrunk/.local/bin/wt-herdr"
     original = data("herdr-app", "status")
-    before = {t["address"] for t in data("hc", "ls", "--json")["terminals"] if t["state"] == "live"}
+    before = {t["address"]: (t["pid"], t["created_ms"]) for t in rpc("terminal.list")["terminals"]
+              if t["state"] == "live"}
     session = f"ag-wt-herdr-{os.getpid()}"
     deadline = int(time.time()) + 240
     fixture_path = Path(tempfile.mkdtemp(prefix="wt-herdr-live-")).resolve()
@@ -61,6 +72,12 @@ def main():
         bin_dir = fixture / "bin"
         bin_dir.mkdir()
         (bin_dir / "wt-herdr").symlink_to(helper)
+        pi_binary = shutil.which("pi")
+        if not pi_binary:
+            raise RuntimeError("Pi is not installed")
+        pi_shim = bin_dir / "pi"
+        pi_shim.write_text("#!/bin/sh\nexec " + shlex.quote(pi_binary) + ' --no-session --no-extensions "$@"\n')
+        pi_shim.chmod(0o755)
         shim = bin_dir / "cop"
         shim.write_text("#!/bin/sh\nexec env PYTHONPATH=" + shlex.quote(str(source / "src"))
                         + " uv run --no-project --python " + shlex.quote(str(source / ".venv/bin/python"))
@@ -82,6 +99,8 @@ def main():
             "commit", "--allow-empty", "-q", "-m", "fixture", env=env)
         owned_terminals = set()
         owned_spaces = set()
+        confirm_mod = Path.home() / ".config/herdr-app/mods" / f"ag-wt-herdr-close-{os.getpid()}"
+        confirm_mod_created = False
         caller = None
         try:
             # A real caller inside Herdr reproduces post-command shell cd drift.
@@ -171,7 +190,72 @@ def main():
             print("PASS: source cop herdr creates, groups, reuses and focuses one real Pi; shell cd path matches")
             print("PASS: parent remains terminal-free after the actual Herdr caller shell enters the worktree")
             print("PASS: cop new and direct wt add no app spaces or terminals")
+            placement = next((s, t, p) for s in data("herdr-app", "ls")["spaces"]
+                             for t in s["tabs"] for p in t.get("terminals", []) if p["terminal"] == terminal)
+            initial = rpc("terminal.get", terminal=terminal)
+            assert Path(initial["argv"][0]).name in {"sh", "bash", "zsh", "fish"}, "Pi has no surviving shell"
+            run("hc", "keys", terminal, "x", "ctrl+c")
+            cleared = rpc("terminal.get", terminal=terminal)
+            assert cleared["state"] == "live", "First Ctrl+C ended the terminal"
+            assert cleared["foreground"]["pid"] != initial["pid"], "First Ctrl+C exited Pi instead of clearing input"
+            assert cleared["status"]["app"] == "pi", "First Ctrl+C lost Pi"
+            run("hc", "keys", terminal, "ctrl+c", "ctrl+c")
+
+            def returned_shell():
+                current = rpc("terminal.get", terminal=terminal)
+                foreground = current.get("foreground") or {}
+                return current if current.get("state") == "live" and foreground.get("pid") == initial["pid"] else None
+
+            returned = wait_for(returned_shell, "Pi did not return to its original shell")
+            assert Path(returned["foreground"]["argv"][0]).name in {"sh", "bash", "zsh", "fish"}
+            present = next((s, t, p) for s in data("herdr-app", "ls")["spaces"]
+                           for t in s["tabs"] for p in t.get("terminals", []) if p["terminal"] == terminal)
+            assert (present[0]["id"], present[1]["id"], present[2]["pane"]) == (
+                placement[0]["id"], placement[1]["id"], placement[2]["pane"]), "Pi exit removed or replaced its tab"
+            wait_for(lambda: data("hc", "read", terminal, "--json")["text"].rstrip().endswith(("$", "%", "#", ">")),
+                     "Returned shell prompt is not ready", timeout=30)
+            # Core send adds an agent envelope after Pi reports status. Shells need literal keys.
+            marker = "wtherdrshellready"
+            run("hc", "keys", terminal, *list("echo"), "space", *list(marker), "enter")
+            try:
+                wait_for(lambda: any(line.strip() == marker for line in
+                                     data("hc", "read", terminal, "--json")["text"].splitlines()),
+                         "Returned shell did not accept input")
+            except RuntimeError:
+                print("Returned shell screen:", data("hc", "read", terminal, "--json")["text"][-2500:])
+                raise
+            print("PASS: Ctrl+C clears Pi input; double Ctrl+C exits to a usable shell in the same terminal, pane and tab")
+            for extra in present[0]["tabs"]:
+                if extra["id"] != present[1]["id"]:
+                    assert not extra.get("terminals"), "Refusing to close another terminal tab"
+                    run("herdr-app", "do", "tab.close", json.dumps({"id": extra["id"], "confirmed": True}))
+            assert not data("herdr-app", "status")["overlays"], "Unexpected overlay before confirmation check"
+            confirm_mod.mkdir()
+            confirm_mod_created = True
+            (confirm_mod / "mod.json").write_text(json.dumps({"place": "none"}))
+            (confirm_mod / "main.js").write_text(
+                'import {View,div} from "gpui-kit";\n'
+                'import {spaces,props,run,closeOverlay} from "herdr";\n'
+                'export default class CloseTest extends View { init() {\n'
+                'const id=' + json.dumps(present[1]["id"]) + ';\n'
+                'if(spaces().some(s=>s.tabs.length===1&&s.tabs[0].id===id)) run("tab.close",{id});\n'
+                'const overlay=props()?.overlay; if(overlay) closeOverlay(overlay);\n'
+                '} render() { return div().child("Disposable confirmation test"); } }\n')
+            run("herdr-app", "check", str(confirm_mod))
+            run("herdr-app", "do", "mod.open", "--name", confirm_mod.name)
+            wait_for(lambda: data("herdr-app", "status")["overlays"] == ["confirm"], "Last-tab close did not ask")
+            screenshot = Path("/tmp") / f"wt-herdr-close-confirm-{os.getpid()}.png"
+            run("herdr-app", "shot", str(screenshot))
+            assert rpc("terminal.get", terminal=terminal)["state"] == "live"
+            assert any(s["id"] == present[0]["id"] for s in data("herdr-app", "ls")["spaces"])
+            run("herdr-app", "do", "overlay.close")
+            print(f"PASS: explicit last-tab close asks before ending the returned shell; screenshot: {screenshot}")
         finally:
+            selected = data("herdr-app", "status")
+            if selected.get("space") in owned_spaces and selected.get("overlays") == ["confirm"]:
+                run("herdr-app", "do", "overlay.close")
+            if confirm_mod_created:
+                shutil.rmtree(confirm_mod)
             run("tmux", "kill-session", "-t", session, check=False)
             # Discover task-owned resources even if a launch receipt was lost.
             for space in data("herdr-app", "ls")["spaces"]:
@@ -196,8 +280,9 @@ def main():
                     run("wt", "-C", str(repo), "remove", branch, "--no-delete-branch", "--foreground", "--yes", env=env)
             if original.get("focused_pane"):
                 run("herdr-app", "do", "pane.focus", json.dumps({"pane": original["focused_pane"]}), check=False)
-            current = {t["address"] for t in data("hc", "ls", "--json")["terminals"] if t["state"] == "live"}
-            assert current == before, "Live terminal inventory changed after cleanup"
+            current = {t["address"]: (t["pid"], t["created_ms"]) for t in rpc("terminal.list")["terminals"]
+                       if t["state"] == "live"}
+            assert current == before, "Live terminal identities changed after cleanup"
             assert not data("herdr-app", "status")["errors"]
             assert run("tmux", "has-session", "-t", session, check=False).returncode != 0
             print("PASS: owned tmux, app terminals, spaces and fixture checkouts removed; existing terminals preserved")

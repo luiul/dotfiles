@@ -10,8 +10,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const live = process.argv.includes('--live');
-const runtime = join(homedir(), '.pi/agent/install/releases/1.5.0/node_modules/@earendil-works/pi-coding-agent');
 const managed = join(homedir(), '.pi/agent/install');
+const runtimeVersion = readFileSync(join(managed, 'current-version'), 'utf8').trim();
+const runtime = join(managed, 'releases', runtimeVersion, 'node_modules/@earendil-works/pi-coding-agent');
 const router = JSON.parse(readFileSync(join(repo, 'pi/.pi/agent/models.json'), 'utf8')).providers['ai-model-router'];
 const review = JSON.parse(readFileSync(join(repo, 'pi/.pi/agent/hermes-memory-config.json'), 'utf8')).llmModelOverride.split('/').slice(1).join('/');
 assert.equal(router.apiKey, '$AI_MODEL_ROUTER_API_KEY');
@@ -102,7 +103,7 @@ export default async function(pi) {
   await wait(() => records().some(event => event.type === 'ready'));
   const ready = records().find(event => event.type === 'ready');
   assert.equal(ready.mode, 'tui'); assert(ready.keyPresent); assert(ready.authResolved);
-  assert.equal(ready.childCode, 0); assert.equal(ready.childVersion, '1.5.0');
+  assert.equal(ready.childCode, 0); assert.equal(ready.childVersion, runtimeVersion);
   await wait(() => run('tmux', ['capture-pane', '-t', name, '-p']).includes('GUI_ENVIRONMENT_OK'));
   run('tmux', ['send-keys', '-t', name, 'C-d']);
   await wait(() => records().some(event => event.type === 'shutdown'));

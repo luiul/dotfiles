@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Installed Hermes review regression checks for Pi 1.4.0 and 1.5.0.
+/** Installed Hermes review regression checks for Pi 1.4.0 and 1.5.x.
  * Run: node scripts/test-hermes-review.mjs
  * Uses only a loopback OpenAI SSE fixture. No live credentials or memory stores.
  * Requires an installed supported Pi release and pi-hermes-memory with dependency seams.
@@ -23,7 +23,9 @@ const modelReference = reviewConfig.llmModelOverride;
 const modelId = modelReference.slice(modelReference.indexOf('/') + 1);
 const fallbackReference = reviewConfig.llmFallbackModels[0];
 const fallbackId = fallbackReference.slice(fallbackReference.indexOf('/') + 1);
-const pinnedRuntime = process.env.HERMES_TEST_PI_PACKAGE ?? join(homedir(), '.pi/agent/install/releases/1.5.0/node_modules/@earendil-works/pi-coding-agent');
+const managed = join(homedir(), '.pi/agent/install');
+const pinnedRuntime = process.env.HERMES_TEST_PI_PACKAGE ?? join(managed, 'releases',
+  readFileSync(join(managed, 'current-version'), 'utf8').trim(), 'node_modules/@earendil-works/pi-coding-agent');
 const pinnedHermes = process.env.HERMES_TEST_PACKAGE ?? join(homedir(), '.pi/agent/npm/node_modules/pi-hermes-memory');
 const suiteBudgetMs = 90_000;
 const caseBudgetMs = 8_000;
@@ -72,7 +74,7 @@ async function supervise() {
   for (const path of [candidatePath, join(runtime, 'dist/cli.js'), join(hermes, 'src/handlers/background-review.ts')]) {
     assert(existsSync(path), `Missing dependency: ${path}. Install Pi 1.4.0 and pi-hermes-memory before running.`);
   }
-  assert(['1.4.0', '1.5.0'].includes(JSON.parse(readFileSync(join(runtime, 'package.json'))).version), 'Unsupported Pi fixture API');
+  assert(['1.4.0', '1.5.0', '1.5.1'].includes(JSON.parse(readFileSync(join(runtime, 'package.json'))).version), 'Unsupported Pi fixture API');
   const before = readFileSync(candidatePath);
   const root = mkdtempSync(join(tmpdir(), 'hermes-review-test-'));
   assert.equal(statSync(root).mode & 0o777, 0o700, 'Temporary root must be private');

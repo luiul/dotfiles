@@ -44,7 +44,8 @@ assert.equal(settings.modelThinkingLevels['google-vertex/gemini-4-argon'],'high'
 assert(router.models.some(m=>m.id==='Kimi K3'),'All-model catalog must preserve Kimi');
 assert(router.models.some(m=>m.id==='DeepSeek V4 Flash'),'Worker catalog must preserve DeepSeek outside picker scope');
 // The installed resolver proves scope patterns select the same six canonical IDs.
-const runtimeDir=path.join(homedir(),'.pi/agent/install/releases/1.5.0/node_modules/@earendil-works/pi-coding-agent');
+const managed=path.join(homedir(),'.pi/agent/install');
+const runtimeDir=path.join(managed,'releases',fs.readFileSync(path.join(managed,'current-version'),'utf8').trim(),'node_modules/@earendil-works/pi-coding-agent');
 const {resolveModelScopeFromModels}=await import(path.join(runtimeDir,'dist/core/model-resolver.js'));
 const available=[
  ...router.models.map(model=>({...model,provider:'ai-model-router'})),

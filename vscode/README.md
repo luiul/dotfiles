@@ -164,6 +164,19 @@ in repos that never touch them (e.g. dotfiles); disable the web stack
 (`ms-vscode.live-server`, `peakchen90.open-html-in-browser`, `ecmel.vscode-html-css`,
 `piyushsarkar.sort-css-properties`) in data repos.
 
+## Safe dbt startup
+
+`dbt.installDepsOnProjectInitialization` is `false` in user settings.
+Opening or reloading a workspace must not run `dbt deps` or rewrite package lock files.
+The extension defaults this setting to `true` and can discover every dbt project in a monorepo.
+A dependency pinned to `master` can resolve to a newer commit and change an unrelated `package-lock.yml`.
+Run `dbt deps` or `dbts deps` explicitly in the intended project when dependencies need an update.
+
+For large repos, use the workspace setting `dbt.allowListFolders` to limit project discovery.
+Paths are relative to the workspace root, for example `pipelines/intl-scm-analytics/scm-analytics-engineers/dbt` in `tardis-community`.
+An empty list, or a list with no existing paths, disables the filter.
+Keep repo-specific paths out of user settings.
+
 ## Hidden Palette Commands
 
 `subframe7536.custom-ui-style` puts `Custom UI Style: Reload` right next to

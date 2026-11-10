@@ -371,6 +371,9 @@
     "python.languageServer": "Pylance",
     "editor.inlayHints.enabled": "offUnlessPressed",
     // === dbt & SQL ===
+    // Opening a workspace must not update package-lock.yml across discovered projects.
+    // Install or update dependencies explicitly with dbt deps.
+    "dbt.installDepsOnProjectInitialization": false,
     "files.associations": {
         "*.sql": "jinja-sql"
     },

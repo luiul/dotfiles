@@ -4,9 +4,9 @@ Stows `settings.json`, `keybindings.json`, and `extensions.json` (recommendation
 
 VS Code is a manual editor. Cmd+E inside pi opens that session's working directory. Worktree creation does not open an editor. Canopy and understory open or reuse Ghostty windows through title matching.
 
-Installed extensions are tracked in the Brewfile (`vscode "..."` entries). The pre-commit
-hook regenerates the Brewfile from the live system via `brew bundle dump --force`, so
-uninstalling an extension locally removes it from the Brewfile on the next commit.
+Installed extensions are tracked in the Brewfile (`vscode "..."` entries).
+Refresh the installed-state snapshot explicitly with `brew bundle dump --file=brew/Brewfile --force`, then review its diff.
+Commits never refresh or stage the snapshot automatically.
 
 The `window.title` setting remains important for coppice's read-only deletion warnings. It identifies manually opened folders by their full path before the first separator. The branch portion is never matched. Canopy and understory do not use VS Code for navigation.
 
@@ -72,9 +72,9 @@ with it.
 
 ## Removed Extensions (2026-09-10, performance prune: packs and redundant tools)
 
-Pruned after a startup/background-load audit. The Brewfile drops these automatically on
-the next commit via the pre-commit hook; the entries were also removed from
-`extensions.json` recommendations.
+Pruned after a startup/background-load audit.
+At the time, the pre-commit hook refreshed the Brewfile automatically; current refreshes are explicit and reviewed.
+The entries were also removed from `extensions.json` recommendations.
 
 | Extension | What it does | Reinstall |
 | --- | --- | --- |

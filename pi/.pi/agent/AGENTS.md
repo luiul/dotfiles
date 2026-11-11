@@ -44,6 +44,7 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Treat AI-generated code and reviews as unverified input. Inspect the full diff and tests against the acceptance criteria, contracts, failure paths, security, and resource cleanup. A second agent review supplements, not replaces, verification and human review.
 - Before editing, identify acceptance criteria whose failure could cause data loss, security exposure, broken consumer contracts, or material service disruption. State what must stay unchanged.
 - For data or API changes, check keys, populated values, types, ordering, metadata, and consumer behavior as applicable. Counts and green tests alone do not prove compatibility.
+- For high-risk shared data or API changes, use the concise [contract and evidence template](../../../docs/contract-and-evidence-template.md) in the existing tracker or PR. Bind evidence to the reviewed code SHA and input snapshot. Define allowed differences and deployment blockers before implementation.
 
 ### Comments and documentation
 
@@ -107,6 +108,8 @@ Sources: [Google code review guidance](https://google.github.io/eng-practices/re
 
 - Do not stage or commit on your own. Leave changes as unstaged modifications in the working tree; the user reviews them with VS Code's "Open Changes" diff view, which works best on uncommitted changes. Run `git add` and `git commit` only after the user approves.
 - Commit only the files for the approved change. Review the full working tree first and leave unrelated or parallel edits out.
+- Commit hooks must validate only, never regenerate snapshots, edit files, or stage extra paths. Refresh package and environment snapshots explicitly for separate review.
+- After approval, use explicit reviewed paths for normal commits. Inspect the actual commit diff before pushing, not only the pre-hook staged set. For dotfiles, run `node scripts/check-commit-scope.mjs <commit-sha> <approved-path>...` from the source worktree. The check is read-only and grants no approval. Merge commits need a separate integration review.
 - After explicit commit and publication approval, commit reviewed files in their source worktree. Personal projects publish to the remote default branch without a PR; temporary task branches are allowed. Integrate current remote work, run the combined-tree checks, and push normally. Preserve source commits and unrelated changes. HelloFresh repos use ticket branches and draft PRs.
 - Coordinate integration, push, and live updates with other workers in the same repo. Do not run `cop sync` while affected workers or publication are active; even `--no-main` can change source worktrees. Never force-push to resolve a publication race.
 - Standing instructions that explicitly say to commit (e.g. the Pi Skills section) override the review gate for their scope.

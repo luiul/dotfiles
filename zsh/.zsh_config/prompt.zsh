@@ -31,6 +31,8 @@ typeset -g _my_prompt_command_running=0 _my_prompt_daemon_pending=0
 typeset -g _my_prompt_daemon_dir="" _my_prompt_daemon_generation=0
 typeset -g _my_prompt_daemon_start_fd=-1 _my_prompt_daemon_attempts=0
 typeset -g _my_prompt_daemon_retry=0
+# Startup has two records: the process-group header, then the hello reply.
+typeset -g _my_prompt_daemon_stage=header _my_prompt_daemon_buffer=""
 
 # Escape dynamic labels before prompt-percent expansion. Keep terminal controls out.
 _my_prompt_label() {
@@ -74,6 +76,9 @@ _my_prompt_filter_fingerprint() {
     for file in "$_my_prompt_common_dir/config" "$_my_prompt_repo_dir/config.worktree" \
         "${GIT_CONFIG_GLOBAL:-$HOME/.gitconfig}" "${XDG_CONFIG_HOME:-$HOME/.config}/git/config" \
         "${GIT_CONFIG_SYSTEM:-/etc/gitconfig}"; do
+        # /dev/null can be an explicit disabled config. Device timestamps change
+        # when logs are redirected there; they are not configuration edits.
+        [[ -f "$file" ]] || continue
         local -a info=()
         if zstat -A info +mtime -- "$file" 2>/dev/null; then
             key+="$file:$info[1]:"
@@ -453,19 +458,25 @@ _my_prompt_async_cb() {
     return 0
 }
 
-# Launch without waiting for exec. Finish on pipe readiness, with a 50ms
-# handshake bound and at most three attempts per shell.
+# Launch without waiting for exec. The plugin publishes its process-group
+# header before the binary starts, so readability alone is not readiness.
+# Finish both startup records with zero-wait reads and one five-second deadline.
+# There are at most three attempts per shell. Unknown plugin state falls back
+# to background Git rather than a blocking gitstatus_start call.
 _my_prompt_gitstatus_start() {
     (( _my_prompt_gitstatus_ok || _my_prompt_daemon_start_fd >= 0 )) && return 0
     (( _my_prompt_daemon_attempts < 3 && EPOCHSECONDS >= _my_prompt_daemon_retry )) || return 0
-    (( $+functions[gitstatus_start] )) || return 0
+    _my_prompt_daemon_contract || return 0
     (( ++_my_prompt_daemon_attempts ))
     if gitstatus_start -a -s -1 -u -1 -c -1 -d -1 MYPROMPT 2>/dev/null; then
         _my_prompt_daemon_start_fd=${_GITSTATUS_RESP_FD_MYPROMPT:--1}
+        _my_prompt_daemon_stage=header
+        _my_prompt_daemon_buffer=""
         if (( _my_prompt_daemon_start_fd >= 0 )); then
-            zle -F $_my_prompt_daemon_start_fd _my_prompt_daemon_ready 2>/dev/null
-            sched +5 "_my_prompt_daemon_timeout $_my_prompt_daemon_attempts"
-            return 0
+            if zle -F $_my_prompt_daemon_start_fd _my_prompt_daemon_ready 2>/dev/null; then
+                sched +5 "_my_prompt_daemon_timeout $_my_prompt_daemon_attempts"
+                return 0
+            fi
         fi
     fi
     _my_prompt_daemon_failed
@@ -473,11 +484,14 @@ _my_prompt_gitstatus_start() {
 
 _my_prompt_daemon_failed() {
     _my_prompt_unschedule _my_prompt_daemon_timeout
+    _my_prompt_unschedule _my_prompt_daemon_open
     _my_prompt_unschedule _my_prompt_daemon_query_timeout
     if (( _my_prompt_daemon_start_fd >= 0 )); then
         zle -F $_my_prompt_daemon_start_fd 2>/dev/null
     fi
     _my_prompt_daemon_start_fd=-1
+    _my_prompt_daemon_stage=header
+    _my_prompt_daemon_buffer=""
     gitstatus_stop MYPROMPT 2>/dev/null
     _my_prompt_gitstatus_ok=0
     _my_prompt_daemon_pending=0
@@ -491,17 +505,137 @@ _my_prompt_daemon_timeout() {
     (( _my_prompt_command_running )) || _my_prompt_refresh_git
 }
 
+# Match the private startup and cleanup protocol before using it. A plugin
+# update with a different contract uses plain Git until this adapter is reviewed.
+_my_prompt_daemon_contract() {
+    (( $+functions[gitstatus_start] && $+functions[_gitstatus_daemon] &&
+       $+functions[_gitstatus_process_response] && $+functions[gitstatus_stop] )) || return 1
+    [[ $functions[_gitstatus_daemon] == *'${(l:20:)pgid}'* &&
+       $functions[gitstatus_start] == *'local expected='*'hello'* &&
+       $functions[gitstatus_start] == *'_gitstatus_process_response_$name-$fsuf'* &&
+       $functions[gitstatus_stop] == *'kill -- -$daemon_pid'* &&
+       $functions[gitstatus_stop] == *'exec {req_fd}'* &&
+       $functions[_gitstatus_process_response] == *'_GITSTATUS_NUM_INFLIGHT_'* ]]
+}
+
+# Only the startup adapter uses the plugin's private protocol. Keep its normal
+# query parser and cleanup hooks after handoff. If that contract changes, fail
+# closed to plain Git. Do not read a partial record in the plugin's blocking
+# finish routine, because it cannot resume after a timeout.
 _my_prompt_daemon_ready() {
-    _my_prompt_unschedule _my_prompt_daemon_timeout
-    zle -F $_my_prompt_daemon_start_fd 2>/dev/null
-    _my_prompt_daemon_start_fd=-1
-    if gitstatus_start -t 0.05 -s -1 -u -1 -c -1 -d -1 MYPROMPT 2>/dev/null; then
-        _my_prompt_gitstatus_ok=1
-        (( _my_prompt_command_running )) || _my_prompt_refresh_git
-    else
-        _my_prompt_daemon_failed
-        (( _my_prompt_command_running )) || _my_prompt_refresh_git
+    emulate -L zsh -o extended_glob -o no_aliases
+    local fd=$1 chunk="" expected=$'}hello\x1f0\x1e'
+    local -i rc=0 size=9
+    (( fd == _my_prompt_daemon_start_fd && fd >= 0 )) || return 0
+    if [[ -n ${2-} ]] || (( ${_GITSTATUS_STATE_MYPROMPT:-0} != 1 ||
+          ${_GITSTATUS_RESP_FD_MYPROMPT:--1} != fd ||
+          ${_GITSTATUS_CLIENT_PID_MYPROMPT:-0} != sysparams[pid] )); then
+        _my_prompt_daemon_start_failed
+        return 0
     fi
+    [[ $_my_prompt_daemon_stage == header ]] && size=$(( 20 - ${#_my_prompt_daemon_buffer} ))
+    sysread -i $fd -t 0 -s $size chunk || rc=$?
+    _my_prompt_daemon_buffer+=$chunk
+    if [[ $_my_prompt_daemon_stage == header ]]; then
+        if (( ${#_my_prompt_daemon_buffer} < 20 )); then
+            (( rc == 0 || rc == 4 )) || _my_prompt_daemon_start_failed
+            return 0
+        fi
+        if [[ $_my_prompt_daemon_buffer != ' '#<1-> ||
+              ${_GITSTATUS_FILE_PREFIX_MYPROMPT-} != /* ||
+              ! -p ${_GITSTATUS_FILE_PREFIX_MYPROMPT-}.fifo ]]; then
+            _my_prompt_daemon_start_failed
+            return 0
+        fi
+        # Recording the real group before opening the FIFO lets gitstatus_stop
+        # cancel the whole daemon job even if startup fails at the next step.
+        typeset -gi GITSTATUS_DAEMON_PID_MYPROMPT=$_my_prompt_daemon_buffer
+        _my_prompt_daemon_stage=opening
+        _my_prompt_daemon_buffer=""
+        _my_prompt_daemon_open $_my_prompt_daemon_attempts
+        return 0
+    fi
+    # Installation progress bytes are not a hello reply and do not renew the
+    # deadline. Accept split replies, but never accept an unexpected record.
+    while [[ $_my_prompt_daemon_buffer == $'\1'* ]]; do
+        _my_prompt_daemon_buffer=${_my_prompt_daemon_buffer#?}
+    done
+    if [[ $expected != "$_my_prompt_daemon_buffer"* ]]; then
+        _my_prompt_daemon_start_failed
+    elif [[ $_my_prompt_daemon_buffer == "$expected" ]]; then
+        if _my_prompt_daemon_handoff; then
+            _my_prompt_unschedule _my_prompt_daemon_timeout
+            _my_prompt_daemon_start_fd=-1
+            _my_prompt_daemon_buffer=""
+            _my_prompt_gitstatus_ok=1
+            (( _my_prompt_command_running )) || _my_prompt_refresh_git
+        else
+            _my_prompt_daemon_start_failed
+        fi
+    elif (( rc != 0 && rc != 4 )); then
+        _my_prompt_daemon_start_failed
+    fi
+    return 0
+}
+
+# A header may arrive just before the daemon opens the request FIFO. Retry
+# ENXIO without blocking input. The original deadline still bounds startup.
+_my_prompt_daemon_open() {
+    emulate -L zsh -o no_aliases -o localtraps
+    trap '' PIPE
+    (( $1 == _my_prompt_daemon_attempts && _my_prompt_daemon_start_fd >= 0 )) || return 0
+    [[ $_my_prompt_daemon_stage == opening ]] || return 0
+    _my_prompt_unschedule _my_prompt_daemon_open
+    local -i req_fd=-1 written=0
+    if ! sysopen -w -o cloexec,nonblock -u req_fd -- $_GITSTATUS_FILE_PREFIX_MYPROMPT.fifo 2>/dev/null; then
+        sched +1 "_my_prompt_daemon_open $_my_prompt_daemon_attempts"
+        return 0
+    fi
+    typeset -gi _GITSTATUS_REQ_FD_MYPROMPT=req_fd
+    if ! syswrite -o $req_fd -c written $'}hello\x1f\x1e' || (( written != 8 )); then
+        _my_prompt_daemon_start_failed
+        return 0
+    fi
+    _my_prompt_daemon_stage=hello
+}
+
+_my_prompt_daemon_start_failed() {
+    _my_prompt_daemon_failed
+    (( _my_prompt_command_running )) || _my_prompt_refresh_git
+    return 0
+}
+
+_my_prompt_daemon_handoff() {
+    # These are the unsuffixed plugin entry points used by this prompt. Leave
+    # the plugin in charge of query responses, exit hooks and descriptor cleanup.
+    _my_prompt_daemon_contract || return 1
+    (( ${_GITSTATUS_STATE_MYPROMPT:-0} == 1 &&
+       ${_GITSTATUS_CLIENT_PID_MYPROMPT:-0} == sysparams[pid] &&
+       ${_GITSTATUS_RESP_FD_MYPROMPT:--1} == _my_prompt_daemon_start_fd &&
+       ${_GITSTATUS_REQ_FD_MYPROMPT:--1} >= 0 )) || return 1
+    (( ${+_GITSTATUS_LOCK_FD_MYPROMPT} )) || return 1
+    function _gitstatus_process_response_MYPROMPT-() {
+        emulate -L zsh -o no_aliases
+        local fsuf=''
+        if (( $# == 1 )); then
+            _gitstatus_process_response MYPROMPT 0 ''
+        else
+            gitstatus_stop MYPROMPT
+        fi
+    }
+    function _gitstatus_cleanup_MYPROMPT-() {
+        emulate -L zsh -o no_aliases
+        (( ${_GITSTATUS_CLIENT_PID_MYPROMPT:-0} == sysparams[pid] )) || return 0
+        gitstatus_stop MYPROMPT
+    }
+    zle -F $_my_prompt_daemon_start_fd _gitstatus_process_response_MYPROMPT- || return 1
+    add-zsh-hook zshexit _gitstatus_cleanup_MYPROMPT- || return 1
+    if (( _GITSTATUS_LOCK_FD_MYPROMPT != -1 )); then
+        zf_rm -- $_GITSTATUS_FILE_PREFIX_MYPROMPT.lock || return 1
+        zsystem flock -u $_GITSTATUS_LOCK_FD_MYPROMPT || return 1
+    fi
+    unset _GITSTATUS_LOCK_FD_MYPROMPT
+    typeset -gi _GITSTATUS_STATE_MYPROMPT=2
 }
 
 _my_prompt_refresh_git() {
@@ -586,6 +720,7 @@ _my_prompt_chpwd() {
 _my_prompt_shutdown() {
     _my_prompt_cancel_worker
     _my_prompt_unschedule _my_prompt_daemon_timeout
+    _my_prompt_unschedule _my_prompt_daemon_open
     _my_prompt_unschedule _my_prompt_daemon_query_timeout
     if (( _my_prompt_daemon_start_fd >= 0 )); then
         zle -F $_my_prompt_daemon_start_fd 2>/dev/null

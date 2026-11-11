@@ -64,10 +64,10 @@ Sources: [Google code review guidance](https://google.github.io/eng-practices/re
 
 ## Verification
 
-- Do not guess. Before you state a fact about a change you made, or answer a question about a system, file, or state, check it with the relevant tool. Examples: `aws`, `snow` (Snowflake CLI), `databricks`, `tmux`, `gh`, `jira`. If a claim is checkable with a command, run the command first.
+- Do not guess. Before you state a fact about a change you made, or answer a question about a system, file, or state, check it with the relevant tool. Examples: `aws`, `snow` (Snowflake CLI), `databricks`, `rex`, `gh`, `jira`. If a claim is checkable with a command, run the command first.
 - After each coherent change, run checks appropriate to its behavior and risk before reporting done. Check the output, not just the exit code.
 - Run relevant existing regression checks and inspect affected config. Run the full suite when shared behavior changes or repo policy requires it. Explain narrower coverage. A green new test is not enough.
-- For changes that affect live behavior (extensions, shell config, notifications, model settings), verify in the real running setup: a new shell, a tmux session, a real run. Unit tests and print mode are not enough.
+- For changes that affect live behavior (extensions, shell config, notifications, model settings), verify in the real running setup: a new shell, a private Rex terminal fixture, a real run. Unit tests and print mode are not enough.
 - Verification does not grant permission to deploy, change shared data, or bypass approval, authentication, or ownership rules. Report blocked checks and the acceptance criteria left unverified.
 - For behavior changes, add or update focused automated tests in the same change whenever feasible. Use the existing test setup. If none exists, use the smallest maintainable check rather than a new framework by default.
 - For bug fixes, add a regression test that fails before the fix and passes after it when feasible. Assert expected behavior from the requirements, not just the new implementation. Cover relevant boundaries, invalid inputs, failure paths, cleanup, and compatibility.
@@ -153,7 +153,7 @@ Sources: [Google code review guidance](https://google.github.io/eng-practices/re
 ## Background Processes
 
 - Every background or detached process must have a bound: a timeout, a bounded count, or an explicit shutdown step. Never leave a loop, watcher, or server running unattended.
-- tmux sessions created by agents get a name starting with `ag-` (e.g. `ag-canopy-smoke`) and are always killed at the end of the task with `tmux kill-session -t <name>`. Register an explicit task deadline and owner with `reap-strays --register-tmux` (see `~/dotfiles/macos/README.md`). The watchdog only removes expired, detached, unshared sessions whose registered owner has exited. Session age alone is not permission to kill active work.
+- Terminal fixtures use the maintained private Rex driver in `~/dotfiles/scripts/rex-test-driver.mjs`. Never create tests on the desktop Rex endpoint. Set explicit dimensions, environment and deadline; call `stop()` in `finally` and treat cleanup errors as failures. See `~/dotfiles/docs/terminal-test-fixtures.md`. The driver owns startup supervision and registry tracking. Legacy tmux task cleanup remains for existing records, not new fixtures.
 - Bulk `pi --mode json -p` loops (e.g. smoke tests) run with `--no-extensions` when they do not need ctx tools: each extension-enabled run pays a ~10s context-mode bridge spawn (SentinelOne image-load tax) and widens the bridge-leak window.
 - `ctx_execute` with `background: true` is only for servers and long-running tasks that are explicitly stopped afterwards; never for fire-and-forget work. Supply an explicit positive timeout for background execution. Foreground ctx execution defaults to 120 seconds; set a longer explicit timeout for builds that need it.
 - The version-checked context-mode resource patch handles cancellation, startup failure, and child cleanup. After a direct package reinstall, run `pi-resources-patch`, then `/reload` when idle. The resource guard blocks ctx tools if the patch is missing or changed. See `~/dotfiles/docs/pi-resource-safety.md`.

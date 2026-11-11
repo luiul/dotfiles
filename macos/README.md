@@ -86,11 +86,19 @@ Handled owner-file open, write, or fsync failures remove only the new lock direc
 
 A short-lived `lock-recovery` directory serializes stale-lock recovery. A crash before owner metadata is saved, or during recovery, can leave an ambiguous lock. These locks fail closed and need manual recovery. Verify no apply or registration run is active before removing `lock/owner.json`, `lock`, or `lock-recovery` under `~/.cache/reap-strays/`. Never remove a lock just because it is old.
 
-Failed signals and failed tmux cleanup return exit code 1. Invalid arguments return 2. A held or ambiguous apply lock returns 3. Successful checks return 0.
+Failed signals, failed tmux cleanup, and Rex registry inspection or cleanup failures return exit code 1. Invalid arguments return 2. A held or ambiguous apply lock returns 3. Successful checks return 0.
 
 The old PID-only `~/.cache/strays-termed` file is ignored. It cannot authorize escalation. Dry runs do not create a lock, state, or log, and do not use escalation state.
 
-### Registered tmux tasks
+### Private Rex fixtures
+
+Terminal tests use `scripts/rex-test-driver.mjs`, not the desktop Rex endpoint. The driver registers its private root, socket, server, controller and exec targets with `reap-rex-tests.mjs` before publishing readiness. `reap-strays` includes these explicit records in dry-run and apply reports. It never discovers arbitrary Rex sessions or processes.
+
+The backstop requires an expired deadline and absent owner and supervisor. It verifies process start identities and fixture metadata again before TERM. A successful TERM permits KILL after at least ten seconds. Ambiguous metadata blocks cleanup and returns a failure status. A live owner or future deadline is an expected skip. See [terminal test fixtures](../docs/terminal-test-fixtures.md) for ownership, capture and cleanup limits.
+
+### Legacy registered tmux tasks
+
+This adapter remains for old task records during cutover. New terminal fixtures use the private Rex driver.
 
 Only the default tmux server is inspected. Age alone never permits session cleanup. Register a detached task with a live owner and a future deadline:
 
@@ -127,7 +135,7 @@ plutil -lint macos/Library/LaunchAgents/com.luisaceituno.reap-strays.plist
 
 Unit fixtures inject process reads, time, signals, files, and tmux calls. They cover login-only shells, ambiguous bundle paths, lock initialization failures, concurrent lock changes, backward clocks, failed signals, and PID reuse. They never signal real processes or kill real sessions.
 
-Live integration uses a private tmux socket and test-owned processes with a 30-second cleanup deadline. Real shell and Node command lines use synthetic orphan age and parent metadata, with spy signals only. Login-only shells still execute their stdin scripts. The tmux checks keep expired tasks with a live owner, then remove only the isolated session after its owner exits. Cleanup waits for test-owned children to exit. These checks do not change the installed watchdog.
+Live terminal cleanup uses a private Rex endpoint. It preserves expired tasks while their owner is alive, then removes only registered test children after the owner and supervisor exit. The suite includes a child that resists HUP and TERM. Bootstrap and deadline checks are separate tests. These checks do not change the installed watchdog.
 
 BSD `ps` exposes start time only to the second. The last read narrows races but cannot remove the small interval between verification and a signal. Ambiguous input fails closed. An unhandled crash or unreadable cleanup metadata can still leave a lock for manual recovery.
 

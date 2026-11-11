@@ -1,5 +1,8 @@
 #!/usr/bin/env -S uv run --script
-"""Exercise source cop herdr in owned tmux and app spaces, then remove fixtures."""
+"""Exercise source cop herdr with Rex and real Herdr app spaces, then remove fixtures.
+
+This live harness intentionally changes app spaces and focus when run.
+"""
 
 import argparse
 import json
@@ -12,6 +15,8 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+
+from rex_test_driver import RexTestDriver
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -62,7 +67,7 @@ def main():
     original = data("herdr-app", "status")
     before = {t["address"]: (t["pid"], t["created_ms"]) for t in rpc("terminal.list")["terminals"]
               if t["state"] == "live"}
-    session = f"ag-wt-herdr-{os.getpid()}"
+    driver = None
     deadline = int(time.time()) + 240
     fixture_path = Path(tempfile.mkdtemp(prefix="wt-herdr-live-")).resolve()
     try:
@@ -130,9 +135,10 @@ def main():
                 time.sleep(0.2)
             else:
                 raise RuntimeError("Herdr caller did not appear")
-            run("tmux", "new-session", "-d", "-s", session, "-x", "140", "-y", "38", "/bin/zsh -f")
-            run(str(Path.home() / ".local/bin/reap-strays"), "--register-tmux", session,
-                "--owner", str(os.getpid()), "--deadline", str(deadline))
+            # Only the supplementary caller is private. Herdr still changes real app spaces and focus.
+            driver = RexTestDriver(deadline_ms=max(1000, int((deadline - time.time()) * 1000)))
+            host = driver.create(name=f"ag-wt-herdr-{os.getpid()}", command=["/bin/zsh", "-f"],
+                                 env=env, cwd=str(repo), columns=140, rows=38)
             for index, branch in enumerate(["topic", "topic", "plain", "direct"]):
                 result = fixture / f"result-{index}"
                 exit_file = fixture / f"exit-{index}"
@@ -151,8 +157,8 @@ def main():
                 if index == 0:
                     run("hc", "send", caller, shell)
                 else:
-                    run("tmux", "send-keys", "-t", session, "-l", shell)
-                    run("tmux", "send-keys", "-t", session, "Enter")
+                    driver.text(host, shell)
+                    driver.key(host, "enter")
                 end = min(time.monotonic() + 110, time.monotonic() + max(1, deadline - time.time()))
                 while not exit_file.exists() and time.monotonic() < end:
                     time.sleep(0.3)
@@ -165,8 +171,8 @@ def main():
                     assert pwd_file.read_text().strip() == str(path), "Calling shell did not enter the checkout"
                 spaces = data("herdr-app", "ls")["spaces"]
                 rendered = fixture / f"screen-{index}"
-                rendered.write_text(run("tmux", "capture-pane", "-t", session, "-p").stdout)
-                assert run("tmux", "display-message", "-t", session, "-p", "#{pane_dead}").stdout.strip() != "1"
+                rendered.write_text(driver.capture(host))
+                assert not driver.call("process", host=host).get("last_exit"), "Rex caller shell exited"
                 test_spaces = [s for s in spaces if s.get("folder", "").startswith(str(fixture))]
                 owned_spaces.update(s["id"] for s in test_spaces)
                 for space in test_spaces:
@@ -256,7 +262,8 @@ def main():
                 run("herdr-app", "do", "overlay.close")
             if confirm_mod_created:
                 shutil.rmtree(confirm_mod)
-            run("tmux", "kill-session", "-t", session, check=False)
+            if driver is not None:
+                driver.stop()
             # Discover task-owned resources even if a launch receipt was lost.
             for space in data("herdr-app", "ls")["spaces"]:
                 if space.get("folder", "").startswith(str(fixture)):
@@ -284,9 +291,13 @@ def main():
                        if t["state"] == "live"}
             assert current == before, "Live terminal identities changed after cleanup"
             assert not data("herdr-app", "status")["errors"]
-            assert run("tmux", "has-session", "-t", session, check=False).returncode != 0
-            print("PASS: owned tmux, app terminals, spaces and fixture checkouts removed; existing terminals preserved")
+            assert driver is None or driver.process.poll() is not None, "Rex bridge survived cleanup"
+            print("PASS: owned Rex bridge, app terminals, spaces and fixture checkouts removed; existing terminals preserved")
     finally:
+        # Stop the private fixture even when Herdr cleanup fails before reaching driver.stop().
+        if driver is not None:
+            driver.stop()
+            assert driver.process.poll() is not None, "Rex bridge survived cleanup"
         # Keep a failed fixture when valuable files or worktree cleanup remain.
         if not (fixture_path / "trees").exists() or not list((fixture_path / "trees").iterdir()):
             shutil.rmtree(fixture_path)

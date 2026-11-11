@@ -2,7 +2,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createAssistantMessageEventStream, Type } from "@earendil-works/pi-ai";
 import { ProcessTerminal, Text, stripTerminalSequences } from "@earendil-works/pi-tui";
-import { appendFileSync } from "node:fs";
+import assert from "node:assert/strict";
+import { appendFileSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 
@@ -10,23 +12,52 @@ export default async function (pi: ExtensionAPI) {
 	// hrtime is a monotonic clock shared by the fixture and its supervising process.
 	const note = (type: string, data: Record<string, unknown> = {}) => appendFileSync(process.env.ZEN_LIVE_EVENTS!,
 		JSON.stringify({ type, pid: process.pid, mono: Number(process.hrtime.bigint()) / 1e6, elapsed: performance.now(), ...data }) + "\n");
-	const { ToolExecutionComponent } = await import(pathToFileURL(process.env.ZEN_LIVE_TOOL_COMPONENT!).href);
+	const componentPath = process.env.ZEN_LIVE_TOOL_COMPONENT!;
+	const packageRoot = join(dirname(componentPath), "../../../..");
+	assert.equal(JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")).version, "1.5.1");
+	const { ToolExecutionComponent } = await import(pathToFileURL(componentPath).href);
 	const proto = ToolExecutionComponent.prototype;
-	const originalRender = proto.render, originalResult = proto.updateResult, originalWrite = ProcessTerminal.prototype.write;
+	for (const method of ["render", "updateResult", "updateArgs", "setArgsComplete", "markExecutionStarted", "setExpanded"])
+		assert.equal(typeof proto[method], "function", `Missing Pi 1.5.1 component method: ${method}`);
+	assert.equal(typeof ProcessTerminal.prototype.write, "function", "Missing terminal write probe");
+	const originalRender = proto.render, originalResult = proto.updateResult, originalComplete = proto.setArgsComplete,
+		originalWrite = ProcessTerminal.prototype.write;
 	const previousFrames = new WeakMap<object, string>();
+	const validate = (component: any) => {
+		try {
+			assert(component instanceof ToolExecutionComponent, "Probe must observe an actual host component");
+			assert.equal(typeof component.toolCallId, "string");
+			assert.equal(typeof component.toolName, "string");
+			for (const field of ["expanded", "isPartial", "executionStarted", "argsComplete"])
+				assert.equal(typeof component[field], "boolean", `Missing component state: ${field}`);
+			assert(component.args && typeof component.args === "object", "Missing actual argument state");
+		} catch (error) { note("fixture-error", { error: String(error) }); throw error; }
+	};
+	note("instrumentation", { version: "1.5.1", componentPath });
 	// Instrument actual host components, not a second component simulation. Never trigger a paint here.
 	proto.render = function (width: number) {
 		const lines = originalRender.call(this, width);
+		validate(this);
 		const frame = { id: this.toolCallId, tool: this.toolName, width, expanded: this.expanded,
 			partial: this.isPartial, started: this.executionStarted, argsComplete: this.argsComplete,
+			args: this.args, error: this.result?.isError ?? false,
+			durationMs: this.isPartial ? undefined : this.result?.durationMs,
 			lines: lines.map((line: string) => stripTerminalSequences(line)), ansi: lines };
 		const signature = JSON.stringify(frame);
 		if (previousFrames.get(this) !== signature) { previousFrames.set(this, signature); note("frame", frame); }
 		return lines;
 	};
 	proto.updateResult = function (result: any, partial: boolean = false) {
-		note("component-result", { id: this.toolCallId, partial, error: result.isError });
+		validate(this);
+		note("component-result", { id: this.toolCallId, partial, error: result.isError, durationMs: result.durationMs });
 		return originalResult.call(this, result, partial);
+	};
+	proto.setArgsComplete = function () {
+		validate(this);
+		// Pi 1.5.1 marks completion at assistant message_end, not the full-value delta.
+		// Observe the native transition only. Do not invoke render or invalidate.
+		note("args-complete", { id: this.toolCallId, args: this.args });
+		return originalComplete.call(this);
 	};
 	ProcessTerminal.prototype.write = function (data: string) {
 		// Count real calls to terminal.write. PI_TUI_WRITE_LOG itself is a byte log, not a write counter.
@@ -106,16 +137,16 @@ export default async function (pi: ExtensionAPI) {
 							name === "read" ? { path: "read-case.txt", offset: 1, limit: 2 } : { name: scenario };
 						const call = { type: "toolCall", id: `zen-${++serial}`, name, arguments: {} };
 						message.content.push(call); message.stopReason = "toolUse";
-						note("call-start", { id: call.id, tool: name, scenario });
+						note("call-start", { id: call.id, tool: name, scenario, args: call.arguments });
 						await emit({ type: "toolcall_start", contentIndex: 0, partial: message });
 						await pause(150, options?.signal);
 						call.arguments = name === "bash" ? { command: "/bin/bash" } : name === "read" ? { path: "read" } : { name: scenario.slice(0, 2) };
 						await emit({ type: "toolcall_delta", contentIndex: 0, delta: JSON.stringify(call.arguments).slice(0, -1), partial: message });
-						note("args-progress", { id: call.id });
+						note("args-progress", { id: call.id, args: call.arguments });
 						await pause(150, options?.signal);
 						call.arguments = args;
 						await emit({ type: "toolcall_delta", contentIndex: 0, delta: "}", partial: message });
-						note("args-full", { id: call.id });
+						note("args-full", { id: call.id, args: call.arguments });
 						await pause(150, options?.signal);
 						await emit({ type: "toolcall_end", contentIndex: 0, toolCall: call, partial: message });
 						note("call-end", { id: call.id });
@@ -139,10 +170,11 @@ export default async function (pi: ExtensionAPI) {
 	});
 	pi.on("session_start", (_event, ctx) => note("ready", { mode: ctx.mode, session: ctx.sessionManager.getSessionFile() }));
 	pi.on("tool_execution_start", (event) => note("tool-start", { id: event.toolCallId, tool: event.toolName }));
-	pi.on("tool_execution_end", (event) => note("tool-end", { id: event.toolCallId, error: event.isError }));
+	pi.on("tool_execution_end", (event) => note("tool-end", { id: event.toolCallId, error: event.isError, durationMs: event.durationMs }));
 	pi.on("agent_settled", (event) => note("settled", { aborted: event.aborted }));
 	pi.on("session_shutdown", () => {
 		note("shutdown");
-		proto.render = originalRender; proto.updateResult = originalResult; ProcessTerminal.prototype.write = originalWrite;
+		proto.render = originalRender; proto.updateResult = originalResult; proto.setArgsComplete = originalComplete;
+		ProcessTerminal.prototype.write = originalWrite;
 	});
 }

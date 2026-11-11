@@ -6,10 +6,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { RexTestDriver } from './rex-test-driver.mjs';
 
 export const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const candidate = join(repo, 'pi/.pi/agent/extensions/scoped-agent-context.ts');
-export const installed = realpathSync(process.env.SCOPED_TEST_PI_PACKAGE ?? join(homedir(), '.pi/agent/install/current/node_modules/@earendil-works/pi-coding-agent'));
+const install = join(homedir(), '.pi/agent/install');
+const release = process.env.SCOPED_TEST_PI_PACKAGE ? null : readFileSync(join(install, 'current-version'), 'utf8').trim();
+export const installed = realpathSync(process.env.SCOPED_TEST_PI_PACKAGE ?? join(install, 'releases', release, 'node_modules/@earendil-works/pi-coding-agent'));
 export const cli = join(installed, 'dist/cli.js');
 export const sdk = () => import(pathToFileURL(join(installed, 'dist/index.js')).href);
 export function put(path, content) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, content); }
@@ -109,7 +112,7 @@ function ordered(text, markers) {
 
 async function main() {
   const f = makeFixture(), original = readFileSync(candidate, 'utf8'), checks = [], children = new Set();
-  const node = process.env.SCOPED_TEST_NODE ?? 'node';
+  const node = process.env.SCOPED_TEST_NODE ?? '/opt/homebrew/bin/node';
   const fixture = join(f.root, 'provider.ts'); put(fixture, fixtureSource);
   put(join(f.env.PI_CODING_AGENT_DIR, 'settings.json'), JSON.stringify({quietStartup:true,compaction:{enabled:false},retry:{enabled:false}}));
   let seq = 0;
@@ -209,32 +212,34 @@ async function main() {
     });
     // Exercise the same retry in a real interactive Pi host with a private fixture provider.
     unlinkSync(slowMark);
-    const tmuxName=`ag-scoped-context-${process.pid}`, tuiLog=join(f.root,'tui.jsonl');
-    const target=`=${tmuxName}:0.0`;
-    const tmux=(...a)=>run('tmux',a,process.env);
+    const tuiLog=join(f.root,'tui.jsonl');
     const until=async(predicate,label)=>{const deadline=Date.now()+30_000;while(Date.now()<deadline){if(predicate())return;await new Promise(r=>setTimeout(r,200));}throw Error(`TUI timeout: ${label}`);};
-    let started=false;
+    // The private driver owns server deadlines and registered exec-target cleanup,
+    // including owner death. Never discover or act on the desktop Rex server.
+    const driver=await RexTestDriver.start({deadlineMs:120_000});
+    let host;
     try {
-      tmux('new-session','-d','-s',tmuxName,'-x','120','-y','40','-c',f.p.linked,'env','-i',...Object.entries({...f.env,SC_LOG:tuiLog,PATH:`${slowBin}:${f.env.PATH}`}).map(([k,v])=>`${k}=${v}`),node,...args(true));started=true;
-      run(join(homedir(),'dotfiles/macos/.local/bin/reap-strays'),['--register-tmux',tmuxName,'--owner',String(process.pid),'--deadline',String(Math.floor(Date.now()/1000)+120)],process.env);
+      host=driver.create({command:[node,...args(true)],cwd:f.p.linked,env:{...f.env,HOME:f.home,PATH:`${slowBin}:${f.env.PATH}`,SC_LOG:tuiLog},columns:120,rows:40});
       await until(()=>records(tuiLog).some(e=>e.type==='ready'),'startup');
-      tmux('send-keys','-t',target,'-l','SC_TUI');tmux('send-keys','-t',target,'Enter');
+      driver.text(host,'SC_TUI');driver.key(host,'enter');
       await until(()=>records(tuiLog).some(e=>e.type==='provider'),'provider');
-      await until(()=>tmux('capture-pane','-t',target,'-p').includes('SC_DONE'),'response');
+      await until(()=>driver.capture(host,{history:true}).includes('SC_DONE'),'response');
       check('interactive Pi retries a delayed Git check and receives scoped instructions',()=>{
         const call=records(tuiLog).find(e=>e.type==='provider');assert(existsSync(slowMark));assert(call.prompt.includes('SC_DOMAIN'));assert(!call.prompt.includes('SC_HF'));
-        assert(!/Scoped instructions unavailable|Extension error/.test(tmux('capture-pane','-t',target,'-p')));
+        assert(!/Scoped instructions unavailable|Extension error/.test(driver.capture(host,{history:true})));
       });
+      // The extension reports Pi itself, not Rex's outer login child.
       const pid=records(tuiLog).find(e=>e.type==='ready').pid;
-      tmux('send-keys','-t',target,'-l','/quit');tmux('send-keys','-t',target,'Enter');
+      driver.text(host,'/quit');driver.key(host,'enter');
       await until(()=>records(tuiLog).some(e=>e.type==='shutdown'),'shutdown');
-      await until(()=>{try{process.kill(pid,0);return false;}catch(e){return e.code==='ESRCH';}},'process exit');
+      await until(()=>{try{process.kill(pid,0);return false;}catch(e){return e.code==='ESRCH' && driver.process(host).last_exit;}},'process exit');
     } finally {
-      const pid=records(tuiLog).find(e=>e.type==='ready')?.pid;
-      if(started && spawnSync('tmux',['has-session','-t',`=${tmuxName}`],{env:process.env}).status===0)tmux('kill-session','-t',`=${tmuxName}`);
+      const pid=records(tuiLog).find(e=>e.type==='ready')?.pid ?? (host ? driver.pid(host) : null);
+      try { if(host) driver.close(host); }
+      finally { await driver.stop(); }
       if(pid) await until(()=>{try{process.kill(pid,0);return false;}catch(e){return e.code==='ESRCH';}},'process cleanup');
     }
-    check('interactive fixture session is stopped',()=>{assert.notEqual(spawnSync('tmux',['has-session','-t',`=${tmuxName}`],{env:process.env}).status,0);});
+    check('interactive fixture session is stopped',()=>{assert(!existsSync(driver.root));});
     // Permanent timeouts remain fail closed after exactly two bounded attempts.
     const timeoutBin=join(f.root,'timeout-bin'), timeoutCalls=join(f.root,'timeout-calls');
     put(join(timeoutBin,'git'),`#!/bin/sh\ncase "$*" in *'worktree list --porcelain -z'*) printf 'timeout\\n' >> ${quote(timeoutCalls)}; exec sleep 15;; esac\nexec ${quote(realGit)} "$@"\n`);run('chmod',['+x',join(timeoutBin,'git')],f.env);

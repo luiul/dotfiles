@@ -423,4 +423,21 @@ _my_prompt_daemon_query_timeout "$_my_prompt_generation"
 [[ $_my_prompt_daemon_pending == 0 && $_my_prompt_gitstatus_ok == 0 && $refresh_calls == 1 && $stop_calls == 1 ]] || fail 'query timeout did not start fallback'
 pass 'daemon query deadline clears state and refreshes fallback'
 
+# Explicitly disabled device configs must not change the cache fingerprint.
+_my_prompt_filter_fingerprint
+before=$REPLY
+print -r -- ignored >/dev/null
+_my_prompt_filter_fingerprint
+[[ $REPLY == "$before" && $REPLY != *'/dev/null:'* ]] || fail 'disabled device config changed fingerprint'
+pass 'disabled device configs do not invalidate filter cache'
+
+# Contract mismatch must not launch an unsupported private protocol.
+gitstatus_start() { fail 'unsupported plugin was launched'; }
+_my_prompt_gitstatus_ok=0
+_my_prompt_daemon_attempts=0
+_my_prompt_daemon_retry=0
+_my_prompt_gitstatus_start
+[[ $_my_prompt_daemon_attempts == 0 && $_my_prompt_daemon_start_fd == -1 ]] || fail 'unsupported plugin did not fall back'
+pass 'unsupported plugin startup contract falls back before launch'
+
 print -r -- "$count tests passed."

@@ -12,32 +12,38 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, w
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { RexTestDriver } from './rex-test-driver.mjs';
 
 assert(!process.versions.bun, 'Run this live harness with Node, not Bun');
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const candidate = process.env.SB_LIVE_CANDIDATE ?? join(repo, 'pi/.pi/agent/extensions/status-bar.ts');
 const fixture = join(repo, 'scripts/fixtures/status-bar-live.ts');
 const preload = join(repo, 'scripts/fixtures/status-bar-clipboard.cjs');
-const cli = process.env.SB_LIVE_PI_CLI ?? join(homedir(), '.pi/agent/install/current/node_modules/@earendil-works/pi-coding-agent/dist/cli.js');
+const install = join(homedir(), '.pi/agent/install');
+// The release marker remains usable when the managed current link is broken.
+const release = process.env.SB_LIVE_PI_CLI ? null : readFileSync(join(install, 'current-version'), 'utf8').trim();
+const cli = process.env.SB_LIVE_PI_CLI ?? join(install, 'releases', release, 'node_modules/@earendil-works/pi-coding-agent/dist/cli.js');
 const provider = process.env.SB_LIVE_PROVIDER ?? 'ai-model-router';
 assert(['ai-model-router', 'sb-live'].includes(provider), 'Use only an isolated fixture provider');
 for (const path of [candidate, fixture, preload, cli]) assert(existsSync(path), `Missing ${path}`);
 const { visibleWidth } = await import(pathToFileURL(join(dirname(dirname(cli)), '../pi-tui/dist/index.js')).href);
 const root = mkdtempSync(join(tmpdir(), 'sb-live-'));
-const deadline = Date.now() + 8 * 60_000;
+const startedAt = Date.now();
+const deadline = startedAt + 8 * 60_000;
+let driver;
 const owned = new Map();
 const pids = new Set();
 const hashes = new Map([candidate, fixture, preload].map((file) => [file, digest(file)]));
-const report = { cli, candidate, provider, checks: [], failures: [], screens: [], sources: Object.fromEntries(hashes) };
+const report = { cli, candidate, provider, backend: 'RexTestDriver',
+  timingBaseline: 'Direct create starts Pi once. It replaces the sleep, remain-on-exit and respawn sequence, so elapsed time is not comparable to the old tmux baseline.',
+  checks: [], failures: [], screens: [], sources: Object.fromEntries(hashes) };
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-const quote = (s) => `'${String(s).replaceAll("'", "'\\''")}'`;
 let sequence = 0;
 function digest(file) { return createHash('sha256').update(readFileSync(file)).digest('hex'); }
 function run(binary, args, optional = false) {
   try { return execFileSync(binary, args, { encoding: 'utf8', timeout: 15_000, stdio: ['ignore', 'pipe', 'pipe'] }); }
   catch (error) { if (optional) return ''; throw new Error(`${binary} ${args.join(' ')}: ${error.stderr ?? error.message}`); }
 }
-function tmux(...args) { return run('tmux', args); }
 const [checkoutRoot, commonGit, ownGit] = run('git', ['-C', repo, 'rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir', '--git-dir']).trimEnd().split('\n');
 const repository = commonGit.split('/').at(-1) === '.git' ? dirname(commonGit).split('/').at(-1) : checkoutRoot.split('/').at(-1);
 const worktree = commonGit === ownGit ? 'main' : checkoutRoot.split('/').at(-1) === repository ? dirname(checkoutRoot).split('/').at(-1) : checkoutRoot.split('/').at(-1);
@@ -48,9 +54,11 @@ function events(host) {
   const text = readFileSync(host.events, 'utf8');
   return text.slice(0, text.lastIndexOf('\n') + 1).split('\n').filter(Boolean).map((line) => JSON.parse(line));
 }
-function capture(host) { return tmux('capture-pane', '-p', '-t', host.name); }
+function capture(host) { return driver.capture(host).replaceAll('\r\n', '\n'); }
 function assertIdentityStyles(host, modelName = 'GPT-6.1 Sol') {
-  const raw = tmux('capture-pane', '-p', '-e', '-t', host.name);
+  // Rex VT capture is a linear styled redraw, not the original output stream.
+  // Normalize its CRLF separators before indexing cells. Preserve every SGR.
+  const raw = driver.capture(host, { format: 'vt', history: true }).replaceAll('\r\n', '\n');
   const cells = [];
   let bold = false, color = 'default';
   for (const match of raw.matchAll(/\x1b\[([0-9;]*)m|([^\x1b])/g)) {
@@ -113,17 +121,19 @@ async function wait(host, predicate, description, ms = 35_000) {
   while (Date.now() < until) {
     last = capture(host);
     const list = hostErrors(host, last);
-    assert.equal(tmux('display-message', '-p', '-t', host.name, '#{pane_dead}').trim(), '0', `Pi host exited:\n${last}`);
+    host.pid ??= driver.pid(host);
+    if (host.pid) pids.add(host.pid);
+    assert(!driver.process(host).last_exit, `Pi host exited:\n${last}`);
     if (predicate(last, list)) return last;
     await sleep(100);
   }
   throw new Error(`Timed out: ${description}\n${last}\nEvents: ${JSON.stringify(events(host))}`);
 }
-function key(host, name) { tmux('send-keys', '-t', host.name, name); }
+function key(host, name) { driver.key(host, name); }
 async function command(host, text) {
-  key(host, 'C-u');
-  tmux('send-keys', '-t', host.name, '-l', text);
-  key(host, 'Enter');
+  key(host, 'ctrl+u');
+  driver.text(host, text);
+  key(host, 'enter');
   await sleep(120);
 }
 function current(host) {
@@ -178,26 +188,24 @@ async function start(mode, { cwd = repo, width = 160, seeded = true, unknown = f
     PI_CODING_AGENT_DIR: config, PI_SKIP_VERSION_CHECK: '1', PI_OFFLINE: '1', PI_TRUE_COLOR: '1', PI_IMAGE_PROTOCOL: 'none',
     PI_TUI_WRITE_LOG: host.log, SB_LIVE_EVENTS: host.events, SB_LIVE_PROVIDER: provider,
     NODE_OPTIONS: `--require ${JSON.stringify(preload)}` };
-  // env -i also drops SSH and PI_CLIPBOARD_OSC52 markers. The preload blocks OSC 52 anyway.
+  // The driver launches with env -i, dropping credentials, SSH and clipboard markers.
+  // The preload also blocks OSC 52 and the real native clipboard.
   const args = [process.execPath, cli, '--offline', '--no-extensions', '--no-skills', '--no-prompt-templates',
     '--no-context-files', '--no-approve', '--no-mcp', '--no-themes', '--no-tools', '--thinking', 'high',
     '--provider', provider, '--model', 'fixture', '--tui-mode', mode, '--use-theme', 'dark',
     '--session-dir', join(area, 'sessions'), '-e', fixture, '-e', candidate,
     ...(initial ? ['--session', initial.file] : [])];
-  const launch = `cd ${quote(cwd)} && exec env -i ${Object.entries(env).map(([k, v]) => quote(`${k}=${v}`)).join(' ')} ${args.map(quote).join(' ')}`;
-  tmux('new-session', '-d', '-s', host.name, '-x', String(width), '-y', '32', '/bin/sleep 480');
+  // Direct create replaces the placeholder and respawn. It changes startup timing.
+  Object.assign(host, driver.create({ name: host.name, command: args, cwd, env, columns: width, rows: 32 }));
   owned.set(host.name, host);
   try {
-    run('reap-strays', ['--register-tmux', host.name, '--owner', String(process.pid), '--deadline', String(Math.ceil(deadline / 1000))]);
-    tmux('set-option', '-t', host.name, 'remain-on-exit', 'on');
-    tmux('respawn-pane', '-k', '-t', host.name, launch);
-    // Record the exact exec'd pane PID even when extension loading fails before ready.
-    host.pid = Number(tmux('display-message', '-p', '-t', host.name, '#{pane_pid}').trim());
-    pids.add(host.pid);
+    // The driver records the exec target, not Rex's outer login child.
+    host.pid = driver.pid(host);
+    if (host.pid) pids.add(host.pid);
     await wait(host, (text, list) => list.some((e) => e.type === 'ready') && /\bsession\b/.test(text) && (!seeded || cwd !== repo || text.includes(`worktree ${worktree}`)), 'first custom footer paint');
     const list = events(host);
     const ready = list.find((e) => e.type === 'ready');
-    assert.equal(ready.pid, host.pid, 'Pane PID must be the actual Pi host');
+    assert.equal(ready.pid, host.pid, 'Rex target PID must be the actual Pi host');
     assert.equal(ready.mode, 'tui');
     assert.equal(ready.provider, provider);
     assert.equal(ready.cwd, cwd);
@@ -209,19 +217,19 @@ async function start(mode, { cwd = repo, width = 160, seeded = true, unknown = f
 }
 async function stop(host) {
   if (!owned.has(host.name)) return;
-  run('tmux', ['send-keys', '-t', host.name, 'Escape'], true);
-  run('tmux', ['send-keys', '-t', host.name, 'C-u', 'C-d'], true);
-  const until = Date.now() + 2500;
-  while (host.pid && alive(host.pid) && Date.now() < until) await sleep(100);
-  run('tmux', ['kill-session', '-t', host.name], true);
-  if (host.pid && alive(host.pid)) {
-    try { process.kill(host.pid, 'SIGTERM'); } catch {}
-    await sleep(300);
-    if (alive(host.pid)) { try { process.kill(host.pid, 'SIGKILL'); } catch {} }
+  host.pid ??= driver.pid(host);
+  if (host.pid) pids.add(host.pid);
+  // An exited retained terminal needs no input. Always close its owned session.
+  if (!driver.process(host).last_exit) {
+    key(host, 'escape');
+    key(host, 'ctrl+u');
+    key(host, 'ctrl+d');
+    const until = Date.now() + 2500;
+    while (host.pid && alive(host.pid) && Date.now() < until) await sleep(100);
   }
-  const end = Date.now() + 1500;
-  while (host.pid && alive(host.pid) && Date.now() < end) await sleep(100);
+  driver.close(host);
   owned.delete(host.name);
+  // The driver's final stop owns identity-checked termination of survivors.
 }
 function footer(text, width) {
   const rows = text.split('\n').map((line) => line.trimEnd());
@@ -235,7 +243,7 @@ function footer(text, width) {
   for (const line of lines) assert(visibleWidth(line) <= width, `Footer wraps at ${width}: ${line}`);
   return lines;
 }
-// tmux omits trailing spaces. A painted right group must therefore end at width.
+// Footer rows omit trailing spaces. A painted right group must end at width.
 // Use display columns rather than string offsets so wide glyphs cannot hide overlap.
 function assertGroups(line, width, marker, row, groups) {
   const match = line.match(marker);
@@ -337,7 +345,7 @@ function assertFooter(host, text, { working = false, context = 'known', identity
 }
 async function resize(host, width, options) {
   host.width = width;
-  tmux('resize-window', '-t', host.name, '-x', String(width), '-y', '32');
+  driver.resize(host, width, 32);
   // A complete repaint can follow the first width signal. Require two matching captures.
   let previous = '';
   const text = await wait(host, (screen) => {
@@ -453,7 +461,7 @@ async function lifecycle(mode) {
     assertIdentityStyles(host, 'GPT-6.1 Terra');
     for (const width of [80, 79, 60]) {
       host.width = width;
-      tmux('resize-window', '-t', host.name, '-x', String(width), '-y', '32');
+      driver.resize(host, width, 32);
       await wait(host, screen => {
         const rows = footer(screen, width);
         return rows[0].startsWith(repository) && rows[1].startsWith('GPT-6.1 Terra') && rows[0].includes('$');
@@ -523,24 +531,27 @@ async function fallback(mode, compact) {
   } finally { await stop(host); }
 }
 try {
+  driver = await RexTestDriver.start({ deadlineMs: Math.max(1000, deadline - Date.now()) });
   for (const mode of ['regular', 'fullscreen']) {
     await scenario(`${mode} footer lifecycle`, () => lifecycle(mode));
     await scenario(`${mode} fresh and unavailable context`, () => fresh(mode));
     await scenario(`${mode} unknown context and cwd fallback`, () => fallback(mode, true));
     await scenario(`${mode} auto compaction off`, () => fallback(mode, false));
   }
+} catch (error) {
+  report.failures.push({ name: 'private Rex runtime', error: String(error).slice(0, 6000) });
 } finally {
-  for (const host of owned.values()) await stop(host);
-  for (const pid of pids) if (alive(pid)) { try { process.kill(pid, 'SIGTERM'); } catch {} }
+  for (const host of owned.values()) await scenario(`close ${host.name}`, () => stop(host));
+  if (driver) await scenario('private Rex runtime stops', () => driver.stop());
   await sleep(300);
   await scenario('recorded Pi host PIDs exited', async () => {
     for (const pid of pids) assert(!alive(pid), `Test-owned Pi host ${pid} leaked`);
     check('recorded Pi host PIDs exited');
   });
-  await scenario('owned tmux sessions removed', async () => {
-    const names = run('tmux', ['list-sessions', '-F', '#{session_name}'], true).split('\n');
-    assert(!names.some((name) => name.startsWith(`ag-sb-${process.pid}-`)));
-    check('owned tmux sessions removed');
+  await scenario('owned Rex sessions removed', async () => {
+    assert.equal(owned.size, 0, 'Owned Rex sessions remain');
+    if (driver) assert(!existsSync(driver.root), 'Private Rex runtime remains');
+    check('owned Rex sessions removed');
   });
   await scenario('source files unchanged during the run', async () => {
     for (const [file, expected] of hashes) assert.equal(digest(file), expected, `Source changed: ${file}`);
@@ -552,6 +563,7 @@ try {
   const audit = run('reap-strays', ['--dry-run', '--report'], true);
   report.straysAudit = audit.slice(-4000);
 }
+report.elapsedMs = Date.now() - startedAt;
 if (process.env.SB_LIVE_REPORT) {
   assert(process.env.SB_LIVE_REPORT.startsWith('/'), 'SB_LIVE_REPORT must be absolute');
   writeFileSync(process.env.SB_LIVE_REPORT, JSON.stringify(report, null, 2) + '\n');

@@ -4,6 +4,7 @@ import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { audit as auditRexTests, auditFailed as rexAuditFailed } from './reap-rex-tests.mjs';
 
 export const GRACE_SECONDS = 900;
 export const LOG_LIMIT = 256 * 1024;
@@ -12,7 +13,7 @@ const CLASSES = ['zsh', 'gitstatusd', 'context-mode'];
 const PS_FIELDS = 'pid=,uid=,ppid=,tty=,lstart=,comm=';
 const HELP = `Usage: reap-strays [--dry-run] [--report] | --apply | --help
 No arguments: dry run. --report adds precise counts and recent safe events.
-Only --apply can send signals or kill registered tmux sessions.
+Only --apply can send signals or clean registered terminal fixtures.
 Register a bounded task (does not reap):
   reap-strays --register-tmux ag-NAME --owner PID --deadline EPOCH_SECONDS
 `;
@@ -498,6 +499,14 @@ export function runReaper(options, dependencies = {}) {
       eventLog(files, config, { at: clock(), action: 'tmux', id: session.id, created: session.created, result: success ? 'success' : 'failed' });
       write(`${success ? 'Killed' : 'Failed'} tmux id=${session.id}`);
     }
+    // Injected process-class tests must not inspect or act on the live Rex
+    // registry. Production uses the explicit registry adapter by default.
+    const rexAudit = dependencies.rexAudit ?? (dependencies.ps ? (() => ({ tasks: [], errors: [], failed: 0 })) : auditRexTests);
+    const rex = rexAudit({ apply: options.apply === true });
+    for (const task of rex.tasks) {
+      write(`${options.apply ? 'Rex test audit' : 'Rex test dry run'} id=${task.id} status=${task.status}${task.reason ? ` reason=${task.reason}` : ''}`);
+    }
+    for (const error of rex.errors) write(`Rex test registry skipped: ${error}`);
     if (options.report) {
       for (const c of CLASSES) write(`${c}: ${counts[c].total} matched total, ${counts[c].orphaned} eligible orphaned`);
       write(`tmux: ${tmuxCounts.eligible} eligible, ${tmuxCounts.skipped} skipped, ${tmuxCounts.available ? 'default server read' : 'default server unavailable'}`);
@@ -507,7 +516,7 @@ export function runReaper(options, dependencies = {}) {
       for (const event of events) write(JSON.stringify(event));
     }
     if (!candidates.length) write('No eligible orphan processes.');
-    return { counts, signalFailed, tmux: tmuxCounts };
+    return { counts, signalFailed, tmux: tmuxCounts, rex };
   } finally { if (release) release(); }
 }
 
@@ -560,7 +569,7 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     else {
       const result = runReaper(options, { ...dependencies, write });
       if (result.locked) return 3;
-      if (result.signalFailed || result.tmux.failed) return 1;
+      if (result.signalFailed || result.tmux.failed || rexAuditFailed(result.rex)) return 1;
     }
     return 0;
   }

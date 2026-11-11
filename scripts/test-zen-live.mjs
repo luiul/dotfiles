@@ -1,30 +1,37 @@
 #!/usr/bin/env node
-/** Isolated Pi 1.4.0 streaming TUI checks. No network or user session/config writes.
+/** Streaming TUI checks in private Rex, without model network, clipboard or app access.
+ * Passive renderer probes are pinned to the installed managed Pi 1.5.1 package.
+ * ZEN_LIVE_PI_CLI=/absolute/1.5.1/package/dist/cli.js selects an explicit matching runtime.
  * ZEN_LIVE_EXTENSION=/absolute/baseline.ts ZEN_LIVE_MEASURE_ONLY=1 node scripts/test-zen-live.mjs
  */
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
+import { RexTestDriver } from './rex-test-driver.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const candidate = resolve(process.env.ZEN_LIVE_EXTENSION ?? join(repo, 'pi/.pi/agent/extensions/zen.ts'));
 const fixture = join(repo, 'scripts/fixtures/zen-live.ts');
-const install = join(homedir(), '.pi/agent/install/releases/1.4.0/node_modules/@earendil-works/pi-coding-agent');
-const cli = process.env.ZEN_LIVE_PI_CLI ?? join(install, 'dist/cli.js');
+const pinnedVersion = '1.5.1', backend = 'rex';
+const managed = join(homedir(), '.pi/agent/install');
+const managedVersion = readFileSync(join(managed, 'current-version'), 'utf8').trim();
+assert.equal(managedVersion, pinnedVersion, 'Managed Pi changed; verify renderer instrumentation before updating the pin');
+const cli = resolve(process.env.ZEN_LIVE_PI_CLI ?? join(managed, 'releases', managedVersion,
+  'node_modules/@earendil-works/pi-coding-agent/dist/cli.js'));
+// Derive instrumentation from the selected package. Never mix runtime versions.
+const install = dirname(dirname(cli));
 const toolComponent = join(install, 'dist/modes/interactive/components/tool-execution.js');
 const measureOnly = process.env.ZEN_LIVE_MEASURE_ONLY === '1';
-for (const path of [candidate, fixture, cli, toolComponent]) assert(existsSync(path), `Missing ${path}`);
-assert.equal(JSON.parse(readFileSync(join(install, 'package.json'), 'utf8')).version, '1.4.0');
-const root = realpathSync(mkdtempSync(join(tmpdir(), 'zen-live-')));
+assert(!process.versions.bun, 'Run this live harness with native Node');
 const owned = new Map(), checks = [], metrics = [], observations = [];
+let driver, root;
 const deadline = performance.now() + 180_000;
 const testStarted = performance.now();
 const mono = () => Number(process.hrtime.bigint()) / 1e6;
-const q = (v) => `'${String(v).replaceAll("'", "'\\''")}'`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let sequence = 0;
 function check(name, fn, candidateOnly = false) {
@@ -39,13 +46,14 @@ function run(file, args, optional = false) {
   try { return execFileSync(file, args, { encoding: 'utf8', timeout: 6000, maxBuffer: 8 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }); }
   catch (error) { if (optional) return ''; throw new Error(`${file}: ${error.stderr ?? error.message}`); }
 }
-const tmux = (...args) => run('tmux', args);
 const events = (h) => existsSync(h.events) ? readFileSync(h.events, 'utf8').split('\n').filter(Boolean).map(JSON.parse) : [];
 const raw = (h) => existsSync(h.raw) ? readFileSync(h.raw, 'utf8') : '';
-const capture = (h) => tmux('capture-pane', '-p', '-t', h.name);
+const capture = (h) => driver.capture(h);
 function inspect(h) {
   const screen = capture(h), list = events(h);
+  h.lastScreen = screen;
   assert(!/Extension error|Failed to load extension|TypeError:|Error in render|exceeds terminal width/.test(screen), screen);
+  assert(!driver.process(h).last_exit && alive(h.pid), `Pi target exited:\n${screen}`);
   assert(!list.some((e) => e.type === 'fixture-error'), JSON.stringify(list.filter((e) => e.type === 'fixture-error')));
   h.samples.push({ mono: mono(), screen });
   return { screen, list };
@@ -60,8 +68,9 @@ async function wait(h, predicate, label, timeout = 12_000) {
   throw new Error(`Timed out: ${label}\n${state?.screen}\n${JSON.stringify(state?.list.slice(-6))}`);
 }
 async function send(h, text) {
-  const sent = mono(); tmux('send-keys', '-t', h.name, 'C-u');
-  tmux('send-keys', '-t', h.name, '-l', text); tmux('send-keys', '-t', h.name, 'Enter');
+  assert(/^ZEN_[A-Z_]+$/.test(text) || ['/zen off', '/zen on', '/reload'].includes(text), 'Unsafe fixture input');
+  const sent = mono(); driver.key(h, 'ctrl+u');
+  driver.text(h, text); driver.key(h, 'enter');
   return sent;
 }
 async function command(h, text) {
@@ -89,44 +98,53 @@ function descendants(pid) {
 }
 function alive(pid) { try { process.kill(pid, 0); return true; } catch { return false; } }
 async function stop(h) {
-  h.pid ??= events(h).find((e) => e.type === 'ready')?.pid ?? Number(run('tmux', ['display-message', '-p', '-t', h.name, '#{pane_pid}'], true).trim());
-  const children = h.pid ? descendants(h.pid) : [];
-  run('tmux', ['send-keys', '-t', h.name, 'Escape'], true); await sleep(80);
-  run('tmux', ['send-keys', '-t', h.name, 'C-u', 'C-d'], true);
+  if (h.closed) return;
+  h.pid ??= driver.pid(h);
+  h.children = [...new Set([...(h.children ?? []), ...(h.pid && alive(h.pid) ? descendants(h.pid) : [])])];
+  if (h.pid && alive(h.pid)) {
+    driver.key(h, 'escape'); await sleep(80);
+    driver.key(h, 'ctrl+u'); driver.key(h, 'ctrl+d');
+  }
   const until = performance.now() + 1800;
   while (h.pid && alive(h.pid) && performance.now() < until) await sleep(60);
-  run('tmux', ['kill-session', '-t', h.name], true);
-  for (const signal of ['SIGTERM', 'SIGKILL']) {
-    for (const pid of children.reverse()) if (alive(pid)) { try { process.kill(pid, signal); } catch {} }
-    await sleep(80);
-  }
-  h.children = [...new Set([...(h.children ?? []), ...children])];
-  assert(!h.children.some(alive), `Owned process remains: ${h.children.filter(alive)}`);
+  // Close only this retained session. Identity-checked forced cleanup belongs
+  // to the suite's driver, including targets that failed before fixture ready.
+  driver.close(h); h.closed = true;
+  const closedUntil = performance.now() + 3000;
+  while (h.pid && alive(h.pid) && performance.now() < closedUntil) await sleep(60);
+  assert(!h.pid || !alive(h.pid), `Owned Pi target remains: ${h.pid}`);
+  assert(!h.children.some(alive), `Observed Pi descendants remain: ${h.children.filter(alive)}`);
 }
 async function start(mode) {
   const area = join(root, `host-${++sequence}`); mkdirSync(area);
-  const agent = join(area, 'agent'); mkdirSync(agent);
+  const home = join(area, 'home'), agent = join(home, '.pi/agent'); mkdirSync(agent, { recursive: true });
+  const privateTmp = join(home, 'tmp'); mkdirSync(privateTmp);
   writeFileSync(join(agent, 'settings.json'), JSON.stringify({ quietStartup: true, theme: 'dark', defaultProvider: 'zen-live', defaultModel: 'fixture',
-    compaction: { enabled: false }, retry: { enabled: false }, cacheWarming: 'off', shellPath: '/bin/bash' }));
+    compaction: { enabled: false }, retry: { enabled: false }, cacheWarming: 'off', shellPath: '/bin/bash',
+    enableAnalytics: false, enableInstallTelemetry: false, fullscreenCopyOnSelect: false }));
   const config = join(area, 'zen.json'); writeFileSync(config, '{"filter":true}\n');
   writeFileSync(join(area, 'shell-case.sh'), '#!/bin/bash\n/bin/sleep 0.3\nprintf "ZEN_PARTIAL_SECRET_BASH_ONE\\n"\n/bin/sleep 0.3\nprintf "ZEN_PARTIAL_SECRET_BASH_TWO\\n"\n/bin/sleep 0.3\n');
   writeFileSync(join(area, 'shell-interact.sh'), '#!/bin/bash\nprintf "ZEN_PARTIAL_SECRET_ONE\\n"\n/bin/sleep 0.8\nprintf "ZEN_PARTIAL_SECRET_TWO\\n"\n/bin/sleep 0.8\nprintf "ZEN_PARTIAL_SECRET_THREE\\n"\n/bin/sleep 0.8\n');
   writeFileSync(join(area, 'shell-abort.sh'), '#!/bin/bash\nprintf "bounded abort fixture\\nZEN_PARTIAL_SECRET_ABORT\\n"\n/bin/sleep 4\n');
   writeFileSync(join(area, 'read-case.txt'), 'ZEN_READ_SECRET_ONE\nZEN_READ_SECRET_TWO\n');
   const h = { name: `ag-zen-${process.pid}-${sequence}`, area, mode, width: 120, config, events: join(area, 'events.jsonl'), raw: join(area, 'ansi.log'), samples: [] };
-  const env = { HOME: homedir(), PATH: process.env.PATH, TERM: 'xterm-256color', LANG: 'en_US.UTF-8', SHELL: '/bin/bash',
-    PI_CODING_AGENT_DIR: agent, PI_SKIP_VERSION_CHECK: '1', PI_TELEMETRY: '0', PI_OFFLINE: '1', PI_IMAGE_PROTOCOL: 'none',
+  const env = { HOME: home, PATH: '/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin', TERM: 'xterm-256color', LANG: 'en_US.UTF-8', SHELL: '/bin/bash',
+    TMPDIR: privateTmp, XDG_CONFIG_HOME: join(home, '.config'), XDG_CACHE_HOME: join(home, '.cache'), XDG_DATA_HOME: join(home, '.local/share'),
+    PI_CODING_AGENT_DIR: agent, PI_SKIP_VERSION_CHECK: '1', PI_TELEMETRY: '0', PI_OFFLINE: '1', PI_IMAGE_PROTOCOL: 'none', PI_PROGRAM_STATUS: '0',
     PI_TUI_WRITE_LOG: h.raw, ZEN_LIVE_EVENTS: h.events, ZEN_LIVE_EXTENSION: candidate, ZEN_LIVE_CONFIG: config, ZEN_LIVE_TOOL_COMPONENT: toolComponent };
-  const args = [cli, '--offline', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-context-files', '--no-approve', '--no-mcp', '--no-themes',
+  const args = [process.execPath, cli, '--offline', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-context-files', '--no-approve', '--no-mcp', '--no-themes',
     '--thinking', 'off', '--provider', 'zen-live', '--model', 'fixture', '--tui-mode', mode, '--use-theme', 'dark', '--session-dir', join(area, 'sessions'), '-e', fixture];
-  const launch = `cd ${q(area)} && exec env -i ${Object.entries(env).map(([k, v]) => q(`${k}=${v}`)).join(' ')} ${[process.execPath, ...args].map(q).join(' ')}`;
   h.launch = mono();
-  tmux('new-session', '-d', '-s', h.name, '-x', String(h.width), '-y', '36', '/bin/sleep 180'); owned.set(h.name, h);
-  run('reap-strays', ['--register-tmux', h.name, '--owner', String(process.pid), '--deadline', String(Math.ceil(Date.now() / 1000 + 180))]);
-  tmux('respawn-pane', '-k', '-t', h.name, launch);
+  // Direct creation retains early exit output. No shell respawn or desktop app.
+  Object.assign(h, driver.create({ name: h.name, command: args, cwd: area, env, columns: h.width, rows: 36 }));
+  owned.set(h.name, h);
+  const pidUntil = Math.min(performance.now() + 10_000, deadline);
+  while (!(h.pid = driver.pid(h)) && performance.now() < pidUntil) await sleep(60);
+  assert(Number.isSafeInteger(h.pid) && h.pid > 1, 'Actual Pi target PID missing');
   await wait(h, (screen, list) => list.some((e) => e.type === 'ready') && /fixture/.test(screen), `${mode} startup`);
-  h.pid = events(h).find((e) => e.type === 'ready').pid;
   const ready = events(h).find((e) => e.type === 'ready');
+  assert.equal(ready.pid, h.pid, 'Fixture PID must equal the registered exec target');
+  assert(events(h).some((e) => e.type === 'instrumentation' && e.version === pinnedVersion && e.componentPath === toolComponent), 'Pinned component probe missing');
   const firstPaint = events(h).find((e) => e.type === 'write' && e.mono >= ready.mono);
   metrics.push({ mode, phase: 'startup', launchToReadyMs: ready.mono - h.launch, readyToPaintMs: firstPaint?.mono - ready.mono });
   check(`${mode}: isolated real TUI ready`, () => { assert.equal(ready.mode, 'tui'); assert(ready.session.startsWith(h.area)); });
@@ -143,35 +161,44 @@ async function turn(h, scenario, { interact = false, abort = false } = {}) {
   if (interact) {
     await wait(h, (_s, list) => list.some((e) => (e.type === 'partial' || e.type === 'component-result' && e.partial) && e.id === call.id), 'partial ready');
     check(`${h.mode}/${scenario}: partial output stays hidden until expansion`, () => assert(!raw(h).slice(offset).includes('ZEN_PARTIAL_SECRET')), true);
-    tmux('send-keys', '-t', h.name, 'C-o');
+    driver.key(h, 'ctrl+o');
     await wait(h, (screen, list) => screen.includes('ZEN_PARTIAL_SECRET_ONE') && list.some((e) => e.type === 'frame' && e.id === call.id && e.expanded), 'expand live partial');
     await wait(h, (screen) => screen.includes('ZEN_PARTIAL_SECRET_TWO'), 'next partial while expanded');
     check(`${h.mode}: expanded running tool receives next live output`, () => assert(raw(h).slice(offset).includes('ZEN_PARTIAL_SECRET_TWO')));
-    tmux('send-keys', '-t', h.name, 'C-o');
+    driver.key(h, 'ctrl+o');
     await wait(h, (_s, list) => list.filter((e) => e.type === 'frame' && e.id === call.id).at(-1)?.expanded === false, 'collapse running tool');
     collapseOffset = raw(h).length;
   }
   if (abort) {
     await wait(h, (_s, list) => list.some((e) => (e.type === 'component-result' && e.partial || e.type === 'partial') && e.id === call.id), 'abort after partial');
     h.children = [...new Set([...(h.children ?? []), ...descendants(h.pid)])];
-    tmux('send-keys', '-t', h.name, 'Escape');
+    driver.key(h, 'escape');
   }
   await wait(h, (_s, list) => list.filter((e) => e.type === 'settled').length > settled, `${scenario} settlement`);
   const list = events(h).slice(eventOffset), frames = list.filter((e) => e.type === 'frame' && e.id === call.id);
   check(`${h.mode}/${h.width}/${scenario}: empty, progressive and full arguments sampled`, () => {
-    assert(list.some((e) => e.type === 'args-progress')); assert(list.some((e) => e.type === 'args-full'));
-    assert(frames.some((e) => !e.argsComplete)); assert(frames.some((e) => e.argsComplete));
     const progressing = list.find((e) => e.type === 'args-progress'), full = list.find((e) => e.type === 'args-full'), ended = list.find((e) => e.type === 'call-end');
-    assert(frames.some((e) => e.mono < progressing.mono), 'Empty args frame sampled');
-    assert(frames.some((e) => e.mono >= progressing.mono && e.mono < full.mono), 'Progressive args frame sampled');
-    assert(frames.some((e) => e.mono >= full.mono && e.mono < ended.mono), 'Full args frame sampled before execution');
+    assert(progressing && full && ended, 'Provider argument phase markers missing');
+    const sameArgs = (frame, args) => JSON.stringify(frame.args) === JSON.stringify(args);
+    assert(frames.some((e) => e.mono < progressing.mono && sameArgs(e, call.args)), 'Empty args frame sampled');
+    assert(frames.some((e) => e.mono >= progressing.mono && e.mono < full.mono && sameArgs(e, progressing.args)), 'Progressive args frame sampled');
+    assert(frames.some((e) => e.mono >= full.mono && e.mono < ended.mono && sameArgs(e, full.args) && !e.started), 'Full args frame sampled before execution');
+    // Pi 1.5.1 sets argsComplete at assistant message_end. Full argument values
+    // must still paint before call-end; the native completion flag comes later.
+    const complete = list.find((e) => e.type === 'args-complete' && e.id === call.id);
+    assert(complete && complete.mono >= ended.mono, 'Native argsComplete must follow call-end');
+    assert.deepEqual(complete.args, full.args, 'Native completion preserves full arguments');
+    assert(frames.some((e) => !e.argsComplete && e.mono < ended.mono), 'Incomplete streaming frame sampled');
+    assert(frames.some((e) => e.argsComplete && e.mono >= complete.mono && sameArgs(e, full.args)), 'Completed arguments frame sampled');
     assert(h.samples.length - sampleOffset >= 3, 'Repeated real pane captures');
   });
   if (interact) check(`${h.mode}/${scenario}: later partial output stays hidden after collapse`, () => {
     assert(!raw(h).slice(collapseOffset).includes('ZEN_PARTIAL_SECRET_THREE'));
   }, true);
   check(`${h.mode}/${h.width}/${scenario}: compact row at start, execution, partial and final paint`, () => compact(frames.filter((f) => !f.expanded)), true);
-  const final = frames.find((f) => !f.partial), end = list.find((e) => e.type === 'tool-end' && e.id === call.id);
+  const end = list.find((e) => e.type === 'tool-end' && e.id === call.id);
+  assert(end, 'Matching tool completion missing');
+  const final = frames.find((f) => !f.partial && f.mono >= end.mono);
   if (!interact) check(`${h.mode}/${h.width}/${scenario}: no partial output in raw ANSI`, () => {
     // An aborted bash result includes captured stdout as its final error summary. That final suffix is allowed.
     const beforeFinal = abort ? list.filter((e) => e.type === 'write' && e.mono < end.mono).map((e) => e.data).join('') : raw(h).slice(offset);
@@ -179,6 +206,9 @@ async function turn(h, scenario, { interact = false, abort = false } = {}) {
   }, true);
   check(`${h.mode}/${h.width}/${scenario}: final status present in first completion paint`, () => {
     assert(final, 'Missing final frame');
+    assert.equal(final.error, end.error, 'Actual final renderer error state');
+    assert.equal(final.durationMs, end.durationMs, 'Actual final renderer duration');
+    assert(Number.isFinite(final.durationMs) && final.durationMs >= 0, 'Execution duration missing');
     assert.match(final.lines[1], scenario === 'FAIL' || abort ? /✗/ : /✓/);
     assert(final.mono - end.mono < 200, `Completion paint latency ${final.mono - end.mono}ms`);
     const completionWrites = list.filter((e) => e.type === 'write' && e.mono >= end.mono);
@@ -187,6 +217,12 @@ async function turn(h, scenario, { interact = false, abort = false } = {}) {
   check(`${h.mode}/${h.width}/${scenario}: actual tool result and settlement`, () => {
     assert(end); assert.equal(end.error, scenario === 'FAIL' || abort);
     assert.equal(list.find((e) => e.type === 'settled').aborted, abort);
+  });
+  check(`${h.mode}/${h.width}/${scenario}: observed actual renderer and terminal writes`, () => {
+    assert(frames.length && list.some((e) => e.type === 'component-result' && e.id === call.id && !e.partial), 'Actual component instrumentation missing');
+    const writes = list.filter((e) => e.type === 'write');
+    assert(writes.length > 0, 'Actual ProcessTerminal writes missing');
+    assert.equal(writes.map((e) => e.data).join(''), raw(h).slice(offset), 'Terminal instrumentation must match the raw write log');
   });
   const first = frames[0], toolStart = list.find((e) => e.type === 'tool-start'), running = frames.find((f) => f.started);
   const writes = list.filter((e) => e.type === 'write');
@@ -200,17 +236,17 @@ async function turn(h, scenario, { interact = false, abort = false } = {}) {
 }
 async function resize(h, width) {
   h.width = width; const before = events(h).length;
-  tmux('resize-window', '-t', h.name, '-x', String(width), '-y', '36');
+  driver.resize(h, width, 36);
   await wait(h, (_s, list) => list.slice(before).some((e) => e.type === 'frame' && e.width === width), `resize ${width}`);
   check(`${h.mode}: existing compact blocks resize to ${width}`, () => compact(events(h).slice(before).filter((e) => e.type === 'frame' && !e.expanded)), true);
 }
 async function toggles(h) {
-  tmux('send-keys', '-t', h.name, 'C-o');
+  driver.key(h, 'ctrl+o');
   await wait(h, (_s, list) => list.filter((e) => e.type === 'frame' && e.id === h.lastId).at(-1)?.expanded === true, 'Ctrl+O existing blocks');
   check(`${h.mode}: Ctrl+O exposes native multiline calls and read output`, () => {
     assert(raw(h).includes('NATIVE_CALL')); assert(raw(h).includes('ZEN_READ_SECRET_ONE'));
   });
-  tmux('send-keys', '-t', h.name, 'C-o');
+  driver.key(h, 'ctrl+o');
   await wait(h, (_s, list) => list.filter((e) => e.type === 'frame' && e.id === h.lastId).at(-1)?.expanded === false, 'Ctrl+O collapse');
   const offOffset = events(h).length;
   await command(h, '/zen off');
@@ -233,12 +269,12 @@ async function mouse(h) {
   const y = rows.findIndex((line) => line.includes('read-case.txt')) + 1;
   assert(y > 0, `Read row not visible for mouse test\n${screen}`);
   const click = `\x1b[<0;5;${y}M\x1b[<0;5;${y}m`;
-  tmux('send-keys', '-t', h.name, '-l', click);
+  driver.text(h, click);
   await wait(h, (s, list) => s.includes('ZEN_READ_SECRET_ONE') && list.filter((e) => e.type === 'frame' && e.id === h.lastId).at(-1)?.expanded, 'fullscreen native mouse expansion');
   check('fullscreen: mouse expands completed compact row', () => assert(capture(h).includes('ZEN_READ_SECRET_ONE')));
-  tmux('send-keys', '-t', h.name, 'C-o');
+  driver.key(h, 'ctrl+o');
   // Ctrl+O toggles the global default, which was false before the per-block mouse click.
-  tmux('send-keys', '-t', h.name, 'C-o');
+  driver.key(h, 'ctrl+o');
   await wait(h, (_s, list) => list.filter((e) => e.type === 'frame' && e.id === h.lastId).at(-1)?.expanded === false, 'collapse after mouse');
 }
 async function reload(h) {
@@ -265,42 +301,57 @@ async function idle(h) {
     check(`${h.mode}: idle interval ${i} has zero bytes and terminal writes`, () => { assert.equal(byteDelta, 0); assert.equal(writeDelta, 0); });
   }
 }
-try {
-  for (const mode of ['fullscreen', 'regular']) {
-    const h = await start(mode);
-    try {
-      await turn(h, 'SUCCESS'); await turn(h, 'GENERIC'); await turn(h, 'BASH');
-      if (mode === 'fullscreen') {
-        await turn(h, 'INTERACT', { interact: true });
-        await turn(h, 'BASH_INTERACT', { interact: true });
-      }
-      await resize(h, 36); await turn(h, 'FAIL');
-      await resize(h, 80); await turn(h, 'BASH_ABORT', { abort: true });
-      await turn(h, 'ABORT', { abort: true }); await turn(h, 'READ');
-      if (mode === 'fullscreen') await mouse(h);
-      await toggles(h); await resize(h, 120); await reload(h); await idle(h);
-    } finally { await stop(h); }
-  }
-} catch (error) {
-  for (const h of owned.values()) {
-    console.error(`DIAGNOSTIC ${h.mode}: ${JSON.stringify(events(h).filter((e) => e.type === 'frame').slice(-4).map(({ ansi, ...e }) => e))}`);
-    console.error(`PANE ${h.mode}:\n${run('tmux', ['capture-pane', '-p', '-t', h.name], true)}`);
-  }
-  throw error;
-} finally {
-  for (const h of owned.values()) await stop(h);
-  check('owned Pi descendants and tmux sessions removed', () => {
-    for (const h of owned.values()) {
-      assert(!h.pid || !alive(h.pid)); assert(!(h.children ?? []).some(alive));
-      assert.notEqual(run('tmux', ['list-sessions', '-F', '#{session_name}'], true).split('\n').includes(h.name), true);
+async function main() {
+  for (const path of [candidate, fixture, cli, toolComponent, join(install, 'package.json')]) assert(existsSync(path), `Missing ${path}`);
+  const version = JSON.parse(readFileSync(join(install, 'package.json'), 'utf8')).version;
+  assert.equal(version, pinnedVersion, 'Selected Pi package changed; renderer instrumentation is pinned');
+  try {
+    // This process owns the suite driver. Every host uses its private endpoint.
+    driver = await RexTestDriver.start({ deadlineMs: 210_000 });
+    root = driver.root;
+    console.log(`RUNTIME backend=${backend} pi=${version} cli=${cli}`);
+    for (const mode of ['fullscreen', 'regular']) {
+      const h = await start(mode);
+      try {
+        await turn(h, 'SUCCESS'); await turn(h, 'GENERIC'); await turn(h, 'BASH');
+        if (mode === 'fullscreen') {
+          await turn(h, 'INTERACT', { interact: true });
+          await turn(h, 'BASH_INTERACT', { interact: true });
+        }
+        await resize(h, 36); await turn(h, 'FAIL');
+        await resize(h, 80); await turn(h, 'BASH_ABORT', { abort: true });
+        await turn(h, 'ABORT', { abort: true }); await turn(h, 'READ');
+        if (mode === 'fullscreen') await mouse(h);
+        await toggles(h); await resize(h, 120); await reload(h); await idle(h);
+      } finally { await stop(h); }
     }
-  });
-  // Audit only. Never reap unrelated processes belonging to another worker.
-  const audit = run('reap-strays', ['--dry-run', '--report'], true);
-  console.log(`RESOURCE AUDIT ${audit.split('\n').filter((line) => line.includes(`ag-zen-${process.pid}-`)).join('\n') || 'no owned tmux strays'}`);
-  rmSync(root, { recursive: true, force: true });
-  check('temporary agent, config, session and ANSI data removed', () => assert(!existsSync(root)));
-  console.log(`METRICS ${JSON.stringify(metrics)}`);
-  if (measureOnly) console.log(`OBSERVATIONS ${JSON.stringify(observations)}`);
+  } catch (error) {
+    for (const h of owned.values()) {
+      console.error(`DIAGNOSTIC ${h.mode}: ${JSON.stringify(events(h).filter((e) => e.type === 'frame').slice(-4).map(({ ansi, ...e }) => e))}`);
+      let screen = h.lastScreen ?? '';
+      if (!h.closed) { try { screen = capture(h); } catch (captureError) { screen += `\nCapture failed: ${captureError.message}`; } }
+      console.error(`PANE ${h.mode}:\n${screen}`);
+    }
+    throw error;
+  } finally {
+    // Always stop the driver even if graceful host shutdown failed. The driver
+    // checks target identities and keeps unresolved cleanup evidence on failure.
+    if (driver) {
+      // Do not read the deadline-gated manifest here. Stop must still run when
+      // startup or polling consumed the suite deadline without a target PID.
+      const result = await driver.stop();
+      check('private Rex server and registered Pi targets removed', () => {
+        assert(result?.clean, JSON.stringify(result));
+        for (const h of owned.values()) {
+          assert(!h.pid || !alive(h.pid)); assert(!(h.children ?? []).some(alive));
+        }
+      });
+      console.log(`CLEANUP backend=${backend} scope=${result.cleanupScope}; unknown self-detaching children remain unverified`);
+      check('temporary agent, config, session and ANSI data removed', () => assert(!existsSync(root)));
+    }
+    console.log(`METRICS ${JSON.stringify(metrics.map((metric) => ({ backend, ...metric })))}`);
+    if (measureOnly) console.log(`OBSERVATIONS ${JSON.stringify(observations)}`);
+  }
+  console.log(`Checks: ${checks.length} passed${measureOnly ? ' (measurement mode)' : ''}; backend ${backend}; runtime ${(performance.now() - testStarted).toFixed(0)}ms`);
 }
-console.log(`Checks: ${checks.length} passed${measureOnly ? ' (measurement mode)' : ''}; runtime ${(performance.now() - testStarted).toFixed(0)}ms`);
+await main();

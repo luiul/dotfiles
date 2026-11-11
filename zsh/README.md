@@ -1,4 +1,22 @@
-# Shell launch helpers
+# Shell helpers
+
+## Git prompt startup
+
+The prompt starts gitstatus only in repos without clean or process filters. Other repos use background Git. Startup reads the process-group header, opens the request FIFO without waiting, then buffers the hello reply. An early header is not daemon readiness. One five-second deadline bounds all phases, including FIFO retries.
+
+The startup adapter checks the installed plugin's private protocol before launch and handoff. An unsupported contract falls back to background Git. Query parsing and normal descriptor cleanup remain with the plugin. Its query parser can still wait for a fragmented response; the startup fix does not change that parser or promise a fully nonblocking query path.
+
+Disabled device configs such as `/dev/null` do not contribute changing device timestamps to the filter cache fingerprint. Real config files still invalidate that cache.
+
+```sh
+/bin/zsh -f scripts/test-git-prompt.zsh
+node scripts/test-git-prompt-handshake.mjs
+bun scripts/test-git-prompt-live.ts
+```
+
+The handshake test uses new real shells on private Rex endpoints. It checks delayed binaries, split replies, bad replies, EOF, silence and shutdown. The login test loads the candidate prompt without changing the live file. It checks completion, filtered Git results, responsive input, cancellation and shell exit.
+
+## Shell launch helpers
 
 `cod` and `piw` use the same directory rules. Both change the calling shell's directory when you supply arguments. Both keep the current directory and skip `cd` hooks when you omit arguments.
 

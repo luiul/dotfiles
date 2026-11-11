@@ -1,15 +1,20 @@
 #!/usr/bin/env node
-/** Real Pi TUI with a stripped GUI environment. No live stores or model requests. */
+/** Real Pi TUI with a stripped GUI environment. No model requests or live stores.
+ * Default: inherited fixture key. --live reads trusted local credentials only
+ * when explicitly authorized. --cancel-before-ready tests owner signal cleanup.
+ */
 import assert from 'node:assert/strict';
-import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { once } from 'node:events';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { RexTestDriver } from './rex-test-driver.mjs';
 
+assert(!process.versions.bun, 'Run with Node to test the actual Node runtime');
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const live = process.argv.includes('--live');
+const cancelBeforeReady = process.argv.includes('--cancel-before-ready');
 const managed = join(homedir(), '.pi/agent/install');
 const runtimeVersion = readFileSync(join(managed, 'current-version'), 'utf8').trim();
 const runtime = join(managed, 'releases', runtimeVersion, 'node_modules/@earendil-works/pi-coding-agent');
@@ -24,115 +29,123 @@ if (live) {
 }
 const root = mkdtempSync(join(tmpdir(), 'pi-gui-live-'));
 const home = join(root, 'home'), agent = join(home, '.pi/agent');
-const name = 'ag-pi-gui-' + process.pid;
-const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
-const run = (cmd, args) => execFileSync(cmd, cmd === 'tmux' ? ['-L', name, ...args] : args,
-  { encoding: 'utf8', timeout: 15000, maxBuffer: 1_000_000, stdio: ['ignore', 'pipe', 'pipe'] });
-let made = false, cancelled = false;
+const events = join(root, 'events.jsonl'), fixture = join(root, 'fixture.ts');
+const records = () => existsSync(events) ? readFileSync(events, 'utf8').split('\n').filter(Boolean).map(JSON.parse) : [];
+const pause = ms => new Promise(r => setTimeout(r, ms));
+let driver, host, failure, outcome, cancelled = false, cancellationSent = false;
 const cancel = () => { cancelled = true; };
 process.once('SIGINT', cancel); process.once('SIGTERM', cancel);
-// Independent guard covers parent death and this private tmux server's deadline.
-const guard = spawn(process.execPath, ['--input-type=module', '-e', `
-import {spawnSync} from 'node:child_process';
-import {rmSync} from 'node:fs';
-const stop = () => {
-  const panes = spawnSync('tmux', ['-L', ${JSON.stringify(name)}, 'list-panes', '-a', '-F', '#{pane_pid}'], {encoding:'utf8',timeout:5000});
-  for (const pid of (panes.stdout ?? '').trim().split('\\n').map(Number)) {
-    if (Number.isSafeInteger(pid) && pid > 1) { try { process.kill(-pid,'SIGKILL'); } catch {} }
+async function wait(predicate, { timeout = 20000, cancellable = true } = {}) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    if (cancellable && cancelled) throw Error('Test cancelled');
+    if (predicate()) return;
+    await pause(50);
   }
-  spawnSync('tmux', ['-L', ${JSON.stringify(name)}, 'kill-server'], {stdio:'ignore',timeout:5000});
-  rmSync(${JSON.stringify(root)}, {recursive:true,force:true});
-  process.exit(0);
-};
-process.on('disconnect',stop); process.on('message',stop);
-setTimeout(stop,60000);
-`], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
-const guardExit = once(guard, 'exit');
+  throw Error('TUI deadline exceeded');
+}
+function gone(pid) {
+  assert(Number.isSafeInteger(pid) && pid > 1, 'Invalid fixture process PID');
+  try { process.kill(pid, 0); return false; }
+  catch (error) { if (error.code === 'ESRCH') return true; throw error; }
+}
 try {
   mkdirSync(agent, { recursive: true });
   writeFileSync(join(agent, 'settings.json'), JSON.stringify({ packages: [], cacheWarming: 'off', compaction: { enabled: false },
-    retry: { enabled: false }, enableInstallTelemetry: false, defaultProjectTrust: 'never' }));
+    retry: { enabled: false }, enableInstallTelemetry: false, defaultProjectTrust: 'never' }), { mode: 0o600 });
   writeFileSync(join(agent, 'models.json'), JSON.stringify({ providers: { 'ai-model-router': {
     api: router.api, apiKey: router.apiKey, baseUrl: 'http://127.0.0.1:1/v1',
     models: router.models.filter(model => model.id === review),
-  } } }));
-  const events = join(root, 'events.jsonl'), fixture = join(root, 'fixture.ts');
+  } } }), { mode: 0o600 });
   writeFileSync(fixture, `import fs from 'node:fs';
 export default async function(pi) {
-  ${process.argv.includes('--cancel-before-ready') ? `fs.appendFileSync(${JSON.stringify(events)}, JSON.stringify({type:'starting',pid:process.pid})+'\\n'); await new Promise(r => setTimeout(r,10000));` : ''}
+  ${cancelBeforeReady ? `fs.appendFileSync(${JSON.stringify(events)}, JSON.stringify({type:'starting',pid:process.pid})+'\\n'); await new Promise(r => setTimeout(r,10000));` : ''}
   pi.on('session_start', async (_,ctx) => {
     const model = ctx.modelRegistry.find('ai-model-router', ${JSON.stringify(review)});
     const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
     const child = await pi.exec('pi', ['--version'], {timeout:10000});
-    fs.appendFileSync(${JSON.stringify(events)}, JSON.stringify({type:'ready',pid:process.pid,mode:ctx.mode,
+    fs.appendFileSync(${JSON.stringify(events)}, JSON.stringify({type:'ready',pid:process.pid,mode:ctx.mode,execPath:process.execPath,
       keyPresent:Boolean(process.env.AI_MODEL_ROUTER_API_KEY),authResolved:auth.ok && Boolean(auth.apiKey),
+      fixtureKeyPreserved:process.env.AI_MODEL_ROUTER_API_KEY === 'fixture-only',
       childCode:child.code,childVersion:child.stdout.trim()})+'\\n');
     pi.sendMessage({customType:'gui-check',content:'GUI_ENVIRONMENT_OK',display:true});
   });
-  pi.on('session_shutdown', () => fs.appendFileSync(${JSON.stringify(events)}, JSON.stringify({type:'shutdown'})+'\\n'));
-}`);
-  const command = ['env', '-i', `HOME=${live ? homedir() : home}`, 'PATH=/usr/bin:/bin', 'TERM=xterm-256color', `TMPDIR=${root}`,
-    `PI_CODING_AGENT_DIR=${agent}`, `PI_MANAGED_INSTALL_ROOT=${managed}`, 'PI_OFFLINE=1', 'PI_SKIP_VERSION_CHECK=1',
-    ...(live ? [] : ['AI_MODEL_ROUTER_API_KEY=fixture-only']), process.execPath, join(runtime, 'dist/cli.js'),
-    '--offline', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-context-files', '--no-mcp', '--no-approve',
-    '--model', 'ai-model-router/' + review, '-e', join(repo, 'pi/.pi/agent/extensions/gui-environment.ts'), '-e', fixture].map(quote).join(' ');
-  execFileSync('tmux', ['-L', name, 'new-session', '-d', '-s', name, '-x', '110', '-y', '35', '-c', root, command],
-    { stdio: 'ignore', timeout: 15000 });
-  made = true;
-  const reaper = await import(pathToFileURL(join(repo, 'macos/.local/bin/reap-strays.mjs')).href);
-  const ps = reaper.createPs();
-  const tmux = reaper.createTmux(ps, undefined, (bin, args, env) => spawnSync(bin, ['-L', name, ...args.slice(2)],
-    { env, encoding: 'utf8', timeout: 5000 }));
-  reaper.registerTmux({ name, pid: process.pid, deadline: Math.floor(Date.now()/1000) + 60 },
-    { ps, tmux, config: { ...reaper.configuration(), directory: join(root, 'reaper') }, write: () => {} });
-  const records = () => existsSync(events) ? readFileSync(events, 'utf8').split('\n').filter(Boolean).map(JSON.parse) : [];
-  const wait = async predicate => {
-    const deadline = Date.now() + 20000;
-    while (Date.now() < deadline) {
-      if (cancelled) throw Error('Test cancelled');
-      if (predicate()) return;
-      await new Promise(r => setTimeout(r, 50));
-    }
-    throw Error('TUI deadline exceeded');
-  };
-  if (process.argv.includes('--cancel-before-ready')) {
+  pi.on('session_shutdown', () => fs.appendFileSync(${JSON.stringify(events)}, JSON.stringify({type:'shutdown',pid:process.pid})+'\\n'));
+}`, { mode: 0o600 });
+  // The shared supervisor and explicit registry own deadlines and owner-crash
+  // cleanup. This harness never discovers or touches the desktop Rex server.
+  driver = await RexTestDriver.start({ deadlineMs: 60000 });
+  if (cancelled) throw Error('Test cancelled');
+  host = driver.create({ name: 'ag-pi-gui-' + process.pid, cwd: root, columns: 110, rows: 35,
+    command: [process.execPath, join(runtime, 'dist/cli.js'),
+      '--offline', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-context-files', '--no-mcp', '--no-approve',
+      '--model', 'ai-model-router/' + review, '-e', join(repo, 'pi/.pi/agent/extensions/gui-environment.ts'), '-e', fixture],
+    env: { HOME: live ? homedir() : home, PATH: '/usr/bin:/bin', TERM: 'xterm-256color', TMPDIR: root,
+      PI_CODING_AGENT_DIR: agent, PI_MANAGED_INSTALL_ROOT: managed, PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1',
+      ...(live ? {} : { AI_MODEL_ROUTER_API_KEY: 'fixture-only' }) } });
+  if (cancelBeforeReady) {
     await wait(() => records().some(event => event.type === 'starting'));
+    cancellationSent = true;
     process.kill(process.pid, 'SIGTERM');
-    await new Promise(r => setTimeout(r, 50));
+    await pause(50);
   }
   await wait(() => records().some(event => event.type === 'ready'));
   const ready = records().find(event => event.type === 'ready');
+  assert.equal(ready.pid, driver.pid(host));
+  assert.equal(ready.execPath, process.execPath);
   assert.equal(ready.mode, 'tui'); assert(ready.keyPresent); assert(ready.authResolved);
+  if (!live) assert(ready.fixtureKeyPreserved, 'Inherited fixture key was replaced');
   assert.equal(ready.childCode, 0); assert.equal(ready.childVersion, runtimeVersion);
-  await wait(() => run('tmux', ['capture-pane', '-t', name, '-p']).includes('GUI_ENVIRONMENT_OK'));
-  run('tmux', ['send-keys', '-t', name, 'C-d']);
-  await wait(() => records().some(event => event.type === 'shutdown'));
-  await wait(() => { try { process.kill(ready.pid, 0); return false; } catch { return true; } });
-  console.log('PASS real Pi TUI: ' + (live ? 'missing key recovered from trusted local sources' : 'inherited fixture key preserved')
-    + ', router auth resolved, managed pi child started from stripped PATH, orderly shutdown');
+  await wait(() => driver.capture(host).includes('GUI_ENVIRONMENT_OK'));
+  driver.text(host, '/quit'); driver.key(host, 'enter');
+  await wait(() => records().some(event => event.type === 'shutdown' && event.pid === ready.pid));
+  await wait(() => gone(ready.pid) && driver.process(host).last_exit);
+  assert.equal(driver.process(host).last_exit.exit_code, 0);
+  outcome = 'real Pi TUI: ' + (live ? 'missing key recovered from trusted local sources' : 'inherited fixture key preserved')
+    + ', router auth resolved, managed pi child started from stripped PATH, orderly shutdown';
 } catch (error) {
-  if (!cancelled || !process.argv.includes('--cancel-before-ready')) throw error;
-  console.log('PASS SIGTERM before TUI readiness reached signal cleanup');
+  if (cancelled && cancellationSent && error.message === 'Test cancelled' && !records().some(event => event.type === 'ready')) {
+    outcome = 'SIGTERM before TUI readiness reached signal cleanup';
+  } else failure = error;
 } finally {
-  const probe = spawnSync('tmux', ['-L', name, 'list-panes', '-a', '-F', '#{pane_pid}'], { encoding: 'utf8', timeout: 5000 });
-  const pids = (probe.stdout ?? '').trim().split('\n').map(Number).filter(pid => Number.isSafeInteger(pid) && pid > 1);
-  if (made) { try { run('tmux', ['kill-session', '-t', name]); } catch {} }
-  try { run('tmux', ['has-session', '-t', name]); throw Error('Owned session remains'); }
-  catch (error) { if (!String(error.message).includes('Command failed')) throw error; }
-  try { run('tmux', ['kill-server']); } catch {}
-  for (const pid of pids) { try { process.kill(-pid, 'SIGKILL'); } catch {} }
-  const deadline = Date.now() + 5000;
-  for (const pid of pids) {
-    while (Date.now() < deadline) {
-      try { process.kill(pid, 0); } catch { break; }
-      await new Promise(r => setTimeout(r, 50));
+  const cleanupErrors = [];
+  let pid;
+  try {
+    // Read starting too: cancellation can happen before the ready event exists.
+    const event = records().find(event => event.type === 'ready') ?? records().find(event => event.type === 'starting');
+    pid = host ? driver.pid(host) : null;
+    if (event) { assert.equal(event.pid, pid, 'Event PID differs from the registered exec target'); pid = event.pid; }
+    if (host) assert(pid, 'Fixture target PID was not recorded');
+    if (failure && host) writeFileSync(join(root, 'terminal.txt'), driver.capture(host, { history: true }), { mode: 0o600 });
+  } catch (error) { cleanupErrors.push(error); }
+  try {
+    if (host) {
+      driver.close(host);
+      // Missing sessions now return a specific failure. A controller or
+      // unrelated transport error must not count as proof of removal.
+      assert.throws(() => driver.process(host), /session_not_found|session not found/i,
+        'Owned Rex block remains after close');
+      assert.throws(() => driver.api('session.view', { session_id: host.sessionId }), /session_not_found|session not found/i,
+        'Owned Rex session remains after close');
     }
-    assert.throws(() => process.kill(pid, 0), 'Owned pane process remains');
-  }
-  if (guard.connected) guard.send('stop');
-  await guardExit;
+  } catch (error) { cleanupErrors.push(error); }
+  try {
+    if (driver) {
+      const stopped = await driver.stop();
+      assert(stopped?.clean, 'Private Rex cleanup was not verified');
+      assert(!existsSync(driver.root), 'Private Rex fixture remains');
+    }
+    if (pid) await wait(() => gone(pid), { timeout: 5000, cancellable: false });
+  } catch (error) { cleanupErrors.push(error); }
   process.removeListener('SIGINT', cancel); process.removeListener('SIGTERM', cancel);
+  if (failure || cleanupErrors.length) {
+    // Keep events and fixture files after a test or cleanup failure. The driver
+    // also retains its own evidence if server or target cleanup is unresolved.
+    throw new AggregateError([...(failure ? [failure] : []), ...cleanupErrors],
+      `GUI test failed; retained evidence at ${root}${driver && existsSync(driver.root) ? ` and ${driver.root}` : ''}`);
+  }
   rmSync(root, { recursive: true, force: true });
   assert(!existsSync(root));
-  console.log('PASS independent guard, owned pane processes, private server and temporary files removed');
+  console.log('PASS ' + outcome);
+  console.log('PASS registered exec target exited, owned Rex session closed, private server and supervisor stopped, temporary files removed');
 }

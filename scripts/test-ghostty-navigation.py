@@ -1,26 +1,25 @@
 #!/usr/bin/env -S uv run --script
-"""Exercise installed dashboard Enter keys in tmux without touching real app windows."""
+"""Exercise dashboard Enter keys in private Rex without touching real app windows."""
 # ruff: noqa: S101, S603, PLR0915
 
 from __future__ import annotations
 
 import os
-import shlex
 import shutil
 import subprocess
 import tempfile
 import time
 from pathlib import Path
 
+from rex_test_driver import RexTestDriver
+
 
 def main() -> None:
     """Run each installed dashboard against isolated process and window fixtures."""
-    tmux = shutil.which("tmux")
     git = shutil.which("git")
-    assert tmux, "tmux must be installed"
     assert git, "git must be installed"
     real_home = Path.home()
-    with tempfile.TemporaryDirectory(prefix="ghostty-navigation-") as directory:
+    with tempfile.TemporaryDirectory(prefix="ghostty-navigation-") as directory, RexTestDriver(deadline_ms=300_000) as driver:
         fixture = Path(directory).resolve()
         home = fixture / "home"
         home.mkdir()
@@ -73,6 +72,7 @@ esac
             "XDG_CONFIG_HOME": str(home / ".config"),
             "XDG_CACHE_HOME": str(home / ".cache"),
             "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+            "TERM": "xterm-256color",
             "EDITOR_CALLS": str(editor_calls),
             "TEST_REPO": str(repo),
             "WINDOW_LOG": str(log),
@@ -80,22 +80,18 @@ esac
             "WINDOW_TITLE": title,
         }
 
-        def run(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-            return subprocess.run(args, check=check, capture_output=True, text=True, timeout=10)
-
         for tool in ("canopy", "understory"):
             binary = real_home / ".local/bin" / tool
             assert binary.exists()
             opened.unlink(missing_ok=True)
             log.unlink(missing_ok=True)
-            session = f"ag-ghostty-{tool}-{os.getpid()}"
-            command = "env " + " ".join(shlex.quote(f"{key}={value}") for key, value in env.items())
-            command += " " + shlex.quote(str(binary)) + " --interval 1 --no-color"
-            command += " --no-bell" if tool == "canopy" else " --show-main"
-            run(tmux, "new-session", "-d", "-s", session, "-c", str(repo), "-x", "200", "-y", "32", command)
+            command = [str(binary), "--interval", "1", "--no-color"]
+            command.append("--no-bell" if tool == "canopy" else "--show-main")
+            # The driver uses env -i. Keep the mock PATH and temporary HOME exact.
+            session = driver.create(command=command, cwd=str(repo), env=env, columns=200, rows=32)
             try:
                 def screen(session=session) -> str:
-                    return run(tmux, "capture-pane", "-t", session, "-p").stdout
+                    return driver.capture(session)
 
                 def wait_for(text: str, tool=tool) -> str:
                     deadline = time.monotonic() + 25
@@ -111,11 +107,11 @@ esac
                 wait_for("nav-fixture")
                 if tool == "canopy":
                     wait_for("400001")
-                run(tmux, "send-keys", "-t", session, "Enter")
+                driver.key(session, "enter")
                 wait_for("Opened a new Ghostty window")
                 # Let the first notification's clear timer finish before the next action.
                 time.sleep(5)
-                run(tmux, "send-keys", "-t", session, "Enter")
+                driver.key(session, "enter")
                 wait_for("Focused Ghostty window")
                 calls = log.read_text()
                 assert calls.count("new window with configuration") == 1
@@ -124,11 +120,16 @@ esac
                 assert "Visual Studio Code" not in calls
                 assert not editor_calls.exists(), "A dashboard launched VS Code"
                 print(f"PASS: installed {tool} Enter opens once, then reuses Ghostty by window title")
-                run(tmux, "send-keys", "-t", session, "q")
+                driver.text(session, "q")
             finally:
-                run(tmux, "kill-session", "-t", session, check=False)
-                assert run(tmux, "has-session", "-t", session, check=False).returncode != 0
-        print("PASS: no real app window was touched; fixture tmux sessions stopped")
+                driver.close(session)
+                try:
+                    driver.capture(session)
+                except RuntimeError as error:
+                    assert "session_not_found" in str(error) or "session not found" in str(error).lower(), str(error)
+                else:
+                    raise AssertionError("Fixture Rex session still exists after close")
+        print("PASS: no real app window was touched; fixture Rex sessions stopped")
 
 
 if __name__ == "__main__":

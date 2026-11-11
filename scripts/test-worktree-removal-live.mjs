@@ -1,50 +1,115 @@
 #!/usr/bin/env node
 // Real Pi TUI fixture with the candidate extension set. No remote model calls.
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-const repo=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-const root=realpathSync(mkdtempSync(join(tmpdir(),'worktree-removal-live-')));
-const name=`ag-guard-removal-${process.pid}`;
-const cli=join(homedir(),'.pi/agent/install/current/node_modules/@earendil-works/pi-coding-agent/dist/cli.js');
-const events=join(root,'events.jsonl');
-const config=join(root,'agent');mkdirSync(join(config,'extensions'),{recursive:true});
-const q=s=>`'${String(s).replaceAll("'","'\\''")}'`;
-const tmux=(...args)=>execFileSync('tmux',args,{encoding:'utf8',timeout:10000,stdio:['ignore','pipe','pipe']});
-const log=()=>existsSync(events)?readFileSync(events,'utf8').trim().split('\n').filter(Boolean).map(l=>JSON.parse(l)):[];
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-let pid;
+import { RexTestDriver } from './rex-test-driver.mjs';
+
+const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// The managed launcher selects releases via current-version. The legacy
+// current symlink can still name a removed release; never update it here.
+const install = join(homedir(), '.pi/agent/install');
+const version = readFileSync(join(install, 'current-version'), 'utf8').trim();
+assert(/^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(version), 'Invalid managed Pi version');
+const cli = join(install, 'releases', version, 'node_modules/@earendil-works/pi-coding-agent/dist/cli.js');
+assert(existsSync(cli), `Managed Pi CLI missing: ${cli}`);
+const root = realpathSync(mkdtempSync(join(tmpdir(), 'worktree-removal-live-')));
+const events = join(root, 'events.jsonl');
+const home = join(root, 'home');
+const config = join(home, '.pi/agent');
+mkdirSync(join(config, 'extensions'), { recursive: true });
+const log = () => existsSync(events) ? readFileSync(events, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l)) : [];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let driver, host, pid, failure;
+
 try {
- const sourceExtensions=process.env.WORKTREE_REMOVAL_EXTENSIONS??join(repo,'pi/.pi/agent/extensions');
- for(const file of readdirSync(sourceExtensions)){
-  const source=join(sourceExtensions,file);
-  if((lstatSync(source).isFile()||lstatSync(source).isSymbolicLink())&&/\.(ts|js)$/.test(file))symlinkSync(source,join(config,'extensions',file));
- }
- // A isolated fresh TUI loads the candidate extensions without user packages.
- writeFileSync(join(config,'settings.json'),JSON.stringify({quietStartup:true,packages:[],compaction:{enabled:false},retry:{enabled:false}}));
- const cmd=`env PI_CODING_AGENT_DIR=${q(config)} PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 PI_OFFLINE=1 WORKTREE_REMOVAL_EVENTS=${q(events)} ${q(process.execPath)} ${q(cli)} --offline --no-skills --no-prompt-templates --no-context-files --no-approve --no-mcp --no-themes --session-dir ${q(join(root,'sessions'))} -e ${q(join(repo,'scripts/fixtures/worktree-removal-live.ts'))}`;
- tmux('new-session','-d','-s',name,'-x','120','-y','35',`cd ${q(repo)} && ${cmd}`);
- const watchdog=join(homedir(),'dotfiles/macos/.local/bin/reap-strays.mjs');
- const registration=spawnSync(process.execPath,[watchdog,'--register-tmux',name,'--owner',String(process.pid),'--deadline',String(Math.floor(Date.now()/1000)+100)],{timeout:10000,encoding:'utf8'});
- if(registration.status!==0)console.log('Watchdog registration unavailable; fixture keeps its 70-second deadline and explicit shutdown.');
- const until=Date.now()+70000;
- while(!log().some(e=>e.event==='start')){if(Date.now()>until)throw Error('Pi startup timed out');await sleep(200);}
- const initial=log().find(e=>e.event==='start');pid=initial.pid;
- assert(!initial.commands.includes('work-status'));
- tmux('send-keys','-t',name,'-l','/removal-check');tmux('send-keys','-t',name,'Enter');
- while(!log().some(e=>e.event==='checked')){if(Date.now()>until)throw Error('Pi command timed out');await sleep(200);}
- const screen=tmux('capture-pane','-p','-t',name);
- assert(screen.includes('GUARD_REMOVAL_VERIFIED'),screen);
- assert(!/Work pending|Work status unavailable|\/work-status|Failed to load extension|Extension error/.test(screen),screen);
- tmux('send-keys','-t',name,'C-u','C-d');
- while(!log().some(e=>e.event==='shutdown')){if(Date.now()>until)throw Error('Pi shutdown timed out');await sleep(200);}
- console.log('PASS: real Pi loads candidate extensions without completion command or widget');
- console.log('PASS: fresh interactive session starts, accepts a command, and shuts down');
+  const sourceExtensions = process.env.WORKTREE_REMOVAL_EXTENSIONS ?? join(repo, 'pi/.pi/agent/extensions');
+  for (const file of readdirSync(sourceExtensions)) {
+    const source = join(sourceExtensions, file);
+    if ((lstatSync(source).isFile() || lstatSync(source).isSymbolicLink()) && /\.(ts|js)$/.test(file)) {
+      symlinkSync(source, join(config, 'extensions', file));
+    }
+  }
+  // Only fixture settings are read. No user packages, models or credentials.
+  writeFileSync(join(config, 'settings.json'), JSON.stringify({ quietStartup: true, packages: [], compaction: { enabled: false }, retry: { enabled: false } }));
+  // The supervisor owns this private server and target before Pi can execute.
+  // The parent registry backstop is still a deployment gate, not a tmux hook.
+  driver = await RexTestDriver.start({ deadlineMs: 90_000 });
+  host = driver.create({
+    name: `ag-guard-removal-${process.pid}`,
+    command: [process.execPath, cli, '--offline', '--no-skills', '--no-prompt-templates', '--no-context-files', '--no-approve', '--no-mcp', '--no-themes', '--session-dir', join(root, 'sessions'), '-e', join(repo, 'scripts/fixtures/worktree-removal-live.ts')],
+    cwd: repo,
+    env: {
+      HOME: home,
+      PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
+      TMPDIR: root,
+      PI_CODING_AGENT_DIR: config,
+      PI_SKIP_VERSION_CHECK: '1',
+      PI_TELEMETRY: '0',
+      PI_OFFLINE: '1',
+      WORKTREE_REMOVAL_EVENTS: events,
+      // Prevent gui-environment from reading launchd's real router credential.
+      AI_MODEL_ROUTER_API_KEY: 'offline-fixture-not-a-credential',
+    },
+    columns: 120,
+    rows: 35,
+  });
+  const until = Date.now() + 70_000;
+  const waitEvent = async (event, message) => {
+    while (!log().some(e => e.event === event)) {
+      if (Date.now() > until) throw Error(`${message}\n${driver.capture(host)}`);
+      await sleep(200);
+    }
+  };
+  await waitEvent('start', 'Pi startup timed out');
+  const initial = log().find(e => e.event === 'start');
+  pid = initial.pid; // The fixture event names Pi, not Rex's outer login process.
+  assert(Number.isSafeInteger(pid) && pid > 1, 'Invalid Pi fixture PID');
+  assert.equal(pid, driver.pid(host), 'Pi event PID must match the supervised exec target');
+  assert(!initial.commands.includes('work-status'));
+  driver.text(host, '/removal-check');
+  driver.key(host, 'enter');
+  await waitEvent('checked', 'Pi command timed out');
+  // The event can arrive before the terminal redraw reaches Rex.
+  let screen;
+  do {
+    screen = driver.capture(host);
+    if (screen.includes('GUARD_REMOVAL_VERIFIED') || Date.now() > until) break;
+    await sleep(200);
+  } while (true);
+  assert(screen.includes('GUARD_REMOVAL_VERIFIED'), screen);
+  assert(!/Work pending|Work status unavailable|\/work-status|Failed to load extension|Extension error/.test(screen), screen);
+  console.log('PASS: real Pi loads candidate extensions without completion command or widget');
+  driver.key(host, 'ctrl+u');
+  driver.key(host, 'ctrl+d');
+  await waitEvent('shutdown', 'Pi shutdown timed out');
+  console.log('PASS: fresh interactive session starts, accepts a command, and shuts down');
+} catch (error) {
+  failure = error;
 } finally {
- spawnSync('tmux',['kill-session','-t',name],{timeout:10000,stdio:'ignore'});
- if(pid){try{process.kill(pid,0);process.kill(pid,'SIGTERM')}catch{}}
- rmSync(root,{recursive:true,force:true});
+  const cleanupErrors = [];
+  // Close the PTY first. stop() then verifies the owned server and registered
+  // exec targets are gone. Keep evidence if supervisor cleanup is unresolved.
+  if (host) {
+    try {
+      pid ??= log().find(e => e.event === 'start')?.pid ?? driver.pid(host);
+    } catch (error) { cleanupErrors.push(error); }
+    try { driver.close(host); } catch (error) { cleanupErrors.push(error); }
+  }
+  let stopped = !driver;
+  if (driver) {
+    try { await driver.stop(); stopped = true; } catch (error) { cleanupErrors.push(error); }
+  }
+  if (pid) {
+    try {
+      assert.throws(() => process.kill(pid, 0), error => error.code === 'ESRCH', `Pi fixture PID ${pid} survived cleanup`);
+      console.log('PASS: closed session, stopped private Rex driver, and verified Pi target gone');
+    } catch (error) { cleanupErrors.push(error); }
+  }
+  if (stopped) rmSync(root, { recursive: true, force: true });
+  else console.error(`Cleanup evidence retained: ${root}`);
+  if (cleanupErrors.length) failure = new AggregateError([...(failure ? [failure] : []), ...cleanupErrors], 'Worktree removal fixture failed or cleanup is unresolved');
 }
+if (failure) throw failure;

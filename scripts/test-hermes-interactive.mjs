@@ -2,24 +2,33 @@
 /** Real Pi TUI, private HOME and package copy, no credentials or external model calls. */
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { execFileSync, spawnSync } from 'node:child_process';
-import { once } from 'node:events';
-import { dirname, join, resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
-import { applyPatch } from './patch-hermes-memory.mjs';
-const repo=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+import { applyPatch, preparePatch } from './patch-hermes-memory.mjs';
+import { RexTestDriver } from './rex-test-driver.mjs';
+assert(!process.versions.bun, 'Run this live harness with native Node');
 const root=mkdtempSync(join(tmpdir(),'hermes-interactive-'));
 const pkg=join(root,'package'), installed=join(homedir(),'.pi/agent/npm/node_modules/pi-hermes-memory');
-const runtime=join(homedir(),'.pi/agent/install/releases/1.5.0/node_modules/@earendil-works/pi-coding-agent');
-const name='ag-pi-memory-'+process.pid;
-const run=(cmd,args)=>execFileSync(cmd,cmd==='tmux'?['-L',name,...args]:args,{encoding:'utf8',timeout:15000,maxBuffer:1_000_000});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
-const med=a=>a.toSorted((x,y)=>x-y)[Math.floor(a.length/2)];
-let made=false;
+const deadline=Date.now()+90_000;
+let driver,host,pid,failure,report,cancelled=false;
+const cancel=()=>{cancelled=true};
+process.once('SIGINT',cancel);process.once('SIGTERM',cancel);
+const records=()=>existsSync(join(root,'events.jsonl'))?readFileSync(join(root,'events.jsonl'),'utf8').split('\n').filter(Boolean).map(x=>JSON.parse(x)):[];
+const wait=async(fn,label)=>{const until=Math.min(deadline,Date.now()+20_000);while(Date.now()<until){assert(!cancelled,'TUI fixture cancelled');if(fn())return;await sleep(100)}throw Error(`TUI timeout: ${label}`)};
+const alive=pid=>{try{process.kill(pid,0);return true}catch(error){if(error.code==='ESRCH')return false;throw error}};
 try {
+  // Read the managed marker, not a stale current link. Unknown fixture APIs fail closed.
+  const install=join(homedir(),'.pi/agent/install');
+  const version=readFileSync(join(install,'current-version'),'utf8').trim();
+  assert(['1.5.0','1.5.1'].includes(version),'Unsupported Pi fixture API');
+  const runtime=join(install,'releases',version,'node_modules/@earendil-works/pi-coding-agent');
+  assert.equal(JSON.parse(readFileSync(join(runtime,'package.json'),'utf8')).version,version,'Managed Pi package mismatch');
+  assert(existsSync(join(runtime,'dist/cli.js')),'Managed Pi CLI missing');
+  // This is a read-only source-pin check. Apply the reviewed patch only to our copy.
+  const source=preparePatch(installed);
   cpSync(installed,pkg,{recursive:true,filter:p=>!p.slice(installed.length).includes('/node_modules')});
   cpSync(join(installed,'node_modules'),join(pkg,'node_modules'),{recursive:true});
   const req=createRequire(join(installed,'package.json'));
@@ -35,31 +44,52 @@ pi.registerProvider('fixture',{api:'fixture-api',baseUrl:'http://local.invalid',
 pi.on('session_start',(_,ctx)=>note({type:'ready',pid:process.pid,mode:ctx.mode}));pi.on('agent_settled',()=>note({type:'settled'}));pi.on('session_shutdown',()=>note({type:'shutdown'}));
 pi.registerCommand('memory-fixture',{description:'Synthetic memory tools',handler:async(_,ctx)=>{const added=await tools.get('memory_add').execute('add',{target:'user',content:'The synthetic user prefers fixture tests.'},undefined,undefined,ctx);const result=await tools.get('memory_search').execute('search',{query:'synthetic',target:'user'},undefined,undefined,ctx);if(result.isError||!JSON.stringify(result.content).includes('fixture tests'))throw Error('Memory fixture failed');pi.sendMessage({customType:'memory-fixture',content:'MEMORY_LOOKUP_OK',display:true});note({type:'lookup'})}});
 }`);
-  const cmd=['env','-i',`HOME=${home}`,`PATH=${process.env.PATH}`,`TMPDIR=${root}`,`PI_CODING_AGENT_DIR=${agent}`,'PI_OFFLINE=1','PI_SKIP_VERSION_CHECK=1',process.execPath,join(runtime,'dist/cli.js'),'--offline','--no-extensions','--no-skills','--no-prompt-templates','--no-context-files','--no-mcp','--no-approve','--provider','fixture','--model','fixture','--thinking','off','-e',fixture].map(quote).join(' ');
-  // Do not expose captured pipes to the persistent tmux server.
-  execFileSync('tmux',['-L',name,'new-session','-d','-s',name,'-x','110','-y','35','-c',root,cmd],{stdio:'ignore',timeout:15000});made=true;
-  // Reaper registration through its public injectable backend, on this private socket.
-  const reaper=await import(pathToFileURL(join(repo,'macos/.local/bin/reap-strays.mjs')).href);
-  const ps=reaper.createPs();
-  const tmux=reaper.createTmux(ps,undefined,(bin,args,env)=>spawnSync(bin,['-L',name,...args.slice(2)],{env,encoding:'utf8',timeout:5000}));
-  reaper.registerTmux({name,pid:process.pid,deadline:Math.floor(Date.now()/1000)+90},{ps,tmux,config:{...reaper.configuration(),directory:join(root,'reaper-state')},write:()=>{}});
-  const records=()=>existsSync(events)?readFileSync(events,'utf8').split('\n').filter(Boolean).map(x=>JSON.parse(x)):[];
-  const wait=async(fn)=>{const until=Date.now()+20000;while(Date.now()<until){if(fn())return;await sleep(50)}throw Error('TUI readiness timeout')};
-  await wait(()=>records().some(x=>x.type==='ready'));
-  run('tmux',['send-keys','-t',name,'memory test','Enter']);await wait(()=>records().some(x=>x.type==='settled'));
-  await wait(()=>run('tmux',['capture-pane','-t',name,'-p']).includes('MEMORY_TUI_DONE'));
-  run('tmux',['send-keys','-t',name,'/memory-fixture','Enter']);await wait(()=>records().some(x=>x.type==='lookup'));
-  await wait(()=>run('tmux',['capture-pane','-t',name,'-p']).includes('MEMORY_LOOKUP_OK'));
-  const pid=records().find(x=>x.type==='ready').pid;
-  const idleStart=run('ps',['-p',String(pid),'-o','time=']);await sleep(2000);const idleEnd=run('ps',['-p',String(pid),'-o','time=']);
-  run('tmux',['send-keys','-t',name,'C-d']);await wait(()=>records().some(x=>x.type==='shutdown'));
-  console.log(JSON.stringify({status:'PASS',mode:'real TUI',prompt:'MEMORY_TUI_DONE',memoryTool:'MEMORY_LOOKUP_OK',idleCpu:{before:idleStart.trim(),after:idleEnd.trim(),intervalSeconds:2},note:'CPU resolution only; isolated candidate, no whole-stack comparison'}));
+  assert(!cancelled && Date.now()<deadline,'TUI fixture cancelled or expired');
+  // The private supervisor registers the actual exec target before Pi can run.
+  // Pass literal argv and an allowlisted environment, never credentials or loader hooks.
+  driver=await RexTestDriver.start({deadlineMs:Math.max(1000,deadline-Date.now())});
+  host=driver.create({name:'ag-pi-memory-'+process.pid,cwd:root,columns:110,rows:35,
+    command:[process.execPath,join(runtime,'dist/cli.js'),'--offline','--no-extensions','--no-skills','--no-prompt-templates','--no-context-files','--no-mcp','--no-approve','--provider','fixture','--model','fixture','--thinking','off','-e',fixture],
+    env:{HOME:home,PATH:'/usr/bin:/bin:/usr/sbin:/sbin',TMPDIR:root,PI_CODING_AGENT_DIR:agent,
+      XDG_CACHE_HOME:join(root,'cache'),JITI_CACHE_DIR:join(root,'jiti'),PI_OFFLINE:'1',PI_SKIP_VERSION_CHECK:'1',PI_TELEMETRY:'0'}});
+  await wait(()=>records().some(x=>x.type==='ready'),'session_start');
+  const ready=records().find(x=>x.type==='ready');pid=ready.pid;
+  assert.equal(ready.mode,'tui','Fixture must run in the real TUI');
+  assert(Number.isSafeInteger(pid)&&pid>1,'Invalid Pi fixture PID');
+  assert.equal(pid,driver.pid(host),'Fixture PID must match the supervised exec target, not Rex login');
+  assert(driver.process(host).child,'Pi terminal child missing');
+  driver.text(host,'memory test');driver.key(host,'enter');
+  await wait(()=>records().some(x=>x.type==='settled'),'agent_settled');
+  await wait(()=>driver.capture(host).includes('MEMORY_TUI_DONE'),'model response frame');
+  driver.text(host,'/memory-fixture');driver.key(host,'enter');
+  await wait(()=>records().some(x=>x.type==='lookup'),'memory lookup');
+  await wait(()=>driver.capture(host).includes('MEMORY_LOOKUP_OK'),'memory lookup frame');
+  const cpu=()=>execFileSync('/bin/ps',['-p',String(pid),'-o','time='],{encoding:'utf8',timeout:5000,env:{PATH:'/usr/bin:/bin',LC_ALL:'C'}}).trim();
+  const idleStart=cpu();await sleep(2000);const idleEnd=cpu();
+  driver.key(host,'ctrl+d');await wait(()=>records().some(x=>x.type==='shutdown'),'session_shutdown');
+  await wait(()=>Boolean(driver.process(host).last_exit),'Pi process exit');
+  assert.equal(driver.process(host).last_exit.exit_code,0,'Pi must exit normally');
+  report={status:'PASS',mode:'real TUI',backend:'RexTestDriver',piVersion:version,hermesVersion:source.version,
+    prompt:'MEMORY_TUI_DONE',memoryTool:'MEMORY_LOOKUP_OK',idleCpu:{before:idleStart,after:idleEnd,intervalSeconds:2},
+    note:'CPU resolution only; isolated candidate, no whole-stack or old tmux timing comparison'};
 } catch(error) {
-  if(made){try{console.error(run('tmux',['capture-pane','-t',name,'-p']).slice(-5000))}catch{}}
-  throw error;
+  failure=error;
+  if(host){try{console.error(driver.capture(host).slice(-5000))}catch{}}
 } finally {
-  if(made){try{run('tmux',['kill-session','-t',name])}catch{}}
-  try {run('tmux',['has-session','-t',name]);throw Error('Owned tmux session remains')}catch(e){if(!String(e.message).includes('Command failed'))throw e;}
-  try {run('tmux',['kill-server'])}catch{}
-  rmSync(root,{recursive:true,force:true});assert(!existsSync(root));
+  const cleanupErrors=[];
+  // Close the PTY first, then verify the private server and registered targets are gone.
+  // Retain fixture evidence if shutdown is unresolved. Never touch the desktop server.
+  if(host){
+    try{pid??=driver.pid(host)}catch(error){cleanupErrors.push(error)}
+    try{driver.close(host)}catch(error){cleanupErrors.push(error)}
+  }
+  let stopped=!driver;
+  if(driver){try{await driver.stop();stopped=true;assert(!existsSync(driver.root),'Private Rex fixture remains')}catch(error){cleanupErrors.push(error)}}
+  if(pid){try{assert(!alive(pid),`Pi fixture PID ${pid} survived cleanup`)}catch(error){cleanupErrors.push(error);stopped=false}}
+  if(stopped){rmSync(root,{recursive:true,force:true});assert(!existsSync(root))}
+  else console.error(`Cleanup evidence retained: ${root}`);
+  process.removeListener('SIGINT',cancel);process.removeListener('SIGTERM',cancel);
+  if(cleanupErrors.length)failure=new AggregateError([...(failure?[failure]:[]),...cleanupErrors],'Hermes fixture failed or cleanup is unresolved');
 }
+if(failure)throw failure;
+console.log(JSON.stringify({...report,cleanup:'private Rex stopped; Pi target gone; private fixture removed'}));

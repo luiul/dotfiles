@@ -90,12 +90,12 @@ try {
     f.rows = [f.proc({ comm: '/Applications/Ghostty.app/Contents/MacOS/ghostty', args })];
     f.run(); assert.deepEqual(f.signals, []);
   });
-  test('shell age, UID, actual executable, tty and unambiguous interactive/login flags', () => {
+  test('shell age, UID, actual executable, tty and explicit interactive flags', () => {
     const f = fixture();
-    for (const args of ['/bin/zsh -i', '/bin/zsh -l', '-zsh', '-/bin/zsh', '/bin/zsh -fil']) {
+    for (const args of ['/bin/zsh -i', '/bin/zsh -il', '-zsh -i', '-/bin/zsh -i', '/bin/zsh -fil']) {
       assert.equal(processClass(f.proc({ args }), f.config, now), 'zsh', args);
     }
-    for (const args of ['/bin/zsh', '/bin/zsh task.zsh', '/bin/zsh -c sleep', '/bin/zsh -ic exec pi', '/bin/zsh -lc script', '/bin/zsh -i -c x', '/bin/zsh -il script.zsh', '/bin/zsh -f', '/bin/zsh -s', '/bin/zsh --login', '/bin/zsh -o interactive', '/bin/zsh -i --', 'other -i']) {
+    for (const args of ['/bin/zsh -l', '-zsh', '-/bin/zsh', '/bin/zsh', '/bin/zsh task.zsh', '/bin/zsh -c sleep', '/bin/zsh -ic exec pi', '/bin/zsh -lc script', '/bin/zsh -i -c x', '/bin/zsh -il script.zsh', '/bin/zsh -f', '/bin/zsh -s', '/bin/zsh --login', '/bin/zsh -o interactive', '/bin/zsh -i --', 'other -i']) {
       assert.equal(processClass(f.proc({ args }), f.config, now), null, args);
     }
     for (const extra of [{ uid: uid + 1 }, { ppid: 2 }, { tty: 'ttys000' }, { start: now - 599 }, { comm: '/tmp/zsh' }, { pid: 1 }, { start: now + 1 }]) {
@@ -216,6 +216,19 @@ try {
     assert.equal(main(['--apply'], tmux.dependencies), 1);
     const locked = fixture(); const release = acquireLock(fs, locked.config, locked.dependencies.lockPs, 8000);
     assert.equal(main(['--apply'], locked.dependencies), 3); release();
+  });
+  test('Rex operational failures propagate; expected skips remain successful', () => {
+    for (const rex of [
+      { tasks: [], errors: ['registry inspection failed'], failed: 1 },
+      { tasks: [{ status: 'retained', reason: 'signal failed' }], errors: [], failed: 1 },
+    ]) {
+      const f = fixture(); f.dependencies.rexAudit = () => rex;
+      assert.equal(main(['--apply'], f.dependencies), 1);
+      assert.deepEqual(f.signals, []); assert.deepEqual(f.tmuxKills, []);
+    }
+    const f = fixture();
+    f.dependencies.rexAudit = () => ({ tasks: [{ status: 'skipped', reason: 'owner is alive' }], errors: [], failed: 0 });
+    assert.equal(main(['--apply'], f.dependencies), 0);
   });
   test('dead or reused lock owner recovers, live/ambiguous/changed owner never does', () => {
     for (const scenario of ['absent', 'reused', 'live', 'foreign', 'error', 'revived', 'metadata-changed']) {

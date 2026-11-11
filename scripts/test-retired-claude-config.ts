@@ -59,7 +59,7 @@ try {
 	executable("git", `
 case "$1" in
 	rev-parse) printf '%s\\n' "$MOCK_ROOT" ;;
-	diff) printf '%s' "\${MOCK_STAGED:-}" ;;
+	diff) [[ -z "\${MOCK_STAGED:-}" ]] || printf '%s\\0' "$MOCK_STAGED" ;;
 	add) printf 'git add %s\\n' "$2" >> "$MOCK_CALLS" ;;
 	*) exit 9 ;;
 esac`);
@@ -95,23 +95,21 @@ cp "$MOCK_ROOT/installed.Brewfile" brew/Brewfile`);
 		env: { ...process.env, PATH: `${bin}:/usr/bin:/bin`, MOCK_ROOT: sandbox, MOCK_CALLS: calls, MOCK_STAGED: staged },
 	});
 	check("commit hook cannot restore retired configs from live installs", () => {
+		const originalEnv = readFileSync(join(sandbox, ".env"), "utf8");
 		const result = run();
 		assert.equal(result.status, 0, result.stderr);
-		const brewfile = readFileSync(join(sandbox, "brew/Brewfile"), "utf8");
-		assert.doesNotMatch(brewfile, /claude|mlz11/i);
-		for (const entry of ['tap "stablyai/orca"', 'cask "stablyai/orca/orca"', 'brew "tmux"', 'vscode "golang.go"', 'npm "pi-hermes-memory"']) assert.ok(brewfile.includes(entry), entry);
-		const env = readFileSync(join(sandbox, "example.env"), "utf8");
-		assert.doesNotMatch(env, /ANTHROPIC_DEFAULT_|Claude CLI|secret-value|another-value|keep-value/);
-		for (const entry of ["AWS_PROFILE=", "AI_MODEL_ROUTER_API_KEY=", "JIRA_API_TOKEN="]) assert.ok(env.includes(entry), entry);
+		assert.equal(existsSync(join(sandbox, "brew/Brewfile")), false);
+		assert.equal(existsSync(join(sandbox, "example.env")), false);
+		assert.equal(readFileSync(join(sandbox, ".env"), "utf8"), originalEnv);
 		assert.equal(existsSync(join(sandbox, "Marketplacefile")), false);
 		assert.equal(existsSync(join(sandbox, "Pluginfile")), false);
-		assert.equal(readFileSync(calls, "utf8"), "git add example.env\nbrew dump\ngit add brew/Brewfile\nsecret scan\n");
+		assert.equal(readFileSync(calls, "utf8"), "secret scan\n");
 	});
 	check("commit hook still blocks staged secrets", () => {
 		writeFileSync(calls, "");
-		const result = run(".env\n");
+		const result = run(".env");
 		assert.equal(result.status, 1);
-		assert.match(result.stdout, /ERROR: \.env contains secrets/);
+		assert.match(result.stderr, /Real dotenv filename cannot be committed/);
 		assert.doesNotMatch(readFileSync(calls, "utf8"), /brew dump|secret scan|unexpected Claude/);
 	});
 } finally {

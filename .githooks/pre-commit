@@ -1,37 +1,45 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Auto-generate example.env from .env (keys only, values stripped)
-DOTFILES_DIR="$(git rev-parse --show-toplevel)"
-if [[ -f "$DOTFILES_DIR/.env" ]]; then
-	sed -E '/^# Anthropic \/ Claude CLI$/d; /^ANTHROPIC_DEFAULT_(HAIKU|SONNET|OPUS|FABLE)_MODEL=/d; s/=.*/=/' "$DOTFILES_DIR/.env" >|example.env
-	git add example.env
+# Validation only: never read real dotenv contents, regenerate snapshots, or stage
+# files. Git supplies the commit index, including its temporary --only index.
+if ! repo_root="$(git rev-parse --show-toplevel)"; then
+	printf '%s\n' 'ERROR: Cannot find the repository root. Commit stopped.' >&2
+	exit 1
 fi
-
-# Block .env from being committed (contains secrets)
-if git diff --cached --name-only | grep -qx '\.env'; then
-	echo "ERROR: .env contains secrets and must not be committed."
-	echo "It is gitignored — if you force-added it, run: git reset HEAD .env"
+if ! cd "$repo_root"; then
+	printf '%s\n' 'ERROR: Cannot enter the repository root. Commit stopped.' >&2
 	exit 1
 fi
 
-# Update Brewfile with current packages.
-# brew bundle dump natively captures formulae, casks, taps, vscode extensions,
-# uv tools, and npm globals — no manual npm loop needed.
-if command -v brew &>/dev/null; then
-	brew bundle dump --file=brew/Brewfile --force
-	# Do not restore retired Claude tooling from the installed-state snapshot.
-	sed -i '' -E '/^tap "mlz11\/tap"/d; /^cask "mlz11\/tap\/claude-notifier"/d; /^vscode "anthropic\.claude-code"/d; /^# macOS notifications with Claude icon for Claude Code hooks$/d' brew/Brewfile
-	git add brew/Brewfile
+validate_staged_names() {
+	local staged_path filename
+	while IFS= read -r -d '' staged_path; do
+		filename="${staged_path##*/}"
+		case "$filename" in
+			# Only these exact template names are allowed, still subject to scanning.
+			.env.example|.env.sample) ;;
+			.env|.env.*)
+				printf 'ERROR: Real dotenv filename cannot be committed: %q\n' "$staged_path" >&2
+				printf '%s\n' 'Keep secret files outside Git. Review the staged files and use an empty .env.example or .env.sample template.' >&2
+				return 1
+				;;
+		esac
+	done
+}
+
+# NUL records preserve spaces and newlines. Disabling rename detection includes
+# both the old and new paths. pipefail also blocks a failed Git name query.
+if ! git diff --cached --name-only --no-renames --no-ext-diff --no-textconv -z -- | validate_staged_names; then
+	printf '%s\n' 'ERROR: Staged filename validation failed. Commit stopped; review the index and any Git errors above.' >&2
+	exit 1
 fi
 
-# Detect secrets in staged files before committing (gitleaks)
-if command -v gitleaks &>/dev/null; then
-	if ! gitleaks protect --staged --redact --no-banner; then
-		echo ""
-		echo "If these are false positives, commit with --no-verify"
-		exit 1
-	fi
-else
-	echo "WARNING: gitleaks not installed — secret scan skipped. Install with: brew install gitleaks" >&2
+if ! command -v gitleaks >/dev/null 2>&1; then
+	printf '%s\n' 'ERROR: gitleaks is required. Install it (brew install gitleaks), then retry the commit.' >&2
+	exit 1
+fi
+if ! gitleaks protect --staged --redact --no-banner; then
+	printf '%s\n' 'ERROR: gitleaks did not pass. Fix any findings or scanner errors, then retry the commit.' >&2
+	exit 1
 fi

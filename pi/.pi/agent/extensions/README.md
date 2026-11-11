@@ -1,5 +1,20 @@
 # Pi extensions
 
+## Exit command
+
+`exit.ts` adds `/exit` in every session that loads the global extension. It cancels active work, waits until Pi is idle, then requests normal shutdown without confirmation. In the TUI, cancellation also clears queued prompts. Shutdown runs Pi's existing cleanup hooks and restores the terminal. Saved conversations remain resumable. An empty session has no transcript to resume.
+
+The command starts no processes, timers, watchers, or network requests. It adds no tools or model instructions. Native `/quit`, Ctrl+D, and double Ctrl+C stay unchanged. Cancellation is cooperative, just as with native shutdown. It does not force-kill a stuck tool or skip cleanup. Exit does not undo file edits.
+
+Verification from the repository root:
+
+```sh
+bun scripts/test-exit-extension.ts
+node scripts/test-exit-live.mjs
+```
+
+The live test compares `/exit` with double Ctrl+C in private Pi TUI sessions, using a local provider without model network calls. It covers idle, streaming, running bash, queued prompts, retry, manual compaction, context-mode, and an active SDK subagent. It checks awaited shutdown hooks, child cleanup, terminal restoration, transcript preservation, global discovery, and native `/quit`. Test-owned tmux sessions have registered owners and deadlines. Temporary files and owned processes are removed after each run. `EXIT_LIVE_REPORT` optionally saves timing results; `EXIT_LIVE_EXTENSION` selects an extension source for deployment checks.
+
 ## Scoped inherited instructions
 
 `scoped-agent-context.ts` reads missing ancestor instructions from the primary checkout when Pi prepares a run in a linked worktree. Git metadata supplies repository identity. Remote owner and branch names do not set instruction scope.

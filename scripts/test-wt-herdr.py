@@ -199,6 +199,122 @@ class Tests(unittest.TestCase):
         ids, folders = self.h.identities(self.h.doc, self.h.terminals)
         self.assertEqual(w.repair_layout(self.h.doc, ids, folders), self.h.doc)
 
+    def test_mixed_space_keeps_mod_only_tab_in_original_space(self):
+        self.mixed()
+        files = {"id": "tb-files", "name": "Files", "root": {"id": "tb-files", "type": "row",
+                 "children": [{"id": "pmod", "type": "block", "content": {"mod": "files", "props": {"folder": "keep"}}}]}}
+        self.h.doc["spaces"][1]["folder"] = self.h.child
+        self.h.doc["spaces"][1]["tabs"].insert(0, files)
+        original = copy.deepcopy(self.h.doc)
+        before = w.process_identity(self.h.terminals)
+        self.h.repair()
+        anchor = next(s for s in self.h.doc["spaces"] if s["id"] == "sp-mixed")
+        self.assertEqual(anchor["tabs"][0], files)
+        self.assertEqual(anchor["folder"], original["spaces"][1]["folder"])
+        self.assertEqual(before, w.process_identity(self.h.terminals))
+        self.assertEqual({a for a, *_ in w.placements(self.h.doc)}, {"t1", "t2"})
+        before_blocks = {n["id"]: n for s in original["spaces"] for t in s["tabs"] for n in w.nodes(t["root"]) if n["type"] == "block"}
+        after_blocks = {n["id"]: n for s in self.h.doc["spaces"] for t in s["tabs"] for n in w.nodes(t["root"]) if n["type"] == "block"}
+        self.assertEqual(before_blocks, after_blocks)
+        writes = self.h.rpc_calls("doc.set")
+        self.h.repair()
+        self.assertEqual(self.h.rpc_calls("doc.set"), writes)
+
+    def test_files_only_tab_keeps_original_folder_when_not_first_checkout(self):
+        self.mixed()
+        mixed = self.h.doc["spaces"][1]
+        mixed["folder"] = self.h.primary
+        files = {"id": "tb-files", "name": "Files", "root": {"id": "tb-files", "type": "row",
+                 "children": [{"id": "pmod", "type": "block", "content": {"mod": "files", "props": {}}}]}}
+        mixed["tabs"].insert(0, files)
+        self.h.repair(repo=self.repo)
+        anchor = next(s for s in self.h.doc["spaces"] if s["id"] == "sp-mixed")
+        self.assertEqual(anchor["folder"], self.h.primary)
+        self.assertIn(files, anchor["tabs"])
+
+    def test_files_only_tab_with_unmatched_folder_refused(self):
+        self.mixed()
+        mixed = self.h.doc["spaces"][1]
+        files = {"id": "tb-files", "root": {"id": "tb-files", "type": "row",
+                 "children": [{"id": "pmod", "type": "block", "content": {"mod": "files", "props": {}}}]}}
+        mixed["tabs"].insert(0, files)
+        original = copy.deepcopy(self.h.doc)
+        with self.assertRaisesRegex(w.Error, "folder"):
+            self.h.repair(repo=self.repo)
+        self.assertEqual(self.h.doc, original)
+        self.assertEqual(self.h.rpc_calls("doc.set"), 0)
+
+    def test_cross_repo_mixed_space_preserves_files_and_reuses_pi(self):
+        self.mixed()
+        files = {"id": "tb-files", "name": "Files", "root": {"id": "tb-files", "type": "row",
+                 "children": [{"id": "pmod", "type": "block", "content": {"mod": "files", "props": {}}}]}}
+        self.h.doc["spaces"][1]["folder"] = self.h.child
+        self.h.doc["spaces"][1]["tabs"].insert(0, files)
+        self.h.terminals["t2"]["foreground"]["cwd"] = "/foreign"
+        original_git = self.h.git
+        self.h.git = lambda folder, required=True: (
+            {"path": folder, "common": "/foreign/.git", "primary": folder, "name": "foreign"}
+            if folder == "/foreign" else original_git(folder, required)
+        )
+        before = w.process_identity(self.h.terminals)
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        anchor = next(s for s in self.h.doc["spaces"] if s["id"] == "sp-mixed")
+        self.assertEqual(anchor["tabs"][0], files)
+        self.assertEqual(w.process_identity(self.h.terminals), before)
+        self.assertFalse(any(a[:2] == ["hc", "run"] for a in self.h.calls))
+        for address, space_id, tab_id, _ in w.placements(self.h.doc):
+            labels = self.h.terminals[address]["labels"]
+            self.assertEqual((labels["herdr.space"], labels["herdr.tab"]), (space_id, tab_id))
+
+    def test_marked_mod_tab_is_refused_before_write(self):
+        self.mixed()
+        files = {"id": "tb-files", "name": "Files", "root": {"id": "tb-files", "type": "row",
+                 "children": [{"id": "pmod", "type": "block", "content": {"mod": "files",
+                              "props": {"wt_herdr_parent": self.h.primary}}}]}}
+        self.h.doc["spaces"][1]["tabs"].insert(0, files)
+        original = copy.deepcopy(self.h.doc)
+        with self.assertRaisesRegex(w.Error, "marked"):
+            self.h.repair(repo=self.repo)
+        self.assertEqual(self.h.doc, original)
+        self.assertEqual(self.h.rpc_calls("doc.set"), 0)
+
+    def test_single_checkout_mod_tab_moves_intact(self):
+        self.mixed()
+        mod_tab = tab("tb-one", "t2")
+        mod_tab["root"]["children"].append({"id": "pmod", "type": "block", "content": {"mod": "files", "props": {}}})
+        self.h.doc["spaces"][1]["tabs"] = [tab("tb-anchor", "t1"), mod_tab]
+        self.h.doc["spaces"][1]["folder"] = self.h.primary
+        self.h.repair()
+        moved = next(t for s in self.h.doc["spaces"] for t in s["tabs"] if t["id"] == "tb-one")
+        self.assertEqual(moved, mod_tab)
+        self.assertNotEqual(next(s["id"] for s in self.h.doc["spaces"] if moved in s["tabs"]), "sp-mixed")
+        self.assertEqual(next(s["folder"] for s in self.h.doc["spaces"] if moved in s["tabs"]), self.h.primary)
+
+    def test_single_checkout_mod_tab_with_changed_folder_is_refused(self):
+        self.mixed()
+        mixed = self.h.doc["spaces"][1]
+        mixed["folder"] = self.h.child
+        mod_tab = tab("tb-one", "t2")
+        mod_tab["root"]["children"].append({"id": "pmod", "type": "block", "content": {"mod": "files", "props": {}}})
+        mixed["tabs"] = [tab("tb-anchor", "t1"), mod_tab]
+        original = copy.deepcopy(self.h.doc)
+        with self.assertRaisesRegex(w.Error, "folder"):
+            self.h.repair(repo=self.repo)
+        self.assertEqual(self.h.doc, original)
+        self.assertEqual(self.h.rpc_calls("doc.set"), 0)
+
+    def test_single_checkout_space_with_mod_folder_drift_is_refused(self):
+        self.ready()
+        mixed = self.h.doc["spaces"][1]
+        mixed["folder"] = self.h.primary
+        mixed["tabs"].insert(0, {"id": "tb-files", "root": {"id": "tb-files", "type": "row", "children": [
+            {"id": "pmod", "type": "block", "content": {"mod": "files", "props": {}}}]}})
+        original = copy.deepcopy(self.h.doc)
+        with self.assertRaisesRegex(w.Error, "folder"):
+            self.h.repair(repo=self.repo)
+        self.assertEqual(self.h.doc, original)
+        self.assertEqual(self.h.rpc_calls("doc.set"), 0)
+
     def test_mixed_mod_refused(self):
         self.mixed()
         self.h.doc["spaces"][1]["tabs"][0]["root"]["children"].append(
@@ -212,6 +328,33 @@ class Tests(unittest.TestCase):
         self.h.terminals["t2"]["foreground"]["cwd"] = "/unknown"
         with self.assertRaises(w.Error):
             self.h.repair()
+
+    def test_unknown_foreground_refused_before_repair_write(self):
+        self.mixed()
+        original = copy.deepcopy(self.h.doc)
+        for key in ("pid", "argv"):
+            with self.subTest(missing=key):
+                foreground = self.h.terminals["t2"]["foreground"]
+                value = foreground.pop(key)
+                with self.assertRaisesRegex(w.Error, "foreground"):
+                    self.h.repair(repo=self.repo)
+                self.assertEqual(self.h.doc, original)
+                self.assertEqual(self.h.rpc_calls("doc.set"), 0)
+                foreground[key] = value
+
+    def test_global_repair_refuses_unknown_non_git_foreground(self):
+        self.h.doc["spaces"].append(space("sp-outside", "/outside", tab("tb-outside", "t-outside")))
+        self.h.terminals["t-outside"] = fact("t-outside", "/outside", False)
+        original = copy.deepcopy(self.h.doc)
+        for key in ("pid", "argv"):
+            with self.subTest(missing=key):
+                foreground = self.h.terminals["t-outside"]["foreground"]
+                value = foreground.pop(key)
+                with self.assertRaisesRegex(w.Error, "foreground"):
+                    self.h.repair()
+                self.assertEqual(self.h.doc, original)
+                self.assertEqual(self.h.rpc_calls("doc.set"), 0)
+                foreground[key] = value
 
     def test_repair_idempotent_and_sanitized_backup(self):
         self.mixed()
@@ -442,6 +585,16 @@ class Tests(unittest.TestCase):
         self.assertEqual(len(stable), 1)
         self.assertNotEqual(stable[0]["id"], parent["id"])
         self.assertIn("caller", {a for a, *_ in w.placements(self.h.doc)})
+
+    def test_demoted_parent_follows_single_checkout_after_caller_cd(self):
+        parent = self.h.doc["spaces"][0]
+        parent["tabs"].append(tab("tb-caller", "caller"))
+        self.h.terminals["caller"] = fact("caller", self.h.child, False)
+        self.h.repair(repo=self.repo)
+        former = next(s for s in self.h.doc["spaces"] if s["id"] == parent["id"])
+        self.assertEqual(former["folder"], self.h.child)
+        self.assertEqual(sum(w.repo_parent(s, self.h.primary) for s in self.h.doc["spaces"]), 1)
+        self.assertEqual(former["tabs"][0]["root"]["children"][0]["content"]["props"], {})
 
     def test_explicit_repo_basename_name_survives_drift(self):
         self.ready()

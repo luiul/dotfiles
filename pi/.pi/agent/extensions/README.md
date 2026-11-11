@@ -1,5 +1,20 @@
 # Pi extensions
 
+## Exit command
+
+`exit.ts` adds `/exit` in every session that loads the global extension. It cancels active work, waits until Pi is idle, then requests normal shutdown without confirmation. In the TUI, cancellation also clears queued prompts. Shutdown runs Pi's existing cleanup hooks and restores the terminal. Saved conversations remain resumable. An empty session has no transcript to resume.
+
+The command starts no processes, timers, watchers, or network requests. It adds no tools or model instructions. Native `/quit`, Ctrl+D, and double Ctrl+C stay unchanged. Cancellation is cooperative, just as with native shutdown. It does not force-kill a stuck tool or skip cleanup. Exit does not undo file edits.
+
+Verification from the repository root:
+
+```sh
+bun scripts/test-exit-extension.ts
+node scripts/test-exit-live.mjs
+```
+
+The live test compares `/exit` with double Ctrl+C in private Pi TUI sessions, using a local provider without model network calls. It covers idle, streaming, running bash, queued prompts, retry, manual compaction, context-mode, and an active SDK subagent. It checks awaited shutdown hooks, child cleanup, terminal restoration, transcript preservation, global discovery, and native `/quit`. Test-owned tmux sessions have registered owners and deadlines. Temporary files and owned processes are removed after each run. `EXIT_LIVE_REPORT` optionally saves timing results; `EXIT_LIVE_EXTENSION` selects an extension source for deployment checks.
+
 ## Scoped inherited instructions
 
 `scoped-agent-context.ts` reads missing ancestor instructions from the primary checkout when Pi prepares a run in a linked worktree. Git metadata supplies repository identity. Remote owner and branch names do not set instruction scope.
@@ -15,6 +30,22 @@ bun scripts/test-scoped-agent-context.ts
 node scripts/test-scoped-agent-context-live.mjs
 uv run scripts/test-worktree-no-editor.py
 ```
+
+## GUI launch environment
+
+`gui-environment.ts` runs before model selection. It preserves an inherited router key. If the key is missing on macOS, it checks the GUI environment set by `gui-env-sync.sh`, then parses only `AI_MODEL_ROUTER_API_KEY` from the canonical `~/dotfiles/.env`. It never executes that file, reads a worktree copy, prints secrets, or saves credentials.
+
+When an executable managed Pi launcher exists, the extension adds its directory and the current Node directory to `PATH`. This lets Hermes start its memory-only child from a GUI launch without login-shell setup. The review models, transport fallback, watchdog, and shared Hermes package stay unchanged.
+
+```sh
+bun scripts/test-gui-environment.ts
+node scripts/test-gui-environment-live.mjs
+node scripts/test-gui-environment-live.mjs --live
+node scripts/test-gui-environment-live.mjs --cancel-before-ready
+node scripts/test-hermes-review.mjs
+```
+
+The live test starts a separate real Pi TUI with a stripped environment and private settings. It checks router authentication and `pi --version`, without external model requests or live memory writes. Signal cleanup and an independent 60-second guard remove test-owned processes and the private tmux server, including cancellation before readiness.
 
 ## Hermes memory reviews
 
@@ -149,6 +180,31 @@ scripts/bench-zen-startup.sh startup bare zen1
 ```
 
 The E2E asserts: compact start (success one line with suffix, failure one line with error text, native thinking label), native `ctrl+o` expand and collapse, `/zen` off restoring the native transcript, `/zen` on again, `/reload` keeping compact mode, and a line-for-line parity diff between a `--no-zen` capture and a bare-pi capture of the same seeded session. Design and decision history: https://github.com/luiul/dotfiles/issues/67.
+
+## Reply code blocks
+
+`code-blocks/index.ts` adds a compact language header and muted frame to fenced code in assistant replies. Code uses the terminal's normal background, without a success tint. It keeps Pi's parser, syntax colors, block-owned highlighting cache, and Mermaid renderer. Long lines wrap without clipping. Other Markdown surfaces keep native code rendering.
+
+This is a small adaptation of [pi-markdown-blocks](https://github.com/FasalZein/pi-markdown-blocks/tree/2403950d2916c67559f108f3cc11770123d4bb59), with its MIT notice in `code-blocks/LICENSE`. The extra parser dependency, custom shell highlighter, environment settings, automatic block scans, and picker shortcut are removed. No workers, timers, network requests, or runtime dependencies are added.
+
+- Pi has no public code-token frame hook. The private boundary is isolated and enabled only for verified Pi 1.5.1. Other versions warn and retain native rendering.
+- The public assistant-only Markdown transformer sets render scope without parsing or changing text. Native Mermaid runs first, so rendered diagrams never enter the code-frame hook.
+- Very narrow and indented blocks keep native rendering. Source control sequences are stripped from framed display before trusted syntax colors are added.
+- `/copyblock [number]` copies original fenced source from the latest reply, without visual wrapping or frame characters. Block parsing happens only when requested. Terminal text selection still copies display rows, so use this command for long executable lines.
+- Reply guidance favors top-level Mermaid, short labels, vertical layouts, and language-only fences. Saved documentation keeps its existing diagram conventions.
+- Shutdown removes only this extension's prototype hooks. `/reload` reinstalls one instance. Session files and model context retain original Markdown.
+
+Verification:
+
+```sh
+node scripts/test-code-blocks.mjs
+node scripts/test-code-blocks-live.mjs
+node scripts/bench-code-blocks.mjs
+```
+
+The live harness uses isolated settings, a local streaming provider, registered bounded tmux sessions, and a fake clipboard. It checks resize, themes, reload, original session text, copying, regular mode, and fullscreen mode. Benchmarks alternate native and framed rendering, including first paint, cached repaint, resize, streaming prose, and changing code. The live comparison also measures startup, RSS, idle CPU, and terminal writes. Optional report paths are `CODEBLOCK_BENCH_REPORT` and `CODEBLOCK_LIVE_REPORT`. Set `CODEBLOCK_BENCH_BASELINE` or `CODEBLOCK_LIVE_BASELINE` to a saved extension file for direct comparisons against an earlier version. `CODEBLOCK_LIVE_TRIALS` controls the live sample count. Acceptance criteria and recorded results: https://github.com/luiul/dotfiles/issues/102.
+
+Captured tmux images are not a deployment check. Load the source with `-e` in an isolated review host before updating the live Stow deployment checkout.
 
 ## Enhanced status bar
 

@@ -3,3 +3,6 @@ Preferences.sublime-settings filter=strip-sublime-fontsize
 
 # pi writes defaultThinkingLevel into settings.json at runtime; strip it so it is never tracked
 pi/.pi/agent/settings.json filter=strip-pi-thinkinglevel
+
+# Herdr rewrites zoom at runtime; strip it so it is never tracked
+herdr/.config/herdr-app/settings.json filter=strip-herdr-zoom

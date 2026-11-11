@@ -32,7 +32,7 @@ def check_hooks(value) -> None:
     if isinstance(value, dict):
         for name, child in value.items():
             if name.startswith(("pre-", "post-")):
-                assert not re.search(r"\b(?:orca|herdr|herdr-wt-open)\b", json.dumps(child)), (
+                assert not re.search(r"\b(?:orca|herdr|herdr-wt-open|wt-herdr|herdr-app|hc)\b", json.dumps(child)), (
                     f"{name} must not call an orchestrator"
                 )
             check_hooks(child)

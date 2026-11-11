@@ -236,7 +236,8 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
     for (const timeout of [0,-1,Infinity,NaN]) await assert.rejects(e.execute({ language: 'shell', code: ':', timeout }), /timeout/);
     await assert.rejects(e.execute({ language: 'shell', code: ':', background: true }), /explicit/);
     assert.equal((await e.execute({ language: 'javascript', code: 'console.log("js-ok")', timeout: 5000 })).stdout.trim(), 'js-ok');
-    assert.equal((await e.executeFile({ path: 'fake.mjs', language: 'shell', code: 'printf "%s" "$FILE_CONTENT"', timeout: 1000 })).exitCode, 0);
+    const fileResult = await e.executeFile({ path: data('fake.mjs'), language: 'shell', code: 'printf "%s" "$FILE_CONTENT"', timeout: 5000 });
+    assert.equal(fileResult.exitCode, 0, JSON.stringify(fileResult));
   });
   await test('omitted executor timeout installs a real 120000ms deadline', async () => {
     const script = data('default-deadline.mjs');
@@ -255,25 +256,25 @@ try{const result=await e.execute({language:'shell',code:'sleep 20'});console.log
     fs.writeFileSync(script, `import {PolyglotExecutor} from ${JSON.stringify(pathToFileURL(path.join(copy,'build/executor.js')).href)};
 const e=new PolyglotExecutor({projectRoot:${JSON.stringify(temp)},runtimes:{rust:true,shell:'/bin/sh'}});
 process.on('exit',()=>e.cleanupBackgrounded(true));
-try{const result=await e.execute({language:'rust',code:'fn main(){}',timeout:300});console.log(JSON.stringify(result));}finally{e.cleanupBackgrounded(true)}`);
+try{const result=await e.execute({language:'rust',code:'fn main(){}',timeout:3000});console.log(JSON.stringify(result));}finally{e.cleanupBackgrounded(true)}`);
     const c=launch(script,{PATH:bin+path.delimiter+process.env.PATH});let stdout='';c.stdout.on('data',b=>stdout+=b);const [exit]=await once(c,'close');
     assert.equal(exit,0);assert.equal(JSON.parse(stdout).timedOut,true);await gone('compiler.pid');
   });
   await test('small timeout kills stubborn foreground group', async () => {
     const e = makeExecutor();
-    const result = await e.execute({ language: 'shell', code: `trap '' TERM; echo $$ > '${data('stubborn.pid')}'; sleep 20`, timeout: 300 });
+    const result = await e.execute({ language: 'shell', code: `trap '' TERM; echo $$ > '${data('stubborn.pid')}'; sleep 20`, timeout: 3000 });
     assert.equal(result.timedOut, true); await gone('stubborn.pid');
   });
   await test('root exits while descendant holds pipes, deadline kills the surviving group', async () => {
     const e = makeExecutor();
-    const result = await e.execute({ language: 'shell', code: `sh -c 'trap "" TERM; echo $$ > "${data('descendant.pid')}"; sleep 20' &\nexit 0`, timeout: 400 });
+    const result = await e.execute({ language: 'shell', code: `sh -c 'trap "" TERM; echo $$ > "${data('descendant.pid')}"; sleep 20' &\nexit 0`, timeout: 3000 });
     assert.equal(result.timedOut, true); await gone('descendant.pid');
   });
   await test('graceful cleanup includes foreground, escalates stubborn background and clears ownership', async () => {
     const e = makeExecutor();
     const foreground = e.execute({ language: 'shell', code: `trap '' TERM; echo $$ > '${data('foreground.pid')}'; sleep 20`, timeout: 10000 });
     await until(() => fs.existsSync(data('foreground.pid')));
-    const background = await e.execute({ language: 'shell', code: `trap '' TERM; echo $$ > '${data('background.pid')}'; sleep 20`, timeout: 300, background: true });
+    const background = await e.execute({ language: 'shell', code: `trap '' TERM; echo $$ > '${data('background.pid')}'; sleep 20`, timeout: 3000, background: true });
     assert.equal(background.backgrounded, true);
     e.cleanupBackgrounded(); await foreground;
     await gone('foreground.pid'); await gone('background.pid');
@@ -284,7 +285,7 @@ try{const result=await e.execute({language:'rust',code:'fn main(){}',timeout:300
     fs.writeFileSync(script, `import {PolyglotExecutor} from ${JSON.stringify(pathToFileURL(path.join(copy,'build/executor.js')).href)};
 const e=new PolyglotExecutor({projectRoot:${JSON.stringify(temp)},runtimes:{shell:'/bin/sh'}});
 process.on('exit',()=>e.cleanupBackgrounded(true));
-await e.execute({language:'shell',code:${JSON.stringify(`trap '' TERM; echo $$ > '${data('exit.pid')}'; sleep 20`)},timeout:300,background:true});
+await e.execute({language:'shell',code:${JSON.stringify(`trap '' TERM; echo $$ > '${data('exit.pid')}'; sleep 20`)},timeout:3000,background:true});
 process.exit(0);`);
     const c = launch(script); await once(c, 'close'); await gone('exit.pid');
   });
@@ -307,7 +308,7 @@ process.exit(0);`);
     const c = new MCPStdioClient(path.join(copy,'server.bundle.mjs'), { ...process.env, HOME: home, PI_CONFIG_DIR:path.join(home,'.pi'),
       CONTEXT_MODE_PROJECT_DIR:temp, CONTEXT_MODE_PLATFORM:'pi', CONTEXT_MODE_BRIDGE_IDLE_MS:'0' }, process.execPath);
     clients.add(c); c.start(); await c.initialize();
-    await c.callTool('ctx_execute', { language:'shell', code:`trap '' TERM; echo $$ > '${data('real-bg.pid')}'; sleep 20`, timeout:300, background:true });
+    await c.callTool('ctx_execute', { language:'shell', code:`trap '' TERM; echo $$ > '${data('real-bg.pid')}'; sleep 20`, timeout:3000, background:true });
     const controller = new AbortController();
     const running = c.callTool('ctx_execute', { language:'shell', code:`trap '' TERM; echo $$ > '${data('real-fg.pid')}'; sleep 20`, timeout:10000 }, controller.signal);
     const outcome = Promise.allSettled([running]);

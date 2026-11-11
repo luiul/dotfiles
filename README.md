@@ -93,7 +93,7 @@ The `aws` package stows `~/.aws/config` (used by the `aws-sso-refresh` pi extens
 
 ## VS Code
 
-The `vscode` package stows `settings.json`, `keybindings.json`, and `extensions.json` (recommendations) into `~/Library/Application Support/Code/User/`. Installed extensions are tracked as `vscode` entries in the Brewfile, which the pre-commit hook regenerates from the live system, so uninstalling an extension locally drops it from the Brewfile on the next commit. Extensions removed in the 2026-08-31 performance prune (with reinstall commands) and the performance-tuned settings are documented in `vscode/README.md`. The convention for sharing draw.io diagrams in GitHub READMEs (single-file `.drawio.svg` under `docs/diagrams/`, editable in VS Code) is documented in `docs/diagrams.md`.
+The `vscode` package stows `settings.json`, `keybindings.json`, and `extensions.json` (recommendations) into `~/Library/Application Support/Code/User/`. Installed extensions are tracked as `vscode` entries in the Brewfile. Refresh the installed-state snapshot explicitly, then review its diff; ordinary commits never regenerate it. Extensions removed in the 2026-08-31 performance prune (with reinstall commands) and the performance-tuned settings are documented in `vscode/README.md`. The convention for sharing draw.io diagrams in GitHub READMEs (single-file `.drawio.svg` under `docs/diagrams/`, editable in VS Code) is documented in `docs/diagrams.md`.
 
 ## Pi Memory (Hermes)
 
@@ -147,7 +147,9 @@ The `snowflake` package stows `~/.snowflake/config.toml` with three connections 
 
 ## Brewfile
 
-The Brewfile serves as a single source of truth for all packages needed on a fresh machine. It is automatically updated on every commit via the pre-commit hook.
+The Brewfile serves as a single source of truth for packages needed on a fresh machine.
+Refresh it explicitly when package changes are in scope, then review the diff.
+The pre-commit hook validates only and never rewrites or stages snapshots.
 
 `brew bundle` natively handles these directives:
 
@@ -159,7 +161,9 @@ The Brewfile serves as a single source of truth for all packages needed on a fre
 | `vscode`  | VS Code extensions                   |
 | `uv`      | Python tools (via `uv tool install`) |
 
-The Brewfile also contains `npm` entries for global Node.js packages. These are ignored by `brew bundle` and installed by `setup.sh` via `npm install -g`. The pre-commit hook auto-detects installed npm global packages and appends them to the Brewfile on each commit.
+Homebrew's installed version determines which additional directives `brew bundle dump` emits.
+Review npm, uv, and VS Code entries rather than assuming an automatic commit refresh captured them.
+`setup.sh` also supports existing `npm` entries through `npm install -g`.
 
 To manually update the Brewfile:
 
@@ -174,13 +178,52 @@ brew bundle --file=brew/Brewfile
 grep '^npm ' brew/Brewfile | sed 's/^npm "\(.*\)"/\1/' | xargs -I{} npm install -g {}
 ```
 
+## Commit safety and verification evidence
+
+The pre-commit hook does not generate `example.env` or the Brewfile.
+It validates the staged files and runs Gitleaks; a missing scanner or scan failure stops the commit.
+Use a narrow reviewed exception for a real false positive, not a blanket `--no-verify` bypass.
+Refresh `example.env` only when environment keys change, retaining key names and blank values without exposing real values.
+Review both snapshots as ordinary changes.
+
+After commit approval, normal commits can use explicit reviewed paths.
+Before publication, check the actual commit against the approved path set:
+
+```sh
+git commit --only -m 'docs: clarify setup' -- README.md
+node scripts/check-commit-scope.mjs HEAD README.md
+```
+
+The scope check is read-only and requires an exact path set.
+It does not approve commit or publication, and it rejects merge commits, which need their own integration review.
+Use an isolated source worktree and one publication owner to avoid concurrent index edits.
+A local check is not server-side branch protection.
+The scope checker validates paths, not whether every changed line was approved; inspect the full commit diff too.
+The dotenv filename gate also blocks deletion of an already tracked secret file.
+Treat removal of such a file as a separately reviewed incident action, not a routine hook bypass.
+
+Run the safety tests from this repository root:
+
+```sh
+node scripts/test-commit-safety.mjs
+node scripts/test-worktree-policy.mjs
+```
+
+Tests use disposable Git repositories and fake snapshot commands, never the live `.env` or Homebrew state.
+The [contract and evidence template](docs/contract-and-evidence-template.md) provides a concise ticket/PR checklist for high-risk changes.
+Do not place confidential data or spend estimates in public evidence.
+
 ## `upgrade-tools`
 
 The `upgrade-tools` shell function (defined in `zsh/.zsh_config/funcs.zsh`) upgrades everything in one go: Homebrew, `uv` tools, and npm globals. Missing tools are skipped rather than failing. Pass `--check` (or `-c`) for a dry-run preview of what is outdated.
 
 ## Pre-commit Hook
 
-The pre-commit hook generates `example.env` from `.env` (keys only), updates the Brewfile, and blocks `.env` from being committed. It excludes retired Claude CLI model defaults, ClaudeNotifier, and the Claude Code VS Code extension from these snapshots. It runs [gitleaks](https://github.com/gitleaks/gitleaks) (`gitleaks protect --staged`) to scan staged changes for secrets. Bypass with `--no-verify` for false positives.
+The pre-commit hook validates staged names and requires [Gitleaks](https://github.com/gitleaks/gitleaks) (`gitleaks protect --staged`) to scan for secrets.
+It never reads real dotenv values, refreshes snapshots, or stages extra files.
+Real `.env` and `.env.*` filenames are blocked; `.env.example` and `.env.sample` remain subject to scanning.
+A missing scanner or a scan error blocks the commit.
+Review false positives and use a narrow documented scanner exception rather than bypassing all checks.
 
 Pi agent activity is shown in Orca and Canopy. Pi desktop notifications and Claude Code configs are no longer part of this setup.
 

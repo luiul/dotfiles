@@ -1,0 +1,8 @@
+{
+  "sounds": {
+    "enabled": true
+  },
+  "font_size": 14.0,
+  "font_ligatures": false,
+  "minimum_contrast": 1.0
+}

@@ -37,21 +37,44 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Always link to PRs and online resources. When you mention a PR, Jira ticket, Slack thread, doc, or any resource with a URL, include the full clickable URL (e.g. https://github.com/hellofresh/schema-registry/pull/4222), not just `schema-registry#4222` or `GLOA-338`.
 - In scratch files and Markdown drafts for Slack, write links as [text](URL). Never put backticks inside link text. Keep backticks outside links. Native Slack posting, where permitted, uses Slack's own link format.
 
+## Engineering Practices
+
+- Use the repo's established patterns, documented commands, formatters, linters, and test tools. Check actual APIs and installed versions rather than guessing.
+- Prefer the smallest clear solution that meets the request. Keep changes easy to review. Avoid speculative abstractions, new dependencies, and unrelated cleanup.
+- Treat AI-generated code and reviews as unverified input. Inspect the full diff and tests against the acceptance criteria, contracts, failure paths, security, and resource cleanup. A second agent review supplements, not replaces, verification and human review.
+- Before editing, identify acceptance criteria whose failure could cause data loss, security exposure, broken consumer contracts, or material service disruption. State what must stay unchanged.
+- For data or API changes, check keys, populated values, types, ordering, metadata, and consumer behavior as applicable. Counts and green tests alone do not prove compatibility.
+- For high-risk shared data or API changes, use the concise [contract and evidence template](../../../docs/contract-and-evidence-template.md) in the existing tracker or PR. Bind evidence to the reviewed code SHA and input snapshot. Define allowed differences and deployment blockers before implementation.
+
+### Comments and documentation
+
+- Simplify code and use clear names first. Add comments for non-obvious logic: explain why, contracts, data flow, fallback order, safeguards, and tradeoffs. Do not comment every line or restate obvious syntax.
+- For complex SQL or template code, add a short reading guide where names and structure do not explain the phases. Explain non-obvious preservation and fallback rules.
+- Explain why code preserves legacy behavior or defers a correction. State known limits without claiming guarantees that have not been verified.
+- Keep comments close to the code and update stale comments with behavior changes. Document public behavior and test commands in the relevant code-adjacent docs.
+
+Sources: [Google code review guidance](https://google.github.io/eng-practices/review/reviewer/looking-for.html), [GitHub responsible AI use](https://docs.github.com/en/copilot/responsible-use/agents), [DORA small batches](https://dora.dev/capabilities/working-in-small-batches/).
+
 ## Reporting Back
 
 - Start substantial replies with a `TLDR:` line at the top. One or two short sentences: the outcome, the answer, or what changed. Details go below.
 - Use separate headings in substantial replies. `Next steps:` lists required in-scope actions and open decisions. `Open ideas:` lists optional out-of-scope suggestions. Never mix them or nest one inside the other. Omit empty sections.
 - Add the TLDR and applicable closing sections when reporting work, research findings, or a plan. Skip them for short answers, questions, and quick confirmations.
-- For implementation work, report review readiness, commit, remote publication, and live deployment separately. Passing tests means ready for review, not published. Name the source worktree and any preserved unrelated changes. Do not say the repo is clean unless you checked it.
+- For implementation work, report review readiness, commit, remote publication, and live deployment separately. Passing tests provides verification evidence, not proof that all acceptance criteria are met. Name the source worktree and any preserved unrelated changes. Do not say the repo is clean unless you checked it.
 - State pending review, publication, or deployment clearly. Before closing, stop task-owned background work and preserve unfinished changes in a named checkout. Remove completed task worktrees through wt only after checking remote preservation and valuable ignored files. Preserve other workers' checkouts.
 
 ## Verification
 
 - Do not guess. Before you state a fact about a change you made, or answer a question about a system, file, or state, check it with the relevant tool. Examples: `aws`, `snow` (Snowflake CLI), `databricks`, `tmux`, `gh`, `jira`. If a claim is checkable with a command, run the command first.
-- Test after every change: run the code, query, or command and check the output before reporting done.
-- Check for regressions: rerun the existing test suite and check the config and files the change touches. A green new test is not enough.
+- After each coherent change, run checks appropriate to its behavior and risk before reporting done. Check the output, not just the exit code.
+- Run relevant existing regression checks and inspect affected config. Run the full suite when shared behavior changes or repo policy requires it. Explain narrower coverage. A green new test is not enough.
 - For changes that affect live behavior (extensions, shell config, notifications, model settings), verify in the real running setup: a new shell, a tmux session, a real run. Unit tests and print mode are not enough.
-- If the repo has a test setup, write or update tests that pin the changed behavior. If you skip tests, say why.
+- Verification does not grant permission to deploy, change shared data, or bypass approval, authentication, or ownership rules. Report blocked checks and the acceptance criteria left unverified.
+- For behavior changes, add or update focused automated tests in the same change whenever feasible. Use the existing test setup. If none exists, use the smallest maintainable check rather than a new framework by default.
+- For bug fixes, add a regression test that fails before the fix and passes after it when feasible. Assert expected behavior from the requirements, not just the new implementation. Cover relevant boundaries, invalid inputs, failure paths, cleanup, and compatibility.
+- Keep tests clear and deterministic. Prefer isolated fixtures and local services. Mock external boundaries when useful, but run the real integration or live check when mocks cannot prove the changed behavior.
+- Run the relevant formatter, lint, type, and existing regression checks. A comment-only change needs syntax checks and proof that executable content is unchanged, not an unnecessary live data rebuild.
+- Report exact check commands, outcomes, warnings, skipped checks, and their reasons. Distinguish sampled or mocked evidence from full-data and live verification. Never call an unrun or blocked check passed. Unverified criteria involving data loss, security exposure, consumer contracts, or material service disruption block a deployment recommendation.
 - For performance claims, measure before and after. Report the numbers.
 - Before replacing a working setup, record the known good baseline (commit, file copy, settings) so you can revert.
 - For data changes: run the query, check row counts, and spot-check values against a known baseline.
@@ -85,6 +108,8 @@ Work in two modes: planning and execution. Pick the mode from the request.
 
 - Do not stage or commit on your own. Leave changes as unstaged modifications in the working tree; the user reviews them with VS Code's "Open Changes" diff view, which works best on uncommitted changes. Run `git add` and `git commit` only after the user approves.
 - Commit only the files for the approved change. Review the full working tree first and leave unrelated or parallel edits out.
+- Commit hooks must validate only, never regenerate snapshots, edit files, or stage extra paths. Refresh package and environment snapshots explicitly for separate review.
+- After approval, use explicit reviewed paths for normal commits. Inspect the actual commit diff before pushing, not only the pre-hook staged set. For dotfiles, run `node scripts/check-commit-scope.mjs <commit-sha> <approved-path>...` from the source worktree. The check is read-only and grants no approval. Merge commits need a separate integration review.
 - After explicit commit and publication approval, commit reviewed files in their source worktree. Personal projects publish to the remote default branch without a PR; temporary task branches are allowed. Integrate current remote work, run the combined-tree checks, and push normally. Preserve source commits and unrelated changes. HelloFresh repos use ticket branches and draft PRs.
 - Coordinate integration, push, and live updates with other workers in the same repo. Do not run `cop sync` while affected workers or publication are active; even `--no-main` can change source worktrees. Never force-push to resolve a publication race.
 - Standing instructions that explicitly say to commit (e.g. the Pi Skills section) override the review gate for their scope.
@@ -117,7 +142,7 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Worktree creation does not open an editor. Setup hooks still link the venv, copy ignored files, and register the repo, so the checkout remains visible in `cop list` and understory. Pi reads inherited instructions from the primary checkout's parent ancestry through `scoped-agent-context`. Do not create owner-wide or branch-wide instruction links. `WORKTRUNK_AGENT=1` remains in agent invocations for compatibility, not as an editor gate.
 - `cop new` is safe for agents too. Never use raw `git worktree add` (skips hooks and registry). Luis opens VS Code manually with Cmd+E inside pi when he needs an editor.
 - Canopy and understory only open or reuse Ghostty windows through the existing window-title matcher.
-- Herdr uses the Worktrunk plugin for worktree creation and removal. Native `herdr worktree create/remove` and sidebar context-menu creation bypass wt hooks. `cop herdr` explicitly creates or reuses a wt checkout, finishes setup, opens Pi, and focuses its workspace. `cop new` and direct wt calls do not open orchestrator workspaces, even inside Herdr; there is no global post-switch launch hook. Close a worktree workspace before removing its checkout through coppice or wt; external removal does not close it automatically.
+- Herdr app/Core uses the explicit `wt-herdr` helper from the Worktrunk package, with `check`, `open`, and explicit `repair`. `cop herdr` creates or reuses a wt checkout, finishes setup, and calls the helper. Keep one space per worktree, nested by Git identity. Reuse Pi only for the exact worktree and terminal, including pending launches. No old Worktrunk plugin or legacy `--session` integration remains. Do not use native app worktree creation or deletion for wt-managed checkouts. `cop new` and direct wt calls do not open orchestrator spaces; there is no global post-switch launch hook. Close a worktree space before removing its checkout through coppice or wt; external removal does not close it automatically.
 - For repos managed by wt, never create or remove worktrees through Orca's native actions. They bypass wt hooks and path rules. Orca watches and runs agents in wt-created worktrees; wt creates and removes them.
 - Stop or hand off the owning worker before removal. Check the target's dirty files and remote preservation before removing it through wt. Inspect valuable ignored files separately; ordinary Git status does not protect them.
 - `--force`, `--force-delete`, and `--yes` are not permission to discard work. Use hook bypasses only after explicit scoped discard approval and preservation checks. Native deletion, raw Git removal, filesystem deletion, and disabled hooks bypass these safety rails. Prefer Sleep or keeping the checkout for unfinished work.
@@ -162,10 +187,13 @@ Work in two modes: planning and execution. Pick the mode from the request.
 
 ## Browser Automation
 
-- One way only: playwriter CLI (`playwriter -s <session> -e '<playwright JS>'`) driving Google Chrome through the Playwriter extension. Do not use another browser or Playwright MCP for general browser automation. Full reference: `~/.pi/agent/skills/playwriter/SKILL.md` (context-mode source `playwriter-skill`); setup doc: `docs/browser-automation.md` in the dotfiles repo.
-- Surface: use the existing Chrome work profile, `luis.aceituno@hellofresh.com`. Do not start a separate browser or profile for Playwriter.
-- Run `playwriter browser list` before creating a session. Continue only when exactly one connected Chrome uses the work profile. If it is absent or ambiguous, stop and report it. Never guess or hardcode a browser key.
-- Consent model: agent-created tabs (`context.newPage()`) work directly. Pre-existing tabs need one manual extension-icon click each.
-- Read-only scraping of bot-protected sites: cookie replay via curl stays the fallback (skill `scrape-logged-in-site-via-browser-cookie-replay`).
+- Use only the playwriter CLI (`playwriter -s <session> -e '<playwright JS>'`) through the Playwriter extension, including for Slack. Reuse the already open Chrome work profile, `luis.aceituno@hellofresh.com`. Do not start another browser, profile, or dedicated Slack window, or use Playwright MCP. Full reference: `~/.pi/agent/skills/playwriter/SKILL.md` (context-mode source `playwriter-skill`); setup doc: `docs/browser-automation.md` in the dotfiles repo.
+- Run `playwriter browser list`. Continue only when exactly one connected Chrome reports the work profile. Otherwise stop and report it. Do not guess or hardcode a browser key, or infer extension status from account labels.
+- Create a task-specific session and your own pages with `context.newPage()`. Store owned pages in `state` and pass them explicitly to helpers. Sessions isolate state, not browser tabs. Do not reuse another worker's session or tabs, including blank pages. Existing tabs need explicit ownership handoff and Playwriter access.
+- Close only pages you created and delete only your own session. Never close the browser, context, windows, or other workers' tabs. Do not clear shared browser state or stop the shared relay.
+- Read-only scraping of bot-protected sites outside Slack: cookie replay via curl stays the fallback (skill `scrape-logged-in-site-via-browser-cookie-replay`). This does not apply to Slack.
 - Keep the playwriter MCP entry out of the live config. Its `execute` tool description is 53KB and would bloat the standing prompt. Use the CLI.
-- Slack reads use `slack-reader`, a separate managed browser path (see `docs/browser-automation.md`).
+- Slack is read-only, rendered DOM only. Never post, react, upload, change membership, or enter drafts. No cookies, tokens, browser storage, hidden application state, network bodies, Slack APIs, or credential/API replay. These restrictions override general browser skill examples.
+- Slack defaults to the supplied exact permalink only. Broader thread or channel reads need an explicit request. Verify structural timestamps, the thread parent and unique replies, and the rendered reply count. Apply requested filters and report partial coverage. Never substitute nearby content.
+- Reuse existing Slack sign-in without recurring login or verification. Stop on auth loss, sign-in redirection, denial, rate limits, or suspected revocation. Report once, with no retry loops or client switching. A separate profile does not prevent revocation.
+- Historical `slack-reader` remains installed but is retired from Pi's default workflow and is not a fallback. Do not run its login/await-login, clear its persisted auth pause, or remove its owned lock. See `docs/browser-automation.md` for scope and coverage checks.

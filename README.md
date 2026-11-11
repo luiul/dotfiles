@@ -21,7 +21,7 @@ The script is idempotent and prompts before each step. It will:
 
 Each top-level directory is a stow package that mirrors `$HOME`:
 
-`aws`, `borders`, `brew`, `canopy`, `datagrip`, `ghostty`, `git`, `hellofresh`, `hunk`, `karabiner`, `macos`, `pi`, `pip`, `rectangle`, `rtk`, `ruff`, `snapzy`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `sublime`, `vscode`, `worktrunk`, `zsh`
+`aws`, `borders`, `brew`, `canopy`, `datagrip`, `ghostty`, `git`, `hellofresh`, `hunk`, `karabiner`, `macos`, `pi`, `pip`, `rectangle`, `rex`, `rtk`, `ruff`, `snapzy`, `snowflake`, `sqlfluff`, `ssh`, `stow`, `streamlit`, `sublime`, `vscode`, `worktrunk`, `zsh`
 
 Four packages are tracked but **not stowed** (export-only, see below): `karabiner`, `rectangle`, `datagrip`, and `snapzy`.
 
@@ -94,6 +94,10 @@ The `aws` package stows `~/.aws/config` (used by the `aws-sso-refresh` pi extens
 ## VS Code
 
 The `vscode` package stows `settings.json`, `keybindings.json`, and `extensions.json` (recommendations) into `~/Library/Application Support/Code/User/`. Installed extensions are tracked as `vscode` entries in the Brewfile. Refresh the installed-state snapshot explicitly, then review its diff; ordinary commits never regenerate it. Extensions removed in the 2026-08-31 performance prune (with reinstall commands) and the performance-tuned settings are documented in `vscode/README.md`. The convention for sharing draw.io diagrams in GitHub READMEs (single-file `.drawio.svg` under `docs/diagrams/`, editable in VS Code) is documented in `docs/diagrams.md`.
+
+## Rex
+
+`rex/.config/rex/init.lua` keeps Command+C working in fullscreen Pi, while other programs use Rex's normal selection copy. Run `node scripts/test-rex-copy.mjs` to check the routing and Pi selection with a private Rex server. The test uses a mock clipboard and does not check the desktop shortcut.
 
 ## Pi Memory (Hermes)
 

@@ -162,9 +162,9 @@ Work in two modes: planning and execution. Pick the mode from the request.
 
 ## Browser Automation
 
-- One way only: playwriter CLI (`playwriter -s <session> -e '<playwright JS>'`) driving Google Chrome through the Playwriter extension. Never use another browser, Playwright MCP, or a second automation profile. Full reference: `~/.pi/agent/skills/playwriter/SKILL.md` (context-mode source `playwriter-skill`); setup doc: `docs/browser-automation.md` in the dotfiles repo.
-- Surface: the Chrome profile "Your Chrome" (`--profile-directory=Default`, the personal Google account) has the extension. Logins that exist in that profile apply. Start Chrome with `open -a "Google Chrome" --args --profile-directory=Default` if no window is open, then `playwriter session new`.
-- If `playwriter browser list` shows more than one browser, stop and report it. Do not guess a key.
+- One way only: playwriter CLI (`playwriter -s <session> -e '<playwright JS>'`) driving Google Chrome through the Playwriter extension. Do not use another browser or Playwright MCP for general browser automation. Full reference: `~/.pi/agent/skills/playwriter/SKILL.md` (context-mode source `playwriter-skill`); setup doc: `docs/browser-automation.md` in the dotfiles repo.
+- Surface: use the existing Chrome work profile, `luis.aceituno@hellofresh.com`. Do not start a separate browser or profile for Playwriter.
+- Run `playwriter browser list` before creating a session. Continue only when exactly one connected Chrome uses the work profile. If it is absent or ambiguous, stop and report it. Never guess or hardcode a browser key.
 - Consent model: agent-created tabs (`context.newPage()`) work directly. Pre-existing tabs need one manual extension-icon click each.
 - Read-only scraping of bot-protected sites: cookie replay via curl stays the fallback (skill `scrape-logged-in-site-via-browser-cookie-replay`).
 - Keep the playwriter MCP entry out of the live config. Its `execute` tool description is 53KB and would bloat the standing prompt. Use the CLI.

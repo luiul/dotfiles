@@ -1,14 +1,14 @@
 # Browser Automation
 
-Setup for letting Pi agents drive a real browser with logged-in sessions. There is ONE way: the playwriter CLI driving Google Chrome through the Playwriter extension. Switched from Brave Beta on 2026-11-06 because Brave Beta kept closing. Nothing else drives a browser for agents (no Playwright MCP, no second profile).
+Use the Playwriter CLI and its extension with the existing Google Chrome work profile, `luis.aceituno@hellofresh.com`. Do not start a separate browser or profile for Playwriter. Slack reads use the separate reader below.
 
 ## Components
 
 | Component | What | Where |
 |---|---|---|
 | Google Chrome | The only agent browser | `/Applications/Google Chrome.app` (`brew install --cask google-chrome`) |
-| Chrome profile | "Your Chrome", personal Google account. Holds the extension | `--profile-directory=Default`, `~/Library/Application Support/Google/Chrome/Default` |
-| playwriter extension | Web Store install, id `jfeammnjpkecdekppnclgkkffahnhfhe`, installed 2026-11-06 | Chrome profile `Default` only |
+| Work Chrome profile | "hellofresh.com", `luis.aceituno@hellofresh.com` | Existing Chrome profile `Profile 1` |
+| Playwriter extension | [Chrome Web Store](https://chromewebstore.google.com/detail/playwriter/jfeammnjpkecdekppnclgkkffahnhfhe) | Installed in the work profile |
 | playwriter CLI | npm global package, 0.9.0. Sessions, relay control | `/opt/homebrew/bin/playwriter` (`npm i -g playwriter`) |
 | Relay daemon | WebSocket bridge between CLI and extension | `localhost:19988`, auto-starts on first CLI command |
 | Skill | Full CLI reference, loaded on demand | `~/pi-skills/pi-native/playwriter/SKILL.md`, indexed in context-mode as source `playwriter-skill` |
@@ -21,8 +21,7 @@ Setup for letting Pi agents drive a real browser with logged-in sessions. There 
 - Real browser over fresh instance: a fresh Playwright browser has no logins and gets flagged by bot detection. Since Chrome 136, `--remote-debugging-port` is refused on the default profile, so an extension bridge is the practical way to drive a logged-in browser.
 - playwriter over alternatives: full Playwright API, active maintenance, works with MV3. Browser MCP is unmaintained and the other options are immature or bundle their own agent loop.
 - CLI plus skill, not MCP: playwriter's MCP `execute` tool description is 53.6KB (about 13k tokens). The CLI with the on-demand skill costs about 30 standing tokens.
-- Profile: the personal "Your Chrome" profile (aceitunosoriano@gmail.com). The HelloFresh work profile ("Profile 1") has no extension on purpose. Work accounts are not reachable by agents.
-- Logins are per profile. On 2026-11-06 this profile had a Google session but no GitHub or LinkedIn login.
+- Profile: use the existing HelloFresh work profile. Do not use the personal profile for Playwriter.
 - Playwright MCP is removed from the live config. For a clean room with no logins, use `playwriter session new --browser headless` (headless Chrome for Testing, installed with `playwriter browser install`).
 
 ## Slack reader, a separate browser path
@@ -43,8 +42,7 @@ Neither Playwriter nor a dedicated profile guarantees protection from Slack Ente
 ## Usage
 
 ```bash
-open -a "Google Chrome" --args --profile-directory=Default   # only if Chrome has no window
-playwriter browser list                     # must show exactly one browser (Chrome)
+playwriter browser list                     # must show one Chrome on the work profile
 playwriter session new --tab-group <word>   # prints a session id
 playwriter -s 1 -e 'state.page = await context.newPage(); await state.page.goto("https://example.com")'
 playwriter -s 1 -e 'console.log(await snapshot({ page: state.page }))'   # a11y tree with aria-ref handles
@@ -53,22 +51,22 @@ playwriter session delete 1                 # when done
 
 - Agent-created tabs (`context.newPage()`) run in the real Chrome profile: cookies and logins apply. No icon click needed.
 - Pre-existing tabs need one manual extension-icon click each.
-- If `browser list` shows more than one browser, stop. Do not guess a key. Pin with `session new --browser <key>` only after Luis agrees.
+- Continue only when exactly one connected Chrome uses the work profile. If it is absent or ambiguous, stop and report it. Do not guess a key or launch another browser.
 - Pipe large snapshots through context-mode (`ctx_execute`/`ctx_search`, source `playwriter-skill` for docs).
 - Always close pages you opened and delete your own session. Other sessions belong to other agents.
 
 ## Verify and repair
 
 - Health check: `playwriter -s 1 -e 'state.page = await context.newPage(); await state.page.goto("https://example.com"); console.log(await state.page.title())'` prints `Example Domain`.
-- "Waiting for extension to connect..." or "No browsers detected": Chrome is not running, has no window, or the MV3 worker is asleep. Chrome running with zero windows looks the same as Chrome not running. Open a window with the command above and retry. Do not reinstall first.
+- "Waiting for extension to connect..." or "No browsers detected": report the missing connection. Do not start another browser or profile.
 - Stale session after a browser restart: `playwriter session reset <id>`, or delete it and create a new one.
 - "No current window" from `newPage`: Chrome has no window. Open one.
-- Reinstall the extension: open https://chromewebstore.google.com/detail/playwriter/jfeammnjpkecdekppnclgkkffahnhfhe in the `Default` profile, click Add to Chrome, confirm "Add extension". Chrome allows this through normal clicks.
+- Reinstall the extension: open https://chromewebstore.google.com/detail/playwriter/jfeammnjpkecdekppnclgkkffahnhfhe in the affected profile, click Add to Chrome, and confirm "Add extension".
 - Browser keys (`install:Chrome:...`) change when the extension is reinstalled. Never hardcode them.
 
 ## Not done, deliberately
 
-- No extension in the HelloFresh Chrome profile or in any other browser.
-- No Playwright MCP and no second automation profile.
+- No extension in other browsers.
+- No Playwright MCP.
 - No Chrome DevTools MCP. Revisit if perf debugging becomes a need.
 - No token-efficient browser CLIs. context-mode already covers the token problem.

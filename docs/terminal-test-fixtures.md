@@ -1,6 +1,6 @@
 # Terminal test fixtures
 
-TLDR: The test backend uses a separate Rex server, not the desktop server. Keep tmux installed until this source candidate is reviewed, published and verified in the live checkout.
+TLDR: Terminal tests use a separate Rex server, not the desktop server. The maintained driver is deployed in `~/dotfiles/scripts/rex-test-driver.mjs`. Tmux is retired; the watchdog retains its old adapter only for legacy task records.
 
 ## Ownership
 

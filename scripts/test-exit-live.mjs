@@ -8,6 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
 import { setTimeout as delay } from 'node:timers/promises';
+import { RexTestDriver } from './rex-test-driver.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const version = readFileSync(join(homedir(), '.pi/agent/install/current-version'), 'utf8').trim();
@@ -17,7 +18,7 @@ const root = mkdtempSync(join(tmpdir(), 'pi-exit-live-'));
 const deadline = Date.now() + 12 * 60_000;
 const scenarios = (process.env.EXIT_LIVE_SCENARIOS ?? 'streaming,tool,queued,retry,compaction,context,subagent').split(',').filter(Boolean);
 const trials = Number(process.env.EXIT_LIVE_TRIALS ?? 3);
-const reaper = join(homedir(), 'dotfiles/macos/.local/bin/reap-strays');
+let driver;
 const owned = new Map();
 const results = [];
 const quote = text => "'" + String(text).replaceAll("'", "'\\''") + "'";
@@ -25,17 +26,16 @@ function run(bin, args, optional = false) {
   try { return execFileSync(bin, args, { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] }); }
   catch (error) { if (optional) return ''; throw new Error(`${bin}: ${error.stderr ?? error.message}`); }
 }
-const tmux = (...args) => run('tmux', args);
 const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const events = host => existsSync(host.events) ? readFileSync(host.events, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
-const capture = host => tmux('capture-pane', '-p', '-t', host.name);
+const capture = host => driver.capture(host, { history: true });
 async function wait(host, predicate, label, ms = 30000) {
   const until = Math.min(Date.now() + ms, deadline);
   while (Date.now() < until) {
     const screen = capture(host);
     assert(!/Failed to load extension|Extension error|TypeError:|uncaughtException/.test(screen), screen);
     if (predicate(screen, events(host))) return screen;
-    if (tmux('display-message', '-p', '-t', host.name, '#{pane_dead}').trim() === '1') {
+    if (driver.process(host).last_exit) {
       if (predicate(capture(host), events(host))) return capture(host);
       throw new Error(`Exited before ${label}: ${capture(host)}`);
     }
@@ -44,9 +44,13 @@ async function wait(host, predicate, label, ms = 30000) {
   throw new Error(`Timeout ${label}: ${capture(host)}\n${JSON.stringify(events(host))}`);
 }
 function command(host, text) {
-  tmux('send-keys', '-t', host.name, 'C-u', text, 'Enter');
+  driver.key(host, 'ctrl+u');
+  driver.text(host, text);
+  driver.key(host, 'enter');
 }
 function descendants(pid) {
+  // Preserve every observed child identity for final absence checks. Registered
+  // wrappers belong to the driver; Pi cancellation owns its active tool children.
   const rows = run('ps', ['-axo', 'pid=,ppid=,lstart=']).trim().split('\n').map(line => {
     const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/);
     return match && { pid: Number(match[1]), ppid: Number(match[2]), start: match[3] };
@@ -81,11 +85,12 @@ async function start(scenario, variant, trial = 0, autoDiscover = false) {
   const env = { HOME: area, PATH: process.env.PATH, TERM: 'xterm-256color', LANG: 'en_US.UTF-8', PI_CODING_AGENT_DIR: config, PI_SKIP_VERSION_CHECK: '1', PI_OFFLINE: '1', PI_IMAGE_PROTOCOL: 'none', PI_PROGRAM_STATUS: '0', EXIT_LIVE_EVENTS: host.events, EXIT_LIVE_SCENARIO: scenario, EXIT_LIVE_WORKER_PID: host.worker, CONTEXT_MODE_BRIDGE_DEPTH: '0', CONTEXT_MODE_PROJECT_DIR: cwd };
   const args = [process.execPath, cli, '--offline', ...(!autoDiscover ? ['--no-extensions', '-e', fixture] : []), '--no-skills', '--no-prompt-templates', '--no-context-files', '--no-approve', '--no-mcp', '--no-themes', '--provider', 'exit-fixture', '--model', 'fixture', '--thinking', 'off', '--session-dir', join(area, 'sessions'), ...(variant === 'exit' && !autoDiscover ? ['-e', extension] : []), ...extras];
   const launch = `cd ${quote(cwd)}; stty -g > ${quote(join(area, 'stty-before'))}; env -i ${Object.entries(env).map(([k, v]) => quote(k + '=' + v)).join(' ')} ${args.map(quote).join(' ')}; rc=$?; stty -g > ${quote(join(area, 'stty-after'))}; printf '%s' "$rc" > ${quote(join(area, 'exit-code'))}; exit "$rc"`;
-  tmux('new-session', '-d', '-s', host.name, '-x', '100', '-y', '36', '/bin/sleep 720'); owned.set(host.name, host);
-  run(reaper, ['--register-tmux', host.name, '--owner', String(process.pid), '--deadline', String(Math.ceil(deadline / 1000))]);
-  tmux('set-option', '-t', host.name, 'remain-on-exit', 'on');
-  tmux('respawn-pane', '-k', '-t', host.name, '/bin/sh -c ' + quote(launch));
-  host.launchPid = Number(tmux('display-message', '-p', '-t', host.name, '#{pane_pid}').trim());
+  Object.assign(host, driver.create({ name: host.name, command: ['/bin/sh', '-c', launch], cwd, env: {}, columns: 100, rows: 36 }));
+  owned.set(host.name, host);
+  const pidDeadline = Math.min(deadline, Date.now() + 15000);
+  while (!driver.pid(host) && Date.now() < pidDeadline) await delay(50);
+  host.launchPid = driver.pid(host);
+  assert(host.launchPid, 'Exec wrapper PID must be registered');
   host.tracked = descendants(host.launchPid);
   await wait(host, (_screen, list) => list.some(x => x.type === 'ready'), 'startup');
   host.pid = events(host).find(x => x.type === 'ready').pid;
@@ -127,14 +132,12 @@ function cleanup() {
   return cleanupPromise ??= (async () => {
     for (const host of owned.values()) refreshOwnership(host);
     for (const host of owned.values()) {
-      run('tmux', ['send-keys', '-t', host.name, 'C-c', 'C-c'], true);
+      try { driver.key(host, 'ctrl+c'); driver.key(host, 'ctrl+c'); } catch {}
       await delay(1500);
-      run('tmux', ['kill-session', '-t', host.name], true);
-      for (const row of host.tracked) if (alive(row.pid)) {
-        const identity = run('ps', ['-p', String(row.pid), '-o', 'lstart='], true).trim();
-        if (identity === row.start) { try { process.kill(row.pid, 'SIGKILL'); } catch {} }
-      }
-      await delay(100);
+      try { driver.close(host); } catch {}
+    }
+    await driver?.stop();
+    for (const host of owned.values()) {
       for (const row of host.tracked) {
         const identity = run('ps', ['-p', String(row.pid), '-o', 'lstart='], true).trim();
         assert(identity !== row.start, `Cleanup survivor: ${JSON.stringify(row)}`);
@@ -154,7 +157,7 @@ async function finish(host) {
   const began = performance.now();
   if (host.variant === 'exit') command(host, '/exit');
   else if (host.variant === 'quit') command(host, '/quit');
-  else tmux('send-keys', '-t', host.name, 'C-c', 'C-c');
+  else { driver.key(host, 'ctrl+c'); driver.key(host, 'ctrl+c'); }
   await wait(host, () => existsSync(join(host.area, 'exit-code')), 'clean exit', 15000);
   const elapsedMs = performance.now() - began;
   assert.equal(readFileSync(join(host.area, 'exit-code'), 'utf8'), '0');
@@ -170,7 +173,7 @@ async function finish(host) {
   assert.equal(list.find(x => x.type === 'shutdown').reason, 'quit');
   assert.equal(list.filter(x => x.type === 'request').length, before, 'Queued work or retry ran during exit');
   assert.equal(readFileSync(join(host.area, 'stty-after'), 'utf8'), readFileSync(join(host.area, 'stty-before'), 'utf8'), 'Terminal mode not restored');
-  const screen = tmux('capture-pane', '-p', '-S', '-2000', '-t', host.name);
+  const screen = capture(host);
   const session = list.find(x => x.type === 'ready').session;
   if (host.scenario !== 'idle') {
     assert(screen.includes('To resume this session:'), screen);
@@ -183,10 +186,11 @@ async function finish(host) {
   if (host.workerPid) assert(!alive(host.workerPid), 'Tool worker survived');
   const result = { scenario: host.scenario, variant: host.variant, elapsedMs: Math.round(elapsedMs), processCount: host.tracked.length };
   results.push(result); console.log('PASS ' + JSON.stringify(result));
-  assert.equal(tmux('display-message', '-p', '-t', host.name, '#{pane_dead}').trim(), '1', 'Terminal wrapper did not exit');
-  tmux('kill-session', '-t', host.name); owned.delete(host.name);
+  await wait(host, () => driver.process(host).last_exit?.exit_code === 0, 'terminal wrapper exit');
+  driver.close(host); owned.delete(host.name);
 }
 try {
+  driver = await RexTestDriver.start({ deadlineMs: Math.max(1000, deadline - Date.now()) });
   if (process.env.EXIT_LIVE_INTERRUPT) {
     const host = await start('context', 'exit');
     console.log('INTERRUPT_READY ' + JSON.stringify({ root, name: host.name, tracked: host.tracked }));
@@ -205,7 +209,7 @@ try {
   const median = values => values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
   const measured = results.filter(r => r.scenario === 'idle' && r.variant !== 'quit').slice(0, trials * 2);
   console.log('IDLE_EXIT_MEDIANS_MS ' + JSON.stringify(Object.fromEntries(['ctrlc', 'exit'].filter(variant => measured.some(r => r.variant === variant)).map(variant => [variant, median(measured.filter(r => r.variant === variant).map(r => r.elapsedMs))]))));
-  if (process.env.EXIT_LIVE_REPORT) writeFileSync(process.env.EXIT_LIVE_REPORT, JSON.stringify({ pi: version, results }, null, 2));
+  if (process.env.EXIT_LIVE_REPORT) writeFileSync(process.env.EXIT_LIVE_REPORT, JSON.stringify({ pi: version, backend: 'private Rex', timingBoundary: 'same-run variants only; not comparable with historic tmux input timing', results }, null, 2));
 } finally {
   clearTimeout(suiteBound);
   await cleanup();

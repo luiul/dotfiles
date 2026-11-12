@@ -18,7 +18,7 @@ import { RexTestDriver } from './rex-test-driver.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
-const allowed = new Set(['baseline', 'candidate', 'pi-cli', 'output', 'repeats', 'slice-ms', 'width', 'mode']);
+const allowed = new Set(['baseline', 'candidate', 'candidate-extension', 'pi-cli', 'output', 'repeats', 'slice-ms', 'width', 'mode']);
 const options = {};
 for (let i = 0; i < args.length; i++) {
   const match = args[i].match(/^--([^=]+)(?:=(.*))?$/);
@@ -38,6 +38,7 @@ assert(!process.versions.bun, 'Run with Node, not Bun');
 assert(options.baseline, 'Supply --baseline PATH, normally extracted from HEAD:pi/.pi/agent/extensions/status-bar.ts');
 const baseline = resolve(options.baseline);
 const candidate = resolve(options.candidate ?? join(repo, 'pi/.pi/agent/extensions/status-bar.ts'));
+const extraExtension = options['candidate-extension'] ? resolve(options['candidate-extension']) : undefined;
 const cli = resolve(options['pi-cli'] ?? join(homedir(), '.pi/agent/install/current/node_modules/@earendil-works/pi-coding-agent/dist/cli.js'));
 const fixture = join(repo, 'scripts/fixtures/status-bar-live.ts');
 const preload = join(repo, 'scripts/fixtures/status-bar-clipboard.cjs');
@@ -50,11 +51,11 @@ assert(['regular', 'fullscreen'].includes(mode), '--mode must be regular or full
 // Nominal alignment waits one 4s poll. Reserve private server/host startup and
 // driver cleanup too. The work deadline catches slower polls without fewer trials.
 assert(repeats * 2 * (sliceMs + 4500) + 100000 <= 240000, 'Requested slices exceed the four-minute budget');
-for (const path of [baseline, candidate, cli, fixture, preload]) assert(existsSync(path), `Missing ${path}`);
+for (const path of [baseline, candidate, cli, fixture, preload, ...(extraExtension ? [extraExtension] : [])]) assert(existsSync(path), `Missing ${path}`);
 const piVersion = JSON.parse(readFileSync(join(dirname(dirname(cli)), 'package.json'), 'utf8')).version;
 // Keep an exact fixture version gate, not a broad semver range.
 const fingerprint = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
-const sources = Object.fromEntries([baseline, candidate, fixture, preload, fileURLToPath(import.meta.url)].map((path) => [path, fingerprint(path)]));
+const sources = Object.fromEntries([baseline, candidate, fixture, preload, fileURLToPath(import.meta.url), ...(extraExtension ? [extraExtension] : [])].map((path) => [path, fingerprint(path)]));
 assert(!output || !(output in sources), 'Output must not replace a source file');
 const started = new Date().toISOString();
 const endAt = Date.now() + 240000;
@@ -77,7 +78,7 @@ const report = {
   benchmark_command: { cwd: process.cwd(), argv: [process.execPath, ...process.argv.slice(1)] },
   settings: { repeats, slice_ms: sliceMs, git_poll_ms: 4000, width, height: 32, mode, provider, timeout_ms: 240000 },
   limitations: [
-    'Idle diagnostic, not renderer timing. Both real hosts use the same installed Node and Pi version with only the local provider and status bar loaded.',
+    'Idle diagnostic, not renderer timing. Both real hosts use the same installed Node and Pi version with the local provider and status bar. The candidate also loads --candidate-extension when supplied.',
     'Two persistent hosts provide repeated idle slices, not independent process trials. The unmeasured host remains idle and its Git timer still runs.',
     'CPU is macOS ps time for the actual Node target PID only, excluding Git, login, shell, Rex server, controller, supervisor and sampler CPU. Display resolution is 10ms; a zero delta means below this resolution, not zero work.',
     'Slice CPU percentages are fractions of one core. The nominal five-second slices include endpoint sampling overhead; wall time uses ps command midpoints.',
@@ -174,7 +175,8 @@ async function start(variant, source, realGit) {
     NODE_OPTIONS: `--require ${JSON.stringify(preload)}` };
   const argv = [process.execPath, cli, '--offline', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-context-files',
     '--no-approve', '--no-mcp', '--no-themes', '--no-tools', '--thinking', 'off', '--provider', provider, '--model', 'fixture',
-    '--tui-mode', mode, '--use-theme', 'dark', '--session-dir', join(area, 'sessions'), '--session', initial.file, '-e', fixture, '-e', copy];
+    '--tui-mode', mode, '--use-theme', 'dark', '--session-dir', join(area, 'sessions'), '--session', initial.file, '-e', fixture, '-e', copy,
+    ...(variant === 'candidate' && extraExtension ? ['-e', extraExtension] : [])];
   const launch = `cd ${quote(repo)} && exec env -i ${Object.entries(env).map(([k, v]) => quote(`${k}=${v}`)).join(' ')} ${argv.map(quote).join(' ')}`;
   const observation = { variant, source, source_sha256: sources[source], fixture_command: { cwd: repo, argv, env, shell: launch } };
   report.hosts.push(observation);
@@ -197,7 +199,7 @@ async function start(variant, source, realGit) {
       assert.equal(ready.pid, host.pid); assert.equal(ready.mode, 'tui'); assert.equal(ready.uuid, initial.uuid);
       assert.equal(ready.cwd, repo); assert.equal(ready.provider, provider);
       assert(list.some((e) => e.type === 'clipboard-preload') && list.some((e) => e.type === 'clipboard-safe'));
-      assert.deepEqual([...ready.commands].sort(), ['sb-live-model', 'sb-live-snapshot', 'sb-live-theme', 'session-ref', 'statusbar'].sort(), 'Inherited extension commands');
+      assert.deepEqual([...ready.commands].sort(), ['sb-live-model', 'sb-live-snapshot', 'sb-live-theme', 'session-ref', 'statusbar', ...(variant === 'candidate' && extraExtension ? ['close-status'] : [])].sort(), 'Inherited extension commands');
       Object.assign(observation, { pid: host.pid, first_paint_observed_ms: performance.now() - t0, first_screen: screen });
       return host;
     }

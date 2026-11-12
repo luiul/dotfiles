@@ -38,6 +38,12 @@ Updating the intended live checkout and verifying its files and running behavior
 
 Source: `docs/dev-setup-overview.md`.
 
+## reported closing safety
+
+The agent's latest settled report about whether its Pi session can close without forgotten session-owned work or an unresolved decision. Explicit preserved deferrals and handoffs can be safe. This snapshot is not task completion, continuously verified state, or permission to publish, deploy, or remove a worktree. `/close-status` shows the report and its source.
+
+Source: `pi/.pi/agent/extensions/close-status.ts`, `pi/.pi/agent/extensions/README.md`, and https://github.com/luiul/dotfiles/issues/104.
+
 ## compact tool calls
 
 The `zen` extension's compact view of tool calls in pi's transcript. Successful and failed calls stay visible as one line with a status suffix. Click or `ctrl+o` expands tool output. Zen uses the public `pi.registerToolRenderer` API and delegates to native renderers when expanded or turned off. Thinking uses pi's native `hideThinkingBlock` setting. This view replaces the retired split extension and zen v1's transcript filter.

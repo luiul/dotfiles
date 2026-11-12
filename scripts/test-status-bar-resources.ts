@@ -441,7 +441,8 @@ if (baselineCode) {
 	check("layout changes keep row counts and preserve core identity and cost", () => {
 		assert.equal(c.footer.render(120).length, 3);
 		assert.equal(c.footer.render(60).length, 4);
-		assert.notEqual(JSON.stringify(c.footer.render(120)), JSON.stringify(b.footer.render(120)));
+		// Without a closing report, the established footer must remain byte-identical.
+		assert.equal(JSON.stringify(c.footer.render(120)), JSON.stringify(b.footer.render(120)));
 		for (const width of [36, 44, 60, 79, 80, 100, 139, 140, 160, 200]) {
 			const rows = c.footer.render(width).map(strip);
 			assert.ok(rows.every(row => visibleWidth(row) <= width));
@@ -938,4 +939,28 @@ for (const identity of ["/repo/one\n/repo/one/.git\n/repo/one/.git\n", "/repo/li
 	await h.fire("session_shutdown", state);
 }
 
+{
+	const h = harness(code);
+	const state = h.context();
+	await h.fire("session_start", state);
+	for (const [label, compact] of [["Safe to close (reported)", "Close: yes*"], ["Not safe to close", "Close: no"], ["Close status unknown", "Close: ?"]]) {
+		state.statuses.set("close-status", label);
+		check(`closing runtime slot preserves ${label} at narrow widths`, () => {
+			for (const width of [36, 44, 60, 79, 80, 120, 160]) {
+				const rows = state.footer.render(width).map(strip);
+				assert.ok(rows[0].includes(label) || rows[0].includes(compact), `${width}: ${rows[0]}`);
+				assert.ok(rows.at(-1).includes(state.ctx.sessionManager.getSessionId()));
+				assert.ok(!rows.at(-1).includes(label));
+				assert.ok(rows.every((row: string) => visibleWidth(row) <= width));
+			}
+		});
+	}
+	await h.fire("before_agent_start", state);
+	check("working timer overrides stale closing state", () => {
+		const rows = state.footer.render(120).map(strip);
+		assert.ok(rows[0].includes("working 0s"));
+		assert.ok(!rows.join("\n").includes("Close status unknown"));
+	});
+	await h.fire("session_shutdown", state);
+}
 console.log(`ALL PASS (${checks} checks)`);

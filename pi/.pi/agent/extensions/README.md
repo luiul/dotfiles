@@ -1,5 +1,9 @@
 # Pi extensions
 
+## Scoped model guide
+
+`model-guide.ts` registers the read-only `/model-guide` command. It uses the current session scope, catalog prices, effective thinking pins and manually reviewed benchmark evidence. It never selects models or changes native `/model`. Evidence and view code load only when opened. The command adds no tools, prompt content, provider requests or background resources. See [the guide](../../../MODEL-GUIDE.md) for controls, data ownership and checks.
+
 ## Exit command
 
 `exit.ts` adds `/exit` in every session that loads the global extension. It cancels active work, waits until Pi is idle, then requests normal shutdown without confirmation. In the TUI, cancellation also clears queued prompts. Shutdown runs Pi's existing cleanup hooks and restores the terminal. Saved conversations remain resumable. An empty session has no transcript to resume.

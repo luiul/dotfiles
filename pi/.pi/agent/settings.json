@@ -3,6 +3,7 @@
   "defaultModel": "GPT-6.1 Terra",
   "enabledModels": [
     "ai-model-router/GPT-6.1 Terra",
+    "ai-model-router/Kimi K3.1 Pro",
     "ai-model-router/GPT-6.1 Sol",
     "ai-model-router/GLM 5.3",
     "ai-model-router/GPT-6 Luna",
@@ -38,6 +39,7 @@
   "modelThinkingLevels": {
     "ai-model-router/GLM 5.3": "high",
     "ai-model-router/GPT-6.1 Terra": "high",
+    "ai-model-router/Kimi K3.1 Pro": "high",
     "ai-model-router/GPT-6.1 Sol": "medium",
     "ai-model-router/GPT-6 Luna": "low",
     "ai-model-router/GLM 5.3 Flash": "off",

@@ -7,7 +7,12 @@
       "version": "v5.0.1",
       "effort": "high",
       "reviewed": "2026-11-12",
-      "url": "https://artificialanalysis.ai/models/comparisons/gpt-6-1-terra-high-vs-gpt-6-1-terra-low"
+      "url": "https://artificialanalysis.ai/models/comparisons/gpt-6-1-terra-high-vs-gpt-6-1-terra-low",
+      "local": {
+        "date": "2026-11-11", "effort": "high", "source": "https://github.com/luiul/dotfiles/issues/105",
+        "small": { "runs": 6, "passed": 4, "checked": 4, "totalUsd": 0.0336559, "note": "SQL and review checked" },
+        "grove": { "runs": 2, "passed": 0, "timedOut": 0, "totalUsd": 0.1103301 }
+      }
     },
     "ai-model-router/Kimi K3.1 Pro": {
       "score": 46,
@@ -16,7 +21,12 @@
       "effort": "unspecified",
       "reviewed": "2026-11-12",
       "url": "https://artificialanalysis.ai/models/kimi-k3-1-pro",
-      "qualifier": "Published effort is unverified. This is not a verified score for router high."
+      "qualifier": "Published effort is unverified. This is not a verified score for router high.",
+      "local": {
+        "date": "2026-11-11", "effort": "high", "source": "https://github.com/luiul/dotfiles/issues/105",
+        "small": { "runs": 6, "passed": 4, "checked": 4, "totalUsd": 0.0606424, "note": "SQL and review checked" },
+        "grove": { "runs": 2, "passed": 2, "timedOut": 0, "totalUsd": 0.128098 }
+      }
     },
     "ai-model-router/GPT-6.1 Sol": {
       "score": 46,
@@ -24,7 +34,12 @@
       "version": "v5.0.1",
       "effort": "medium",
       "reviewed": "2026-11-12",
-      "url": "https://artificialanalysis.ai/models/comparisons/gpt-6-1-sol-high-vs-gpt-6-1-sol-medium"
+      "url": "https://artificialanalysis.ai/models/comparisons/gpt-6-1-sol-high-vs-gpt-6-1-sol-medium",
+      "local": {
+        "date": "2026-11-11", "effort": "medium", "source": "https://github.com/luiul/dotfiles/issues/105",
+        "small": { "runs": 6, "passed": 4, "checked": 4, "totalUsd": 0.0451822, "note": "SQL and review checked" },
+        "grove": { "runs": 2, "passed": 0, "timedOut": 0, "totalUsd": 0.0727977 }
+      }
     },
     "ai-model-router/GLM 5.3": {
       "score": 32,
@@ -33,7 +48,12 @@
       "effort": "max",
       "reviewed": "2026-11-12",
       "url": "https://artificialanalysis.ai/models/glm-5-3",
-      "qualifier": "No verified high-effort score. Max is a different benchmark configuration."
+      "qualifier": "No verified high-effort score. Max is a different benchmark configuration.",
+      "local": {
+        "date": "2026-11-11", "effort": "high", "source": "https://github.com/luiul/dotfiles/issues/105",
+        "small": { "runs": 6, "passed": 4, "checked": 4, "totalUsd": 0.02573468, "note": "SQL checked; review caveat" },
+        "grove": { "runs": 2, "passed": 2, "timedOut": 0, "totalUsd": 0.09962224 }
+      }
     },
     "ai-model-router/GPT-6 Luna": {
       "score": 10,
@@ -41,7 +61,12 @@
       "version": "v5.0.1",
       "effort": "low",
       "reviewed": "2026-11-12",
-      "url": "https://artificialanalysis.ai/models/gpt-6-luna-low"
+      "url": "https://artificialanalysis.ai/models/gpt-6-luna-low",
+      "local": {
+        "date": "2026-11-11", "effort": "low", "source": "https://github.com/luiul/dotfiles/issues/105",
+        "small": { "runs": 6, "passed": 4, "checked": 4, "totalUsd": 0.00232391, "note": "SQL and review checked" },
+        "grove": { "runs": 2, "passed": 2, "timedOut": 0, "totalUsd": 0.002205145 }
+      }
     },
     "google-vertex/gemini-4-argon": {
       "score": 50,
@@ -50,7 +75,12 @@
       "effort": "high",
       "reviewed": "2026-11-12",
       "url": "https://artificialanalysis.ai/models/comparisons/kimi-k3-1-pro-vs-gemini-4-argon",
-      "qualifier": "This index is not a vision or floorplan benchmark."
+      "qualifier": "This index is not a vision or floorplan benchmark.",
+      "local": {
+        "date": "2026-11-11", "effort": "high", "source": "https://github.com/luiul/dotfiles/issues/105",
+        "small": { "runs": 6, "passed": 4, "checked": 4, "totalUsd": 0.2497466, "note": "SQL and review checked" },
+        "grove": { "runs": 1, "passed": 0, "timedOut": 1, "totalUsd": 0.1329924 }
+      }
     },
     "ai-model-router/GLM 5.3 Flash": {
       "score": 28,
@@ -59,7 +89,12 @@
       "effort": "reasoning version",
       "reviewed": "2026-11-12",
       "url": "https://artificialanalysis.ai/models/glm-5-3-flash",
-      "qualifier": "No verified score with reasoning off. Router effort aliases can differ from the Pi label."
+      "qualifier": "No verified score with reasoning off. Router effort aliases can differ from the Pi label.",
+      "local": {
+        "date": "2026-11-11", "effort": "off", "source": "https://github.com/luiul/dotfiles/issues/105",
+        "small": { "runs": 6, "passed": 4, "checked": 4, "totalUsd": 0.00593848, "note": "SQL and review checked" },
+        "grove": { "runs": 2, "passed": 1, "timedOut": 0, "totalUsd": 0.00502559 }
+      }
     }
   }
 }

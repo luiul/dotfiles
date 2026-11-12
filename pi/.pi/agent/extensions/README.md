@@ -2,7 +2,7 @@
 
 ## Scoped model guide
 
-`model-guide.ts` registers the read-only `/model-guide` command. It uses the current session scope, catalog prices, effective thinking pins and manually reviewed benchmark evidence. It never selects models or changes native `/model`. Evidence and view code load only when opened. The command adds no tools, prompt content, provider requests or background resources. See [the guide](../../../MODEL-GUIDE.md) for controls, data ownership and checks.
+`model-guide.ts` registers the read-only `/model-guide` command. A two-model matrix compares task fit, configured effort, qualified intelligence, catalog rates and dated local fixture results. Left/right chooses a column, and up/down changes its model. It uses the current session scope, never selects models and does not change native `/model`. Evidence and view code load only when opened. The command adds no tools, prompt content, provider requests or background resources. See [the guide](../../../MODEL-GUIDE.md) for controls, data ownership and checks.
 
 ## Exit command
 

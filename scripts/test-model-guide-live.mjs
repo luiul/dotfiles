@@ -114,31 +114,50 @@ try {
   await delay(400);
   const send = async text => { driver.text(host, text); await delay(80); driver.key(host, 'escape'); driver.key(host, 'enter'); };
   const capture = () => driver.capture(host);
+  const pageUntil = async (target, text) => {
+    for (let i = 0; i < 40; i++) {
+      if (driver.capture(target).includes(text)) return;
+      driver.key(target, 'pageDown'); await delay(100);
+    }
+    throw Error(`Missing paged text: ${text}`);
+  };
   await send('/fixture-probe'); await wait(() => capture().includes('FIXTURE_READY'));
   await send('/model-guide');
-  const start = performance.now(); await wait(() => capture().includes('Scoped model guide'));
+  const start = performance.now(); await wait(() => capture().includes('Compare two scoped models'));
   console.log('Guide open to captured frame ms:', +(performance.now() - start).toFixed(2));
   driver.key(host, 'escape'); await delay(100);
   const openSamples = [];
   for (let i = 0; i < 7; i++) {
-    const at = performance.now(); await send('/model-guide'); await wait(() => capture().includes('Scoped model guide'));
+    const at = performance.now(); await send('/model-guide'); await wait(() => capture().includes('Compare two scoped models'));
     openSamples.push(performance.now() - at);
     driver.key(host, 'escape'); await delay(100);
   }
-  await send('/model-guide'); await wait(() => capture().includes('Scoped model guide'));
+  await send('/model-guide'); await wait(() => capture().includes('Compare two scoped models'));
   console.log('Guide command to captured frame ms (includes input/capture):', JSON.stringify({
     warmMedian: median(openSamples), samples: openSamples }));
-  let screen = capture(); assert(screen.includes('Kimi K3.1 Pro')); assert(screen.includes('II 42 @ high'));
+  let screen = capture(); assert(screen.includes('Kimi K3.1 Pro')); assert(screen.includes('42 @ high'));
+  assert(screen.includes('Unknown at high'));
   assert(!parse(log).some(e => e.type === 'provider'), 'Guide caused provider request');
-  driver.key(host, 'down'); await wait(() => capture().includes('II unknown at high'));
-  driver.text(host, 'think'); await wait(() => capture().includes('II 46 @ medium'));
-  assert(!capture().includes('Kimi K3.1 Pro'), 'Search did not filter list');
-  driver.resize(host, 40, 24); await wait(() => capture().includes('Details'));
-  const narrow = capture(); assert(narrow.includes('GPT-6.1 Sol')); assert(narrow.includes('Esc / Enter'));
-  driver.key(host, 'tab'); driver.key(host, 'pageDown'); await delay(150);
-  assert(capture().includes('focused'));
+  driver.key(host, 'right'); driver.key(host, 'down');
+  await wait(() => capture().includes('GPT-6.1 Sol'));
+  assert(capture().includes('GPT-6.1 Terra')); assert(!capture().includes('Kimi K3.1 Pro'));
+  driver.key(host, 'left'); driver.key(host, 'down');
+  await wait(() => capture().includes('Kimi K3.1 Pro'));
+  assert(capture().includes('GPT-6.1 Sol'));
+  driver.key(host, 'right'); driver.text(host, '/'); driver.text(host, 'budget'); await delay(150); driver.key(host, 'enter');
+  await wait(() => capture().includes('GLM 5.3'));
+  assert(capture().includes('Kimi K3.1 Pro')); assert(!capture().includes('GPT-6.1 Sol'));
+  await pageUntil(host, 'Grove spend/pass');
+  assert(capture().includes('$0.06405') && capture().includes('$0.04981'));
+  driver.text(host, 'd'); await wait(() => capture().includes('Technical evidence'));
+  await pageUntil(host, 'Score source');
+  driver.text(host, 'd');
+  driver.resize(host, 40, 24); await wait(() => capture().includes('Comparison'));
+  const narrow = capture(); assert(narrow.includes('Kimi')); assert(narrow.includes('GLM'));
+  driver.key(host, 'pageDown'); await delay(150);
+  assert(!/Comparison 1\//.test(capture()));
   driver.resize(host, 12, 16); await wait(() => capture().includes('Model guide'));
-  driver.resize(host, 40, 24); await wait(() => capture().includes('GPT-6.1 Sol'));
+  driver.resize(host, 120, 40); await wait(() => capture().includes('Kimi K3.1 Pro'));
   driver.key(host, 'escape'); await send('/fixture-state'); await wait(() => parse(log).some(e => e.type === 'state'));
   assert.deepEqual(parse(log).find(e => e.type === 'state'), { type: 'state', model: 'GPT-6.1 Terra', effort: 'high' });
   driver.resize(host, 120, 40);
@@ -152,7 +171,7 @@ try {
   assert.equal(parse(log).filter(e => e.type === 'state')[1].model, 'Kimi K3.1 Pro');
   assert.equal(parse(log).filter(e => e.type === 'state')[1].effort, 'high');
   screen = capture(); assert(screen.includes('Kimi K3.1 Pro')); assert(!screen.includes('Code | Hard coding'));
-  await send('/model-guide'); await wait(() => capture().includes('Scoped model guide')); driver.key(host, 'enter');
+  await send('/model-guide'); await wait(() => capture().includes('Compare two scoped models')); driver.key(host, 'enter');
   assert(!parse(log).some(e => e.type === 'provider'));
   driver.key(host, 'ctrl+d'); await wait(() => parse(log).some(e => e.type === 'shutdown'));
   const processResult = await wait(() => {
@@ -160,16 +179,16 @@ try {
     return state.last_exit ? state.last_exit : undefined;
   }, 3000);
   assert.equal(processResult.exit_code, 0);
-  console.log('PASS real Pi guide, search, narrow resize, details paging, cancel, native scope toggle, Kimi effort and footer identity');
+  console.log('PASS real Pi pair matrix, independent columns, search, narrow resize, metric paging, cancel, native scope toggle, Kimi effort and footer identity');
 
   const lightLog = join(root, 'light.jsonl');
   const light = driver.create({ command: [process.execPath, ...common, '-e', extension, '--use-theme', 'light', '--models', 'ai-model-router/GPT-6.1 Sol:high'],
     cwd: root, env: { ...env, GUIDE_LOG: lightLog }, columns: 80, rows: 30 });
   await wait(() => parse(lightLog).some(e => e.type === 'ready')); await delay(300);
   driver.text(light, '/model-guide'); driver.key(light, 'enter');
-  await wait(() => driver.capture(light).includes('II unknown at high'));
+  await wait(() => driver.capture(light).includes('Unknown at high'));
   assert(!driver.capture(light).includes('Kimi K3.1 Pro'));
-  assert(driver.capture(light).includes('scope pattern'));
+  driver.text(light, 'd'); await wait(() => driver.capture(light).includes('scope pattern'));
   driver.key(light, 'escape'); driver.key(light, 'ctrl+d');
   await wait(() => parse(lightLog).some(e => e.type === 'shutdown'));
   console.log('PASS real light theme, CLI single-model scope and inline effort override');
@@ -182,9 +201,10 @@ try {
     env: { ...env, GUIDE_LOG: projectLog }, columns: 100, rows: 40 });
   await wait(() => parse(projectLog).some(e => e.type === 'ready')); await delay(300);
   driver.text(projectHost, '/model-guide'); driver.key(projectHost, 'enter');
-  await wait(() => driver.capture(projectHost).includes('II unknown at medium'));
+  await wait(() => driver.capture(projectHost).includes('Unknown at medium'));
   assert(!driver.capture(projectHost).includes('Kimi K3.1 Pro'));
-  assert(driver.capture(projectHost).includes('published 10 @ low'));
+  assert(driver.capture(projectHost).includes('10 @ low'));
+  await pageUntil(projectHost, 'Not tested at medium');
   driver.key(projectHost, 'escape'); driver.key(projectHost, 'ctrl+d');
   await wait(() => parse(projectLog).some(e => e.type === 'shutdown'));
   console.log('PASS real project scope and project thinking-pin override');

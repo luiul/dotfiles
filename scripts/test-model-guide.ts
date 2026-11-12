@@ -76,6 +76,23 @@ assert(detailLines(rows[0], "2026-01-01").some(x => x.text.includes("future date
 assert(detailLines(unknown).some(x => x.text.includes("no curated purpose")));
 console.log("PASS exact scope order, pattern/pin/current effort separation, unknown models, effort mismatches and catalog prices");
 
+// Malformed local evidence must not hide valid public scores or catalog rows.
+for (const mutation of [
+	(local: any) => { local.small.totalUsd = -1; },
+	(local: any) => { local.small.passed = 5; },
+	(local: any) => { local.grove.timedOut = 3; },
+	(local: any) => { local.effort = "invented"; },
+	(local: any) => { local.date = "2026-02-30"; },
+]) {
+	const altered = structuredClone(raw); mutation(altered.models[key].local);
+	const result = parseEvidence(JSON.stringify(altered));
+	assert(result.warning?.includes("local snapshot(s) ignored; public evidence retained")); assert(result.evidence[key]); assert(!result.evidence[key].local);
+}
+assert.equal(data.evidence[key].local!.small.totalUsd, 0.0336559);
+assert.equal(data.evidence["ai-model-router/Kimi K3.1 Pro"].local!.grove.passed, 2);
+assert(detailLines(rows[0]).some(line => line.text.includes("Local tests: 2026-11-11")));
+console.log("PASS local evidence validation preserves scores and honest task cost units");
+
 initTheme("dark", false);
 let renders = 0, closed = 0;
 const tui = { terminal: { rows: 24 }, requestRender() { renders++; } } as any;
@@ -90,35 +107,95 @@ for (const name of ["dark", "light"]) {
 		assert(lines.every(x => visibleWidth(x) <= width), `width overflow ${width}`);
 		assert(lines.join("\n").includes("Terra"));
 	}
-	view.handleInput("\x1b[B"); assert(view.render(120).join("\n").includes("II unknown at high"));
-	view.handleInput("\t"); view.handleInput("\x1b[6~");
-	const later = view.render(40).join("\n"); assert(!later.includes("Details (focused) 1/"));
-	view.handleInput("\t"); view.handleInput("think");
+	view.handleInput("\x1b[B");
+	assert(view.render(120).join("\n").includes("Sol"));
+	view.handleInput("\x1b[6~");
+	assert(!view.render(120).join("\n").includes("Comparison 1/"));
+	view.handleInput("d");
+	assert(view.render(120).join("\n").includes("Technical evidence"));
+	view.handleInput("d"); view.handleInput("/"); view.handleInput("think"); view.handleInput("\r");
 	assert(view.render(120).join("\n").includes("Sol"));
 	assert(!view.render(120).join("\n").includes("Kimi"));
 	view.handleInput("\x1b");
 	const empty = new GuideView([], theme, kb, tui, () => {});
 	assert(empty.render(40).join("\n").includes("No scope configured"));
-	const noMatch = new GuideView(rows, theme, kb, tui, () => {}, "no-such-model");
+	const noMatch = new GuideView(rows, theme, kb, tui, () => {});
+	noMatch.handleInput("/"); noMatch.handleInput("no-such-model");
 	assert(noMatch.render(40).join("\n").includes("No matching models"));
+	noMatch.handleInput("\r"); assert(noMatch.render(40).join("\n").includes("Find model"));
+	noMatch.handleInput("\x1b"); assert(!noMatch.render(40).join("\n").includes("Find model"));
 }
 assert.equal(closed, 2); assert(renders > 0);
-console.log("PASS search, navigation, detail paging, cancellation, width/height bounds and light/dark theme rendering");
+console.log("PASS pair navigation, search, detail toggling, paging, cancellation and light/dark themes");
 
-for (const terminalRows of [5, 8, 12, 17, 24]) {
-	for (const width of [1, 2, 5, 19, 20, 39, 40]) {
-		for (const entries of [rows, []]) {
+for (const terminalRows of [5, 8, 12, 17, 24, 40]) {
+	for (const width of [1, 2, 5, 19, 20, 39, 40, 60, 112, 160]) {
+		for (const entries of [rows, [], rows.slice(0, 1), rows.slice(0, 2)]) {
 			const tiny = new GuideView(entries, getThemeByName("dark")!, kb,
 				{ ...tui, terminal: { rows: terminalRows } }, () => {}, "", "Evidence unavailable");
-			const frame = tiny.render(width);
-			assert(frame.length <= Math.max(1, terminalRows - 8), `height overflow ${width}x${terminalRows}: ${frame.length}`);
-			assert(frame.every(line => visibleWidth(line) <= width), `width overflow ${width}x${terminalRows}`);
+			for (const input of ["", "\x1b[B", "\x1b[D", "\x1b[A", "d", "\x1b[6~", "/", "zz"] ) {
+				if (input) tiny.handleInput(input);
+				const frame = tiny.render(width);
+				assert(frame.length <= Math.max(1, terminalRows - 8), `height overflow ${width}x${terminalRows}: ${frame.length}`);
+				assert(frame.every(line => visibleWidth(line) <= width), `width overflow ${width}x${terminalRows}`);
+			}
 		}
 	}
 }
-console.log("PASS tiny and short terminals, including empty scope and evidence warnings");
+console.log("PASS tiny, short, empty, singleton and two-model scopes at all layout boundaries");
+
+// The pair matrix must change one comparison column, never select a Pi model.
+const pair = new GuideView(rows, getThemeByName("dark")!, kb, { ...tui, terminal: { rows: 50 } }, () => {});
+let pairFrame = pair.render(112).join("\n");
+assert(pairFrame.includes("Compare two scoped models"), "Pair comparison heading missing");
+assert(pairFrame.includes("GPT-6.1 Terra") && pairFrame.includes("Kimi K3.1 Pro"));
+assert(pairFrame.includes("$0.03366 / 6 tasks") && pairFrame.includes("$0.06064 / 6 tasks"));
+assert(pairFrame.includes("No passing patch"));
+assert(pairFrame.includes("4/4 passed"), "Only four small fixtures have automated acceptance checks");
+pair.handleInput("\x1b[C"); pair.handleInput("\x1b[B");
+pairFrame = pair.render(112).join("\n");
+assert(pairFrame.includes("GPT-6.1 Terra") && pairFrame.includes("GPT-6.1 Sol"));
+assert(!pairFrame.includes("Kimi K3.1 Pro"), "Right-column navigation must leave the left model unchanged");
+pair.handleInput("\x1b[D"); pair.handleInput("\x1b[B");
+pairFrame = pair.render(112).join("\n");
+assert(pairFrame.includes("Kimi K3.1 Pro") && pairFrame.includes("GPT-6.1 Sol"));
+const changedEffort = new GuideView(pattern, getThemeByName("dark")!, kb, { ...tui, terminal: { rows: 50 } }, () => {});
+assert(changedEffort.render(112).join("\n").includes("Not tested at xhigh"));
+const none = new GuideView([unknown], getThemeByName("dark")!, kb, { ...tui, terminal: { rows: 50 } }, () => {});
+assert(none.render(112).join("\n").includes("Not tested"));
+const activeOther = new GuideView([rows[1], { ...rows[2], current: "medium" }], getThemeByName("dark")!, kb,
+	{ ...tui, terminal: { rows: 50 } }, () => {});
+assert(activeOther.render(112).join("\n").indexOf("GPT-6.1 Sol") < activeOther.render(112).join("\n").indexOf("Kimi K3.1 Pro"));
+const duplicateSearch = new GuideView(rows, getThemeByName("dark")!, kb, { ...tui, terminal: { rows: 50 } }, () => {}, "terra");
+assert(duplicateSearch.render(112).join("\n").includes("Kimi K3.1 Pro"));
+assert(duplicateSearch.render(112).join("\n").includes("GPT-6.1 Terra"));
+const argon = new GuideView(rows, getThemeByName("dark")!, kb, { ...tui, terminal: { rows: 50 } }, () => {}, "argon");
+assert(argon.render(112).join("\n").includes("0/1 passed; no test feedback; 1 timeout"));
+const futureLocalRows = structuredClone(rows);
+futureLocalRows[0].evidence!.local!.date = "2999-01-01";
+const future = new GuideView(futureLocalRows, getThemeByName("dark")!, kb, { ...tui, terminal: { rows: 50 } }, () => {});
+assert(!future.render(112).join("\n").includes("$0.03366"));
+assert(future.render(112).join("\n").includes("Future snapshot ignored"));
+assert(changedEffort.render(112).join("\n").includes("2026-11-11 / high"), "Mismatch retains actual snapshot provenance");
+for (const [width, terminalRows] of [[112, 40], [80, 30], [40, 24]]) {
+	const paging = new GuideView(rows, getThemeByName("dark")!, kb, { ...tui, terminal: { rows: terminalRows } }, () => {});
+	const frames: string[] = [];
+	for (let count = 0; count < 80; count++) {
+		const frame = paging.render(width).join("\n"); frames.push(frame);
+		assert(frame.includes("d details") && frame.includes("/ find") && frame.includes("closes"));
+		assert(frame.includes("/model selects"));
+		if (frame.includes("unspecified")) assert(frame.includes("Published"), "Do not split a score from its metric label");
+		if (frame.includes("· end")) { assert(!frame.includes("more below")); break; }
+		paging.handleInput("\x1b[6~");
+	}
+	assert(frames.at(-1)!.includes("· end"), "Pagination reaches a clear end");
+	assert(frames.some(frame => frame.includes("unspecified")));
+	assert(frames.some(frame => frame.includes("$0.11033")), "Failed attempt spend stays visible");
+}
+console.log("PASS whole metric pages, clear end, complete hints and failed-attempt spend at 112/80/40 columns");
+console.log("PASS independent columns, scope overrides, active-model start and qualified local costs");
 
 const view = new GuideView(rows, getThemeByName("dark")!, kb, { ...tui, terminal: { rows: 40 } }, () => {});
 const start = performance.now();
 for (let i = 0; i < 1000; i++) view.render(100);
-console.log(`Render check: ${((performance.now() - start) / 1000).toFixed(3)} ms/render (1000 renders, seven rows)`);
+console.log(`Render check: ${((performance.now() - start) / 1000).toFixed(3)} ms/render (1000 renders, pair matrix)`);

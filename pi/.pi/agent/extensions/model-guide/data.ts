@@ -3,6 +3,13 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 
 type Settings = ReturnType<ExtensionAPI["getSettings"]>;
 type ScopeItem = ExtensionContext["scopedModels"][number];
+export type LocalEvidence = {
+	date: string;
+	effort: string;
+	source: string;
+	small: { runs: number; passed: number; checked: number; totalUsd: number; note: string };
+	grove: { runs: number; passed: number; timedOut: number; totalUsd: number };
+};
 export type Evidence = {
 	score: number;
 	benchmark: string;
@@ -11,6 +18,7 @@ export type Evidence = {
 	reviewed: string;
 	url: string;
 	qualifier?: string;
+	local?: LocalEvidence;
 };
 export type GuideData = { evidence: Record<string, Evidence>; warning?: string };
 export type GuideRow = {
@@ -32,6 +40,25 @@ export function plain(value: string): string {
 		.replace(/[\x00-\x1f\x7f-\x9f]/g, " ").trim();
 }
 
+function validDate(value: unknown): value is string {
+	return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+		&& Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+}
+
+function parseLocal(raw: LocalEvidence | undefined): LocalEvidence | undefined {
+	if (!raw || !validDate(raw.date) || !levels.has(raw.effort)
+		|| typeof raw.source !== "string" || raw.source.length > 600 || !/^https:\/\/\S+$/.test(raw.source)) return;
+	const s = raw.small, g = raw.grove;
+	const count = (n: number) => Number.isInteger(n) && n >= 0 && n <= 100;
+	const cost = (n: number) => Number.isFinite(n) && n >= 0;
+	if (!s || !g || ![s.runs, s.passed, s.checked, g.runs, g.passed, g.timedOut].every(count)
+		|| s.runs < 1 || s.checked > s.runs || s.passed > s.checked || g.runs < 1 || g.passed + g.timedOut > g.runs
+		|| !cost(s.totalUsd) || !cost(g.totalUsd) || typeof s.note !== "string" || s.note.length > 600) return;
+	return { date: raw.date, effort: raw.effort, source: plain(raw.source),
+		small: { runs: s.runs, passed: s.passed, checked: s.checked, totalUsd: s.totalUsd, note: plain(s.note) },
+		grove: { runs: g.runs, passed: g.passed, timedOut: g.timedOut, totalUsd: g.totalUsd } };
+}
+
 export function parseEvidence(text: string): GuideData {
 	try {
 		const doc = JSON.parse(text);
@@ -39,12 +66,11 @@ export function parseEvidence(text: string): GuideData {
 			throw new Error("invalid schema");
 		}
 		const evidence: Record<string, Evidence> = Object.create(null);
-		let invalid = 0;
+		let invalid = 0, invalidLocal = 0;
 		for (const [key, raw] of Object.entries(doc.models)) {
 			const e = raw as Evidence;
 			const fields = [e?.benchmark, e?.version, e?.effort, e?.reviewed, e?.url];
-			const date = typeof e?.reviewed === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.reviewed)
-				&& Number.isFinite(Date.parse(e.reviewed)) && new Date(e.reviewed).toISOString().slice(0, 10) === e.reviewed;
+			const date = validDate(e?.reviewed);
 			if (!key.includes("/") || !Number.isFinite(e?.score) || e.score < 0 || e.score > 100
 				|| fields.some(x => typeof x !== "string" || !x.trim() || x.length > 600)
 				|| !date || !/^https:\/\/\S+$/.test(e.url)
@@ -52,10 +78,15 @@ export function parseEvidence(text: string): GuideData {
 				invalid++;
 				continue;
 			}
+			const local = parseLocal(e.local);
+			if (e.local !== undefined && !local) invalidLocal++;
 			evidence[key] = { score: e.score, benchmark: plain(e.benchmark), version: plain(e.version), effort: plain(e.effort),
-				reviewed: e.reviewed, url: plain(e.url), ...(e.qualifier ? { qualifier: plain(e.qualifier) } : {}) };
+				reviewed: e.reviewed, url: plain(e.url), ...(e.qualifier ? { qualifier: plain(e.qualifier) } : {}),
+				...(local ? { local } : {}) };
 		}
-		return { evidence, ...(invalid ? { warning: `${invalid} invalid evidence record(s) ignored.` } : {}) };
+		const warnings = [invalid ? `${invalid} invalid public evidence record(s) ignored.` : "",
+			invalidLocal ? `${invalidLocal} invalid local snapshot(s) ignored; public evidence retained.` : ""].filter(Boolean);
+		return { evidence, ...(warnings.length ? { warning: warnings.join(" ") } : {}) };
 	} catch {
 		return { evidence: {}, warning: "Evidence file is invalid. Catalog details remain available." };
 	}
@@ -117,6 +148,7 @@ export function detailLines(row: GuideRow, today = new Date().toISOString().slic
 			{ text: `Source: ${e.url}` });
 		if (e.qualifier) lines.push({ text: e.qualifier, warning: true });
 	}
+	if (e?.local) lines.push({ text: `Local tests: ${e.local.date}, ${e.local.effort}; source: ${e.local.source}` });
 	lines.push({ text: "Rates are catalog values, not task cost. Zero is not proof of free usage." },
 		{ text: "Unpinned effort follows Pi's defaults/current fallback. Selection clamps effort to model capabilities." });
 	return lines;

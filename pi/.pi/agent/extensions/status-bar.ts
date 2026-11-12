@@ -434,7 +434,7 @@ export default function (pi: ExtensionAPI) {
 					// id for these names and show only their short role as optional metadata.
 					// Bedrock also keeps its raw id, including the invocation region.
 					const m = ctx.model;
-					const role = m?.name?.match(/^(Daily|Think|Budget|Quick|Vision|Helper)\s*\|/)?.[1];
+					const role = m?.name?.match(/^(Daily|Code|Think|Budget|Quick|Vision|Helper)\s*\|/)?.[1];
 					const model = !m
 						? "no model"
 						: m.provider === "amazon-bedrock" || role

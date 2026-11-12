@@ -668,6 +668,20 @@
           "maxTokens": 262144
         },
         {
+          "id": "Kimi K3.1 Pro",
+          "name": "Code | Hard coding and debugging",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 2,
+            "output": 10,
+            "cacheRead": 0.2,
+            "cacheWrite": 0
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 262144
+        },
+        {
           "id": "Smart",
           "input": ["text", "image"],
           "cost": {
@@ -683,7 +697,7 @@
     }
   },
   "grove": {
-    "generatedAt": "2026-11-10T11:47:37Z",
+    "generatedAt": "2026-11-12T15:41:41Z",
     "bedrock": {
       "defaultRegion": "eu-west-1",
       "regions": {
@@ -727,6 +741,7 @@
         "global.amazon.nova-2-lite-v1:0": "eu-west-1",
         "global.anthropic.claude-fable-5": "ap-northeast-1",
         "global.anthropic.claude-fable-5-1": "ap-northeast-1",
+        "global.anthropic.claude-fable-5-2": "ap-northeast-1",
         "global.anthropic.claude-haiku-4-5-20251001-v1:0": "eu-west-1",
         "global.anthropic.claude-opus-4-5-20251101-v1:0": "eu-west-1",
         "global.anthropic.claude-opus-4-6-v1": "eu-west-1",
@@ -740,6 +755,7 @@
         "global.anthropic.claude-sonnet-5": "eu-west-1",
         "global.anthropic.claude-sonnet-5-5": "eu-west-1",
         "global.moonshotai.kimi-k3": "eu-west-1",
+        "global.moonshotai.kimi-k3.1": "eu-west-1",
         "global.openai.gpt-5.6-luna": "eu-west-1",
         "global.openai.gpt-6-luna": "eu-west-1",
         "global.openai.gpt-6-sol": "eu-west-1",
@@ -815,6 +831,7 @@
         "us.meta.llama3-3-70b-instruct-v1:0": "us-east-1",
         "us.mistral.pixtral-large-2502-v1:0": "us-east-1",
         "us.moonshotai.kimi-k3": "us-east-1",
+        "us.moonshotai.kimi-k3.1": "us-east-1",
         "us.openai.gpt-5.6-luna": "us-east-1",
         "us.openai.gpt-6-luna": "us-east-1",
         "us.openai.gpt-6-sol": "us-east-1",

@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "models": {
+    "ai-model-router/GPT-6.1 Terra": {
+      "score": 42,
+      "benchmark": "Artificial Analysis Intelligence Index",
+      "version": "v5.0.1",
+      "effort": "high",
+      "reviewed": "2026-11-12",
+      "url": "https://artificialanalysis.ai/models/comparisons/gpt-6-1-terra-high-vs-gpt-6-1-terra-low"
+    },
+    "ai-model-router/Kimi K3.1 Pro": {
+      "score": 46,
+      "benchmark": "Artificial Analysis Intelligence Index",
+      "version": "v5.0.1",
+      "effort": "unspecified",
+      "reviewed": "2026-11-12",
+      "url": "https://artificialanalysis.ai/models/kimi-k3-1-pro",
+      "qualifier": "Published effort is unverified. This is not a verified score for router high."
+    },
+    "ai-model-router/GPT-6.1 Sol": {
+      "score": 46,
+      "benchmark": "Artificial Analysis Intelligence Index",
+      "version": "v5.0.1",
+      "effort": "medium",
+      "reviewed": "2026-11-12",
+      "url": "https://artificialanalysis.ai/models/comparisons/gpt-6-1-sol-high-vs-gpt-6-1-sol-medium"
+    },
+    "ai-model-router/GLM 5.3": {
+      "score": 32,
+      "benchmark": "Artificial Analysis Intelligence Index",
+      "version": "v5.0.1",
+      "effort": "max",
+      "reviewed": "2026-11-12",
+      "url": "https://artificialanalysis.ai/models/glm-5-3",
+      "qualifier": "No verified high-effort score. Max is a different benchmark configuration."
+    },
+    "ai-model-router/GPT-6 Luna": {
+      "score": 10,
+      "benchmark": "Artificial Analysis Intelligence Index",
+      "version": "v5.0.1",
+      "effort": "low",
+      "reviewed": "2026-11-12",
+      "url": "https://artificialanalysis.ai/models/gpt-6-luna-low"
+    },
+    "google-vertex/gemini-4-argon": {
+      "score": 50,
+      "benchmark": "Artificial Analysis Intelligence Index",
+      "version": "v5.0.1",
+      "effort": "high",
+      "reviewed": "2026-11-12",
+      "url": "https://artificialanalysis.ai/models/comparisons/kimi-k3-1-pro-vs-gemini-4-argon",
+      "qualifier": "This index is not a vision or floorplan benchmark."
+    },
+    "ai-model-router/GLM 5.3 Flash": {
+      "score": 28,
+      "benchmark": "Artificial Analysis Intelligence Index",
+      "version": "v5.0.1",
+      "effort": "reasoning version",
+      "reviewed": "2026-11-12",
+      "url": "https://artificialanalysis.ai/models/glm-5-3-flash",
+      "qualifier": "No verified score with reasoning off. Router effort aliases can differ from the Pi label."
+    }
+  }
+}

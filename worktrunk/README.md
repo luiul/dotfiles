@@ -34,7 +34,7 @@ wt-herdr repair --dry-run
 wt-herdr repair
 ```
 
-Repair separates clearly identified mixed checkouts while preserving terminal references and running processes. It uses version-checked document writes and updates terminal space and tab labels. It keeps a backup before changing the document. Unclear entries need inspection, not guesses.
+Repair separates clearly identified mixed checkouts while preserving terminal references and running processes. A tab without terminals stays in its original space and keeps its folder context. Repair refuses when it cannot preserve the folder context of a mod pane. A tab with terminals from one checkout stays intact. Repair refuses to split a tab with terminals from different checkouts when that tab also has mod or unclear panes. It also refuses a mixed space containing a marked repository parent pane. It uses version-checked document writes and updates terminal space and tab labels. It keeps a backup before changing the document. Unclear entries need inspection, not guesses.
 
 Do not close a running terminal to repair its location. Closing a terminal pane ends its process. Before removing a checkout, stop or hand off its worker, preserve its work, and close its space.
 

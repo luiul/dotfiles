@@ -13,6 +13,7 @@ const models=json('models.json');
 const router=models.providers['ai-model-router'];
 const roles={
  Daily:['GPT-6.1 Terra','high','Coding and admin'],
+ Code:['Kimi K3.1 Pro','high','Hard coding and debugging'],
  Think:['GPT-6.1 Sol','medium','Hard problems and advice'],
  Budget:['GLM 5.3','high','Lower-cost coding'],
  Quick:['GPT-6 Luna','low','Lookups and simple tasks'],
@@ -20,6 +21,7 @@ const roles={
 };
 const scope=[
  'ai-model-router/GPT-6.1 Terra',
+ 'ai-model-router/Kimi K3.1 Pro',
  'ai-model-router/GPT-6.1 Sol',
  'ai-model-router/GLM 5.3',
  'ai-model-router/GPT-6 Luna',
@@ -43,7 +45,7 @@ assert.equal(models.providers['google-vertex'].modelOverrides['gemini-4-argon'].
 assert.equal(settings.modelThinkingLevels['google-vertex/gemini-4-argon'],'high');
 assert(router.models.some(m=>m.id==='Kimi K3'),'All-model catalog must preserve Kimi');
 assert(router.models.some(m=>m.id==='DeepSeek V4 Flash'),'Worker catalog must preserve DeepSeek outside picker scope');
-// The installed resolver proves scope patterns select the same six canonical IDs.
+// The installed resolver proves scope patterns select the same seven canonical IDs.
 const managed=path.join(homedir(),'.pi/agent/install');
 const runtimeDir=path.join(managed,'releases',fs.readFileSync(path.join(managed,'current-version'),'utf8').trim(),'node_modules/@earendil-works/pi-coding-agent');
 const {resolveModelScopeFromModels}=await import(path.join(runtimeDir,'dist/core/model-resolver.js'));
@@ -89,4 +91,4 @@ for(const role of ['observer','reflector','dropper']){
  assert.equal(blackhole[role+'Model'].id,'DeepSeek V4 Flash');
  assert.equal(blackhole[role+'FallbackModels'][0].id,'GLM 5.3 Flash');
 }
-console.log('PASS six-model scope, Terra default, short roles, effort levels, helper availability and unchanged Blackhole routing');
+console.log('PASS seven-model scope, Terra default, short roles, effort levels, helper availability and unchanged Blackhole routing');

@@ -466,11 +466,20 @@ export default function (pi: ExtensionAPI) {
 						{ text: footerData.getGitBranch() ? label("branch", footerData.getGitBranch()!) : "", priority: 2, minWidth: 12 },
 						{ text: checkout?.subdirectory ? label("dir", checkout.subdirectory) : "", priority: 5, minWidth: 10 },
 					];
+					const statuses = footerData.getExtensionStatuses?.();
+					// Closing safety shares the runtime slot. It is a report, never Git-derived proof.
+					const closing = statusText(statuses?.get("close-status") ?? "");
+					const closeColor = closing === "Safe to close (reported)" ? "success" : closing === "Not safe to close" ? "warning" : "muted";
+					const compactClose = closing === "Safe to close (reported)" ? "Close: yes*" : closing === "Not safe to close" ? "Close: no" : "Close: ?";
+					const runtime: FooterSegment = turnStartedAt != null
+						? { text: workingTag(), priority: 0, required: true }
+						: { text: closing ? theme.fg(closeColor, closing) : "", priority: 0, required: true, minWidth: 12,
+							render: size => theme.fg(closeColor, truncateToWidth(compactClose, size, "…")) };
 					const gitStatus: FooterSegment[] = [
 						{ text: git.dirty > 0 ? label("changed", String(git.dirty), "warning") : "", priority: 3 },
 						{ text: git.ahead > 0 ? label("ahead", String(git.ahead)) : "", priority: 4 },
 						{ text: git.behind > 0 ? label("behind", String(git.behind)) : "", priority: 4 },
-						{ text: workingTag(), priority: 0, required: true },
+						runtime,
 					];
 					// Live context size estimate and the model's full context window.
 					const contextTokens = usage?.tokens ?? null;
@@ -507,9 +516,8 @@ export default function (pi: ExtensionAPI) {
 						{ text: role ? theme.fg("muted", role) : "", priority: 6 },
 						{ text: think, priority: 3, required: true },
 					];
-					const statuses = footerData.getExtensionStatuses?.();
-					const extensions: FooterSegment[] = [...(statuses?.values() ?? [])].filter(Boolean)
-						.map(s => ({ text: relabelMeterLetters(statusText(s)), priority: 2 }));
+					const extensions: FooterSegment[] = [...(statuses?.entries() ?? [])].filter(([key, value]) => key !== "close-status" && value)
+						.map(([, value]) => ({ text: relabelMeterLetters(statusText(value)), priority: 2 }));
 					// A UUID is never shortened if 36 columns fit. Its label yields first.
 					const session: FooterSegment = {
 						text: theme.fg("dim", width >= 44 ? "session " : "") + theme.fg("muted", id),

@@ -206,11 +206,46 @@ The live harness uses isolated settings, a local streaming provider, registered 
 
 Captured tmux images are not a deployment check. Load the source with `-e` in an isolated review host before updating the live Stow deployment checkout.
 
+## Reported closing safety
+
+`close-status.ts` adds `/close-status` and a persistent footer label for the current Pi TUI session. It reads three plain fields from the existing final reply, without a second model call:
+
+```text
+safe_to_close: yes
+close_reason: Research delivered. No session work remains.
+next_action: none
+```
+
+The fields must form the final three lines, in this order, outside quotes or code fences. A blank line separates them from any earlier content, so Markdown examples cannot continue into the report. Values are lowercase `yes`, `no`, or `unknown`. Reason and action each fit one line of at most 240 characters. Missing, malformed, interrupted, failed, truncated, or stale reports show `Close status unknown`. The extension validates format, not the truth or meaning of free-text reasons.
+
+- `yes` means the agent reports no forgotten session-owned work or unresolved decision. Explicit preserved deferrals and handoffs can be safe, even when the broader task remains incomplete.
+- Pending answers, approval, publication, requested checks or deployment, and owned background work normally mean `no`. Unrelated changes do not block closure.
+- Closing never authorizes publication, deployment, or worktree removal. Remote publication and preservation evidence still need the normal checks.
+- The footer shows `Safe to close (reported)`, `Not safe to close`, or `Close status unknown` after settlement. While Pi works, the existing timer takes the same runtime slot. Narrow layouts use `Close: yes*`, `Close: no`, or `Close: ?`. The asterisk means reported, not independently verified.
+- `/close-status` opens a keyboard-scrollable local report with reason, next action, source model/message, report time, monitoring limits, and a worktree reminder. Enter or Escape closes it. The command makes no model request and grants no approval.
+- A new prompt or Pi bang command clears the old report. Selected-branch metadata restores on resume, fork, reload, tree navigation, and compaction. A final assistant message alone is not a settled report.
+- Reports are snapshots. External edits and other workers are not monitored. Ask the agent for a fresh report when circumstances change. An exact plain-text example at the end of a reply can be indistinguishable from an intended report.
+- The extension adds a short stable prompt section and one small session metadata entry per settled run. Metadata stays outside model context. It registers no model tool, actionable turn boundary, polling timer, watcher, subprocess, or network probe. SDK, print, JSON, and RPC modes remain inert.
+
+Verification from the repository root:
+
+```sh
+bun scripts/test-close-status.ts
+bun scripts/test-status-bar-resources.ts
+node scripts/test-close-status-live.mjs
+node scripts/test-status-bar-live.mjs
+node scripts/test-close-status-models.mjs --live
+bun scripts/bench-status-bar-render.ts --output /tmp/close-status-render.json
+node scripts/bench-status-bar-idle.mjs --baseline /path/to/saved/status-bar.ts --candidate-extension "$PWD/pi/.pi/agent/extensions/close-status.ts" --output /tmp/close-status-idle.json
+```
+
+The terminal tests use private Rex and a local provider, with no user terminal or external model request. The opt-in model check makes nine bounded samples across three configured router models. Samples do not establish general reliability. Benchmarks compare the reviewed source with a saved baseline. Design and acceptance criteria: https://github.com/luiul/dotfiles/issues/104.
+
 ## Enhanced status bar
 
 `status-bar.ts` replaces the footer with three rows. Terminals below 80 columns use four rows so the model and context have separate space. `/statusbar` toggles it.
 
-- Checkout row: repository, worktree (`main` for the main checkout), branch, and subdirectory stay left. Bold cost, optional traffic totals, changed files, ahead, behind, and the active `working` timer stay right. Linked checkouts whose folder matches the repository use their parent folder as the worktree name.
+- Checkout row: repository, worktree (`main` for the main checkout), branch, and subdirectory stay left. Bold cost, optional traffic totals, changed files, ahead, behind, and the active `working` timer stay right. When `close-status.ts` is loaded and Pi settles, the reported closing label replaces the timer. Linked checkouts whose folder matches the repository use their parent folder as the worktree name.
 - Runtime row: model followed immediately by `[provider]`, short picker role, and thinking level stay left. Context tokens and `until compact` stay right. Role-based picker names use the canonical model ID without the long purpose text. Other models keep friendly names; Bedrock keeps its raw model ID so the invocation region stays visible. Narrow terminals put model left and role/thinking right on one row, then context left and compaction headroom right on the next row.
 - Session row: full UUID and optional session name stay left. Extension statuses and last-turn cache hit rate stay right.
 - The model uses bold accent text. The repository or directory fallback and cost use bold neutral text. The provider, short role, and full session UUID use muted text. Labels and cumulative traffic stay dim. The same style hierarchy applies when text shortens.

@@ -202,7 +202,7 @@ async function start(mode, { cwd = repo, width = 160, seeded = true, unknown = f
     // The driver records the exec target, not Rex's outer login child.
     host.pid = driver.pid(host);
     if (host.pid) pids.add(host.pid);
-    await wait(host, (text, list) => list.some((e) => e.type === 'ready') && /\bsession\b/.test(text) && (!seeded || cwd !== repo || text.includes(`worktree ${worktree}`)), 'first custom footer paint');
+    await wait(host, (text, list) => list.some((e) => e.type === 'ready') && /\bsession\b/.test(text) && (cwd !== repo || (width < 80 ? /\bworktree\s+\S/.test(text) : text.includes(`worktree ${worktree}`))), 'first custom footer paint');
     const list = events(host);
     const ready = list.find((e) => e.type === 'ready');
     assert.equal(ready.pid, host.pid, 'Rex target PID must be the actual Pi host');

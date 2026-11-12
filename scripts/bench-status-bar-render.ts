@@ -42,7 +42,7 @@ const {performance} = require('node:perf_hooks');
 const [root,repo] = process.argv.slice(2);
 const load = createRequire(join(repo,'scripts/bench-status-bar-render.ts'));
 const width = load('@earendil-works/pi-tui').visibleWidth;
-function host(source, count) {
+function host(source, count, closing) {
   let now=0, footer, activeTimers=0, gitCalls=0, reads=0, renders=0;
   const handlers=new Map();
   const branch=Array.from({length:count},(_,i)=>({type:'message',id:String(i),message:{role:'assistant',stopReason:'stop',
@@ -62,6 +62,7 @@ function host(source, count) {
   module.exports.default({on:(name,fn)=>handlers.set(name,fn),registerCommand(){},getThinkingLevel:()=> 'high'});
   const theme={fg:(color,text)=>'\x1b[38;5;'+(color.length+230)+'m'+text+'\x1b[0m',bold:text=>'\x1b[1m'+text+'\x1b[22m',getThinkingBorderColor:()=>text=>text};
   const statuses=new Map([['meter','\x1b[32mblackhole obs ▕▏▏▏\x1b[0m']]);
+  if (closing) statuses.set('close-status', 'Safe to close (reported)');
   let modelName='GPT-6.1 Sol';
   const ctx={mode:'tui',hasUI:true,cwd:'/repo/worktree/dotfiles',model:{id:'gpt-6.1-sol',get name(){return modelName},provider:'ai-model-router'},
     ui:{setFooter:factory=>{footer=factory?.({requestRender(){renders++}},theme,{getGitBranch:()=> 'feature-example',getExtensionStatuses:()=>statuses,onBranchChange:()=>()=>{}})},notify(){}},
@@ -76,10 +77,11 @@ const summarize=values=>({medianUs:median(values),madUs:median(values.map(x=>Mat
 (async()=>{
   const sources=Object.fromEntries(['baseline','candidate'].map(n=>[n,fs.readFileSync(join(root,n+'.cjs'),'utf8')]));
   const scenarios=[{name:'warm idle',history:10,active:false,changing:false},{name:'working timer',history:500,active:true,changing:true},
-    {name:'long history',history:5000,active:false,changing:false},{name:'crowded model',history:500,active:true,changing:true,long:true}];
+    {name:'long history',history:5000,active:false,changing:false},{name:'crowded model',history:500,active:true,changing:true,long:true},
+    {name:'closing status',history:10,active:false,changing:false,closing:true}];
   const results=[];
   for(const scenario of scenarios){
-    const hosts=Object.fromEntries(Object.entries(sources).map(([n,source])=>[n,host(source,scenario.history)]));
+    const hosts=Object.fromEntries(Object.entries(sources).map(([n,source])=>[n,host(source,scenario.history,scenario.closing)]));
     for(const h of Object.values(hosts)){await h.fire('session_start');if(scenario.active)await h.fire('before_agent_start');if(scenario.long)h.model('Very long model name '.repeat(20));}
     for(const cols of [60,80,120,160]){
       const samples={baseline:[],candidate:[]};

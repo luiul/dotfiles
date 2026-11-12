@@ -19,6 +19,11 @@ for (const file of ['git/.local/bin/repo-guard', 'pi/.pi/agent/extensions/work-c
 check([global,repo,hf,wt,guide,text('pi/.pi/agent/extensions/README.md')].every(s => !/repo-guard|work-completion|\/work-status/.test(s)), 'active instructions contain no removed guard references');
 check(global.includes('Do not stage or commit on your own') && global.includes('Run `git add` and `git commit` only after the user approves'), 'commit approval remains');
 check(global.includes('Plan approval permits implementation, not staging, committing, or pushing.'), 'planning approval does not permit publication');
+check([global, repo].every(s => s.includes('"commit and publish" includes safe live deployment and verification') && s.includes('remote-only publication')), 'personal setup publication includes live deployment with an explicit remote-only exception');
+check([global, repo].every(s => s.includes('A dirty') && s.includes('not an automatic') && s.includes('reviewed published files')), 'dirty live checkouts need scoped deployment assessment, not automatic deferral');
+check([global, repo].every(s => s.includes('real live settings') && s.includes('`/reload`')), 'Pi completion checks live discovery and states session reload needs');
+check([global, repo].every(s => s.includes('published, not deployed') && s.includes('unusable')), 'blocked deployment must name the usability gap');
+check(global.includes('shared-service deployment gates') && global.includes('destructive-action'), 'personal live deployment permission does not bypass wider safety gates');
 check(global.includes('Parallel agents use separate source worktrees'), 'parallel worktrees remain');
 check(global.includes('Never use mixed or soft reset'), 'unsafe live shortcuts remain forbidden');
 check(hf.includes('push the ticket branch and create a draft PR'), 'HelloFresh publication remains ticket branches and draft PRs');

@@ -43,7 +43,7 @@ const shell = target => {
 };
 async function send(t, cmd, marker) {
   run('hc', ['send', t, cmd], repo, 75000);
-  try { await wait(() => fs.existsSync(marker), 'Herdr shell command'); }
+  try { await wait(() => fs.existsSync(marker), 'Herdr shell command', 110000); }
   catch (e) { console.log('Owned caller screen ' + run('hc', ['read', '--lines', '25', t])); throw e; }
   return fs.readFileSync(marker, 'utf8').trim();
 }
@@ -65,7 +65,7 @@ async function removeRex(mode, branch, target, extra = '') {
 try {
   run('git', ['init', '--initial-branch=main', repo]);
   run('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '--allow-empty', '-m', 'fixture baseline']);
-  driver = await RexTestDriver.start({ deadlineMs: 480000 });
+  driver = await RexTestDriver.start({ deadlineMs: 900000 });
   for (const mode of ['wt', 'cop']) {
     const branch = 'idle-' + mode, target = create(branch), c = shell(target);
     const idle = root + '/' + branch + '-idle';
@@ -114,6 +114,52 @@ try {
   assert(!fs.existsSync(opt));
   assert(json('herdr-app', ['ls']).spaces.some(s => s.id === optSpace.space));
   console.log('PASS feature opt-out preserves the space');
+  // Navigate within an existing shared space, then remove the current checkout.
+  // The original-checkout Pi stays live; a second Pi in the target still blocks.
+  for (const mode of ['wt', 'cop']) {
+    const original = create('shared-original-' + mode);
+    const targetBranch = 'shared-target-' + mode, target = create(targetBranch);
+    const shared = shell(original);
+    const agent = json('hc', ['run', '--bg', '--no-notify', '--no-parent', '--cwd', original,
+      '--label', 'herdr.space=' + shared.space, '--label', 'herdr.tab=shared-agent-' + mode,
+      '--', run('/usr/bin/which', ['pi']).trim(), '--no-extensions']);
+    const agentAddress = agent.terminal || agent.address; assert(agentAddress); ownedTerms.push(agentAddress);
+    await wait(() => json('herdr-app', ['ls']).spaces.find(s => s.id === shared.space)?.tabs.some(t => t.terminals?.some(p => p.terminal === agentAddress)), 'shared unrelated agent adoption');
+    const agentBefore = json('hc', ['get', agentAddress]);
+    const ready = root + '/shared-' + mode + '-ready';
+    assert.equal(await send(shared.terminal, `export PATH=${quote(env.PATH)} WT_HERDR_STATE_HOME=${quote(env.WT_HERDR_STATE_HOME)}; cd ${quote(target)}; print -r -- "$PWD" > ${quote(ready)}`, ready), target);
+    await wait(() => json('hc', ['get', shared.terminal]).foreground?.cwd === target, 'shared caller checkout reporting');
+    if (mode === 'wt') {
+      const blocked = json('hc', ['run', '--bg', '--no-notify', '--no-parent', '--cwd', target,
+        '--label', 'herdr.space=' + shared.space, '--label', 'herdr.tab=shared-target-agent',
+        '--', run('/usr/bin/which', ['pi']).trim(), '--no-extensions']);
+      const blocker = blocked.terminal || blocked.address; assert(blocker); ownedTerms.push(blocker);
+      await wait(() => json('herdr-app', ['ls']).spaces.find(s => s.id === shared.space)?.tabs.some(t => t.terminals?.some(p => p.terminal === blocker)), 'shared target agent adoption');
+      const refused = root + '/shared-blocked-result';
+      assert.notEqual(await send(shared.terminal, `wt remove --yes --force --force-delete; print -r -- "$?" > ${quote(refused)}`, refused), '0');
+      assert(fs.existsSync(target));
+      assert.equal(json('hc', ['get', blocker]).state, 'live');
+      run('hc', ['kill', blocker]);
+      await wait(() => !json('herdr-app', ['ls']).spaces.find(s => s.id === shared.space)?.tabs.some(t => t.terminals?.some(p => p.terminal === blocker)), 'stopped target agent pane removed');
+      console.log('PASS shared-space target agent blocks current-checkout deletion');
+    }
+    const result = root + '/shared-' + mode + '-result';
+    const command = mode === 'wt' ? 'wt remove' : `cop remove ${targetBranch} --repo ${quote(repo)} --yes`;
+    const answer = await send(shared.terminal, `${command}; rc=$?; printf '%s\\n%s\\n' "$rc" "$PWD" > ${quote(result)}`, result);
+    const [rc, cwd] = answer.split('\n');
+    if (rc !== '0') console.log('Shared caller failure ' + run('hc', ['read', '--lines', '30', shared.terminal]));
+    assert.equal(rc, '0');
+    await wait(() => !fs.existsSync(target), 'shared target removed');
+    if (mode === 'wt') assert.equal(cwd, repo);
+    const after = json('herdr-app', ['ls']).spaces.find(s => s.id === shared.space);
+    assert(after, 'Shared space must survive'); assert.equal(after.folder, original);
+    assert(after.tabs.some(t => t.terminals?.some(p => p.terminal === agentAddress)));
+    const agentAfter = json('hc', ['get', agentAddress]);
+    assert.equal(agentAfter.state, 'live'); assert.equal(agentAfter.pid, agentBefore.pid);
+    assert.equal(agentAfter.cwd, original);
+    assert.equal(json('hc', ['get', shared.terminal]).state, 'live');
+    console.log('PASS ' + mode + ': removal from current checkout preserves shared space and unrelated Pi');
+  }
   // Real caller in its own target space. Never close while its remover is still running.
   for (const mode of ['wt', 'cop']) {
     const selfBranch = 'same-space-' + mode;

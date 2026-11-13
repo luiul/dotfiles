@@ -40,9 +40,9 @@ Do not close a running terminal to repair its location. Closing a terminal pane 
 
 ## Guarded removal
 
-The shared Worktrunk hooks apply to `wt remove` and `cop remove`. They check every tab and pane in every matching checkout space, not just the caller's tab. A running Pi, another program, a background shell job, a mixed checkout, or unclear process identity blocks deletion. `--yes`, `--force`, and `--force-delete` do not bypass this guard. The stable repository parent and unrelated spaces stay unchanged.
+The shared Worktrunk hooks apply to `wt remove` and `cop remove`. They check every tab and pane using the target checkout, not just the caller's tab. A running Pi, another program, a background shell job, or unclear checkout/process identity blocks deletion. `--yes`, `--force`, and `--force-delete` do not bypass this guard. The stable repository parent and unrelated spaces stay unchanged. A space shared with another checkout stays open, including its unrelated agents, shell tabs, and Files context. You can navigate a shell tab into a temporary checkout and run bare `wt remove` there. The helper checks that target checkout's work, lets Worktrunk navigate the caller normally, and preserves the shared space. Work in another checkout does not block deletion by itself. Unknown terminal context still blocks it.
 
-After a successful removal, a background hook closes only the recorded idle spaces. It records identity before Worktrunk moves the checkout into trash. When the caller is inside a matching Herdr space, cleanup waits for the removal command and shell wrapper to finish before closing that shell. The wait has an 85-second deadline. New work or a changed layout stops cleanup instead of killing it.
+After a successful removal, a background hook closes only recorded idle spaces dedicated to the target checkout. A stale stored folder never grants permission to close a space whose terminals use another checkout. It records identity before Worktrunk moves the checkout into trash. When the caller is inside a matching Herdr space, cleanup waits for the removal command and shell wrapper to finish before closing that shell. The wait has an 85-second deadline. New work or a changed layout stops cleanup instead of killing it.
 
 Use the feature flag to disable only Herdr cleanup for one call or permanently:
 

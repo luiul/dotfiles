@@ -239,17 +239,110 @@ class RemovalTests(unittest.TestCase):
         self.add_process(203, 202, "/bin/zsh")
         self.assert_prepare_refused("running program|background job")
 
-    def test_prepare_blocks_mixed_checkout_spaces(self):
-        original = copy.deepcopy(self.doc)
-        for mutation in ("folder", "terminal"):
-            with self.subTest(mutation=mutation):
-                self.doc = copy.deepcopy(original)
-                self.terminals["shell"]["foreground"]["cwd"] = self.target
-                if mutation == "folder":
-                    self.doc["spaces"][1]["folder"] = self.primary
-                else:
-                    self.terminals["shell"]["foreground"]["cwd"] = self.other
-                self.assert_prepare_refused("mixes checkouts|unclear identity")
+    def shared_with_unrelated_agent(self):
+        self.doc["spaces"][1]["folder"] = self.other
+        self.add_terminal("unrelated-agent", 301, cwd=self.other)
+        self.add_process(302, 301, "/opt/bin/node")
+        self.terminals["unrelated-agent"]["foreground"].update(
+            pid=302, name="node", argv=["/opt/bin/node", "/opt/bin/pi"])
+        self.terminals["unrelated-agent"]["status"] = {"app": "pi", "state": "working"}
+        self.doc["spaces"][1]["tabs"].append(tab("agent-tab", "unrelated-agent"))
+
+    def test_prepare_refuses_unrelated_agent_entering_target_during_verification(self):
+        self.shared_with_unrelated_agent()
+        def navigate(doc=None):
+            self.terminals["unrelated-agent"]["foreground"]["cwd"] = self.target
+        self.h.app_layout.side_effect = navigate
+        self.assert_prepare_refused("ownership changed")
+
+    def test_prepare_pending_target_without_visible_space_blocks_removal(self):
+        self.doc = {"spaces": [copy.deepcopy(self.parent)]}
+        self.terminals = {}
+        (self.h.state / "launch.pending.json").write_text(json.dumps({"path": self.target}))
+        self.assert_prepare_refused("uncertain launch")
+
+    def test_prepare_unknown_unplaced_target_terminal_blocks_removal(self):
+        self.add_terminal("unknown", 201, cwd=self.target)
+        self.terminals["unknown"]["foreground"] = {}
+        self.assert_prepare_refused("additional live checkout work")
+
+    def test_finish_pending_launch_after_preparation_blocks_closure(self):
+        self.prepare_idle()
+        self.registered = False
+        (self.h.state / "launch.pending.json").write_text(json.dumps({"space": "selected"}))
+        self.assert_finish_refused("uncertain launch")
+
+    def test_finish_preserved_shell_starting_target_agent_blocks_dedicated_closure(self):
+        self.shared_with_unrelated_agent()
+        self.add_terminal("dedicated-shell", 201, cwd=self.target)
+        self.doc["spaces"].append(space("dedicated", self.target, tab("dedicated-tab", "dedicated-shell")))
+        self.removal.prepare(self.target)
+        self.registered = False
+        self.terminals["shell"]["status"] = {"app": "pi", "state": "working"}
+        self.assert_finish_refused("agent")
+
+    def test_prepare_self_removal_preserves_shared_space_and_unrelated_agent(self):
+        self.shared_with_unrelated_agent()
+        os.environ["HC_TERMINAL_ID"] = "shell"
+        self.add_process(102, 101, "/opt/bin/wt")
+        self.add_process(900, 102, "/opt/bin/python")
+        before = copy.deepcopy(self.doc)
+        facts_before = copy.deepcopy(self.terminals)
+        result = self.removal.prepare(self.target)
+        self.assertIn("preserved", result)
+        self.assertEqual(self.doc, before)
+        self.assertEqual(self.terminals, facts_before)
+        self.assertFalse(self.record_path().exists())
+        self.h.save.assert_not_called()
+        self.assertEqual(self.removal.finish(self.target), "No recorded Herdr cleanup")
+        self.assertEqual(self.closed, [])
+
+    def test_prepare_shared_space_still_blocks_agent_using_target(self):
+        self.shared_with_unrelated_agent()
+        self.add_terminal("target-agent", 201, cwd=self.target)
+        self.terminals["target-agent"]["status"] = {"app": "pi", "state": "working"}
+        self.doc["spaces"][1]["tabs"].append(tab("target-agent-tab", "target-agent"))
+        self.assert_prepare_refused("agent")
+
+    def test_prepare_shared_space_still_blocks_target_background_job(self):
+        self.shared_with_unrelated_agent()
+        self.add_process(202, 101, "/bin/sleep")
+        self.assert_prepare_refused("background job")
+
+    def test_prepare_shared_space_refuses_unknown_terminal_checkout(self):
+        self.shared_with_unrelated_agent()
+        self.terminals["unrelated-agent"]["foreground"]["cwd"] = None
+        self.assert_prepare_refused("unclear identity")
+
+    def test_prepare_stale_space_folder_is_preserved_not_rejected(self):
+        self.doc["spaces"][1]["folder"] = self.primary
+        result = self.removal.prepare(self.target)
+        self.assertIn("preserved", result)
+        self.assertFalse(self.record_path().exists())
+        self.assertEqual(self.closed, [])
+
+    def test_prepare_stale_target_folder_does_not_authorize_unrelated_closure(self):
+        self.terminals["shell"]["foreground"]["cwd"] = self.other
+        self.removal.prepare(self.target)
+        self.assertFalse(self.record_path().exists())
+        self.assertEqual(self.closed, [])
+
+    def test_finish_closes_dedicated_space_but_preserves_shared_space(self):
+        self.shared_with_unrelated_agent()
+        self.add_terminal("dedicated-shell", 201, cwd=self.target)
+        dedicated = space("dedicated", self.target, tab("dedicated-tab", "dedicated-shell"))
+        self.doc["spaces"].append(dedicated)
+        before_shared = copy.deepcopy(self.doc["spaces"][1])
+        self.removal.prepare(self.target)
+        record = json.loads(self.record_path().read_text())
+        self.assertEqual(record["spaces"], [dedicated])
+        self.assertEqual(set(record["terminals"]), {"dedicated-shell"})
+        self.registered = False
+        self.terminals["shell"]["foreground"]["cwd"] = self.primary
+        self.removal.finish(self.target)
+        self.assertEqual(self.closed, ["dedicated"])
+        self.assertEqual(self.doc["spaces"][1], before_shared)
+        self.assertEqual(self.terminals["unrelated-agent"]["state"], "live")
 
     def test_prepare_blocks_unplaced_checkout_or_core_child_terminal(self):
         original = copy.deepcopy(self.doc)

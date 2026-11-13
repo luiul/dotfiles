@@ -782,16 +782,17 @@ def main():
                 sys.path.insert(0, str(Path(__file__).resolve().parent))
                 from wt_herdr_removal import Removal
                 operation = Removal(helper)
-                if args.command == "prepare-remove":
-                    message = operation.prepare(args.path)
-                else:
-                    for attempt in range(4):
-                        try:
-                            message = operation.finish(args.path)
-                            break
-                        except Conflict:
-                            if attempt == 3:
-                                raise
+                action = operation.prepare if args.command == "prepare-remove" else operation.finish
+                for attempt in range(4):
+                    try:
+                        helper.git_cache.clear()
+                        message = action(args.path)
+                        break
+                    except Conflict:
+                        # Unrelated layout updates can race app propagation. Rebuild
+                        # the entire approval from fresh facts, never reuse authority.
+                        if attempt == 3:
+                            raise
             else:
                 helper.verify_target()
             if removing:

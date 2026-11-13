@@ -171,6 +171,20 @@ class Removal:
             self.fail("Core is unavailable; cannot establish safe Herdr cleanup. Use WT_HERDR_REMOVE=0 to opt out")
         return core["core"]["id"]
 
+    def pending(self, target, spaces):
+        for pending in self.h.state.glob("*.pending.json"):
+            launch = json.loads(pending.read_text())
+            if launch.get("path") == target or launch.get("space") in spaces:
+                self.fail("A matching space has an uncertain launch; removal refused")
+
+    def ownership(self, facts):
+        ownership = {}
+        for address, fact in facts.items():
+            cwd = (fact.get("foreground") or {}).get("cwd")
+            identity = self.h.git(cwd, required=False) if cwd else None
+            ownership[address] = identity["path"] if identity else None
+        return ownership
+
     def prepare(self, path):
         target = self.h.git(path)
         if self.path(path) != target["path"] or target["path"] == target["primary"]:
@@ -178,49 +192,67 @@ class Removal:
         core_id = self.core()
         doc, _ = self.h.snapshot()
         facts = self.h.facts()
+        ownership = self.ownership(facts)
         spaces = []
+        selected = set()
+        preserved = set()
+        relevant = set()
         for space in doc["spaces"]:
             addresses = self.references(space)
-            paths = {}
-            for address in addresses:
-                cwd = (facts.get(address, {}).get("foreground") or {}).get("cwd")
-                identity = self.h.git(cwd, required=False) if cwd else None
-                paths[address] = identity["path"] if identity else None
+            paths = {a: ownership.get(a) for a in addresses}
             stored = self.path(space["folder"]) if space.get("folder") else None
             if stored != target["path"] and target["path"] not in paths.values():
                 continue
-            if stored != target["path"] or any(p != target["path"] for p in paths.values()):
-                self.fail(f"Space {space['id']} mixes checkouts or has unclear identity; removal refused")
-            spaces.append(copy.deepcopy(space))
+            if any(p is None for p in paths.values()):
+                self.fail(f"Space {space['id']} has unclear identity; removal refused")
+            relevant.add(space["id"])
+            target_addresses = {a for a, p in paths.items() if p == target["path"]}
+            selected |= target_addresses
+            # Space.folder is launch/mod context, not proof that every tab still
+            # uses that checkout. Navigation into a shared space must not close it.
+            if stored == target["path"] and all(p == target["path"] for p in paths.values()):
+                spaces.append(copy.deepcopy(space))
+            else:
+                preserved.add(space["id"])
         caller = os.environ.get("HC_TERMINAL_ID")
-        selected = {a for s in spaces for a in self.references(s)}
         # Include every tab, hidden same-checkout terminal, and Core child terminal.
         for address, fact in facts.items():
             if fact.get("state") != "live" or address in selected:
                 continue
-            cwd = (fact.get("foreground") or {}).get("cwd")
-            identity = self.h.git(cwd, required=False) if cwd else None
-            if fact.get("parent") in selected or (identity and identity["path"] == target["path"]):
+            launch = self.h.git(fact.get("cwd"), required=False)
+            unclear_target = ownership.get(address) is None and launch and launch["path"] == target["path"]
+            if fact.get("parent") in selected or ownership.get(address) == target["path"] or unclear_target:
                 self.fail(f"Terminal {address} is additional live checkout work; removal refused")
+        self.pending(target["path"], relevant)
         record_path = self.record_path(target["path"])
-        if not spaces:
+        if not relevant:
             # An old failed attempt must not authorize closing a later conversation.
             record_path.unlink(missing_ok=True)
             return "No matching Herdr spaces; normal worktree removal"
         self.h.verify_target()
-        for pending in self.h.state.glob("*.pending.json"):
-            launch = json.loads(pending.read_text())
-            if launch.get("path") == target["path"] or launch.get("space") in {s["id"] for s in spaces}:
-                self.fail("A matching space has an uncertain launch; removal refused")
+        self.pending(target["path"], relevant)
         if self.h.reconcile.exists():
             self.fail("Layout reconciliation is pending; run wt-herdr repair before removal")
         rows = self.processes()
-        baseline = {a: self.shell(a, facts[a], rows, caller=a == caller) for a in selected}
-        # Record the complete selected structure, not names or branch-path heuristics.
+        checked = {a: self.shell(a, facts[a], rows, caller=a == caller) for a in selected}
+        # Record closure authority only for dedicated spaces. Shared target shells
+        # still pass the same busy/caller guard but must survive post-remove cleanup.
+        closing = {a for s in spaces for a in self.references(s)}
         self.h.app_layout(doc)
+        refreshed = self.h.facts()
+        if self.ownership(refreshed) != ownership:
+            self.fail("Terminal checkout ownership changed during verification; retry removal")
+        rows = self.processes()
+        checked = {a: self.shell(a, refreshed[a], rows, caller=a == caller) for a in selected}
+        self.pending(target["path"], relevant)
+        if not spaces:
+            record_path.unlink(missing_ok=True)
+            return f"Verified target terminals; {len(preserved)} shared or stale-context spaces preserved"
         self.h.save(record_path, {"core_id": core_id, "target": target, "spaces": spaces,
-                                  "terminals": baseline, "caller": caller if caller in selected else None})
-        return f"Verified {len(spaces)} Herdr spaces, all tabs idle; cleanup follows successful removal"
+                                  "terminals": {a: checked[a] for a in closing},
+                                  "preserved_terminals": {a: checked[a] for a in selected - closing},
+                                  "caller": caller if caller in closing else None})
+        return f"Verified {len(spaces)} dedicated Herdr spaces; {len(preserved)} shared spaces preserved; cleanup follows removal"
 
     def finish(self, path):
         target_path = self.path(path)
@@ -242,6 +274,9 @@ class Removal:
                 if fact.get("state") != "live" or address in selected:
                     continue
                 cwd = (fact.get("foreground") or {}).get("cwd") or fact.get("cwd")
+                if address in record.get("preserved_terminals", {}) and cwd and self.path(cwd) == target_path:
+                    self.shell(address, fact, rows, baseline=record["preserved_terminals"][address])
+                    continue
                 if fact.get("parent") in selected or (cwd and self.path(cwd) == target_path):
                     self.fail(f"Terminal {address} appeared after preparation; cleanup refused")
 
@@ -273,6 +308,7 @@ class Removal:
                 self.fail(f"Space {saved['id']} changed since preparation; cleanup refused")
             if self.core() != record["core_id"]:
                 self.fail("Core changed during cleanup; closure refused")
+            self.pending(target_path, {s["id"] for s in record["spaces"]})
             facts, rows = self.h.facts(), self.processes()
             additional(facts)
             for address in self.references(saved):

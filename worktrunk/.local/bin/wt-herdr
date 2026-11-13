@@ -1,5 +1,5 @@
 #!/usr/bin/env -S uv run --script
-"""Explicit local Herdr app/Core operations. Never called by a wt hook."""
+"""Local Herdr app/Core opening, repair, and guarded Worktrunk removal."""
 
 import argparse
 import copy
@@ -303,7 +303,10 @@ def process_identity(facts, addresses=None):
 
 
 class Helper:
-    def __init__(self):
+    error = Error
+
+    def __init__(self, removal=False):
+        self.removal = removal
         # Includes lock waits and every subprocess. Leave margin below the caller's 90 seconds.
         self.deadline = time.monotonic() + 85
         self.env = {k: v for k, v in os.environ.items()
@@ -315,13 +318,13 @@ class Helper:
             raise Error("Only the verified default local app/Core pair is supported")
         self.env.update(HERDR_APP_HOME=self.home, HC_SESSION=self.session)
         self.bins = {}
-        for name in ("hc", "herdr-app", "pi", "git"):
+        for name in ("hc", "herdr-app", "git") + (() if removal else ("pi",)):
             path = shutil.which(name)
             if not path:
                 raise Error(f"Missing installed binary: {name}")
             self.bins[name] = os.path.abspath(path)
         state_home = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))).expanduser().resolve()
-        self.state = state_home / "wt-herdr"
+        self.state = Path(os.environ.get("WT_HERDR_STATE_HOME", str(state_home / "wt-herdr"))).expanduser().resolve()
         self.state.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.namespace = {"app_home": self.home, "core_session": self.session, "state_home": str(state_home)}
         self.git_cache = {}
@@ -763,13 +766,37 @@ def main():
     opening.add_argument("--path", required=True)
     repair = commands.add_parser("repair")
     repair.add_argument("--dry-run", action="store_true")
+    for name in ("prepare-remove", "finish-remove"):
+        removal = commands.add_parser(name)
+        removal.add_argument("--path", required=True)
     args = parser.parse_args()
+    removing = args.command in {"prepare-remove", "finish-remove"}
+    if removing and os.environ.get("WT_HERDR_REMOVE") == "0":
+        print(json.dumps({"message": "Herdr removal disabled by WT_HERDR_REMOVE=0"}))
+        return 0
     try:
-        helper = Helper()
+        helper = Helper(removal=removing)
         with ExitStack() as stack:
             helper.lock(stack)
-            helper.verify_target()
-            if args.command == "repair":
+            if removing:
+                sys.path.insert(0, str(Path(__file__).resolve().parent))
+                from wt_herdr_removal import Removal
+                operation = Removal(helper)
+                if args.command == "prepare-remove":
+                    message = operation.prepare(args.path)
+                else:
+                    for attempt in range(4):
+                        try:
+                            message = operation.finish(args.path)
+                            break
+                        except Conflict:
+                            if attempt == 3:
+                                raise
+            else:
+                helper.verify_target()
+            if removing:
+                pass
+            elif args.command == "repair":
                 message = helper.repair(args.dry_run)
             else:
                 repo = helper.git(args.repo)
@@ -786,6 +813,8 @@ def main():
         return 0
     except (Error, OSError, ValueError, KeyError, TypeError) as error:
         message = str(error) if isinstance(error, Error) else "Invalid local state; operation refused"
+        if args.command == "finish-remove":
+            message = "Worktree removed, Herdr cleanup incomplete: " + message + ". Retry wt-herdr finish-remove --path " + args.path
         print("wt-herdr: " + message, file=sys.stderr)
         return 1
 

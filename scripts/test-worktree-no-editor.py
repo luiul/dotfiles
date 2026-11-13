@@ -28,11 +28,16 @@ def wait_for(check, description: str) -> None:
 
 
 def check_hooks(value) -> None:
-    """Keep orchestrator commands out of every maintained lifecycle hook."""
+    """Keep opening out of lifecycle hooks; removal may run its guarded helper."""
     if isinstance(value, dict):
         for name, child in value.items():
             if name.startswith(("pre-", "post-")):
-                assert not re.search(r"\b(?:orca|herdr|herdr-wt-open|wt-herdr|herdr-app|hc)\b", json.dumps(child)), (
+                inspected = child
+                if name in {"pre-remove", "post-remove"} and isinstance(child, dict):
+                    expected = "prepare-remove" if name == "pre-remove" else "finish-remove"
+                    assert child.get("herdr") == f'[ "${{WT_HERDR_REMOVE:-1}}" = 0 ] || wt-herdr {expected} --path {{{{ worktree_path }}}}'
+                    inspected = {k: v for k, v in child.items() if k != "herdr"}
+                assert not re.search(r"\b(?:orca|herdr|herdr-wt-open|wt-herdr|herdr-app|hc)\b", json.dumps(inspected)), (
                     f"{name} must not call an orchestrator"
                 )
             check_hooks(child)
@@ -74,6 +79,9 @@ def main() -> None:
                     "HERDR_ENV", "HERDR_SOCKET_PATH", "HERDR_PANE_ID", "HERDR_TAB_ID", "HERDR_WORKSPACE_ID"):
             env.pop(key, None)
         env.update(
+            # This creation test owns no app/Core fixture. Exercise removal without
+            # contacting the user's live orchestrator; guarded removal has separate tests.
+            WT_HERDR_REMOVE="0",
             HOME=str(home),
             XDG_CONFIG_HOME=str(home / ".config"),
             XDG_CACHE_HOME=str(home / ".cache"),

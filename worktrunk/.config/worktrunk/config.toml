@@ -62,11 +62,14 @@ case "{{ branch }}" in
   main|master|live) echo "refusing to remove protected branch: {{ branch }}" >&2; exit 1 ;;
 esac
 '''
+# Check every Herdr tab before deletion. This never opens an app or kills a worker.
+herdr = '[ "${WT_HERDR_REMOVE:-1}" = 0 ] || wt-herdr prepare-remove --path {{ worktree_path }}'
 # wt remove deletes <owner>/<branch>/<repo> but leaves the empty <branch> parent dir behind
 # (e.g. ~/worktrees/hellofresh/fix-thing/). Prune it. rmdir only removes EMPTY dirs, so a
 # branch dir that still holds another repo's worktree is left alone; the error is swallowed
 # (macOS rmdir has no --ignore-fail-on-non-empty).
 [post-remove]
+herdr = '[ "${WT_HERDR_REMOVE:-1}" = 0 ] || wt-herdr finish-remove --path {{ worktree_path }}'
 prune-empty-branch-dir = 'rmdir "{{ worktree_path | dirname }}" 2>/dev/null || true'
 # Tardis has independent dbt projects. Worktree setup must not run dbt deps
 # across them because dependency resolution rewrites tracked package locks.

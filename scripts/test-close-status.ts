@@ -54,11 +54,18 @@ check("command opens local report with no write or branch scan", () => { assert.
 const validBranch = structuredClone(h.branch);
 check("corrupt timestamp fails closed", () => { const records = structuredClone(validBranch); records.at(-1).data.at = 1e20; assert.equal(restoreCloseReport(records), undefined); });
 check("restore yes", () => assert.equal(restoreCloseReport(validBranch)?.report?.safe_to_close, "yes"));
+for (const value of ["yes", "no", "unknown"]) check(`old policy ${value} restores as unknown`, () => {
+	const records = structuredClone(validBranch);
+	const oldText = suffix(value, "Published; sync not checked.", "none");
+	records[0].message.content[0].text = oldText;
+	records.at(-1).data = { ...records.at(-1).data, version: 1, report: parseCloseReport(oldText) };
+	assert.equal(restoreCloseReport(records), undefined);
+});
 check("later unanswered user invalidates", () => assert.equal(restoreCloseReport([...validBranch, entry({ role: "user", content: "Continue", timestamp: 101 }, "u2")]), undefined));
 check("old report cannot follow newer response", () => assert.equal(restoreCloseReport([...validBranch, entry(assistant("No report"), "a2"), validBranch.at(-1)]), undefined));
 check("compaction retains raw branch report", () => assert.equal(restoreCloseReport([...validBranch, { type: "compaction", id: "compact" }])?.report?.safe_to_close, "yes"));
 for (const type of ["custom_message", "branch_summary", "context_edit"]) check(`${type} invalidates`, () => assert.equal(restoreCloseReport([...validBranch, { type, id: "new" }]), undefined));
-check("malformed saved data fails closed", () => assert.equal(restoreCloseReport([...validBranch, { type: "custom", customType: "dotfiles.close-status", data: { version: 1, at: 100, report: { safe_to_close: "yes" }, sourceId: "a1" } }]), undefined));
+check("malformed saved data fails closed", () => assert.equal(restoreCloseReport([...validBranch, { type: "custom", customType: "dotfiles.close-status", data: { version: 2, at: 100, report: { safe_to_close: "yes" }, sourceId: "a1" } }]), undefined));
 await h.fire("user_bash");
 check("idle bang command invalidates cached yes without persistence", () => { assert.equal(h.statuses.get("close-status"), "Close status unknown"); assert.equal(h.writes, 1); });
 await h.fire("before_agent_start", { systemPromptOptions: { sections: {} } });
@@ -93,5 +100,9 @@ for (const [mode, ui] of [["print", false], ["json", false], ["rpc", true], ["tu
 	const child = harness(mode, ui); await child.fire("session_start"); await child.start(); await child.end(); await child.commands.get("close-status").handler("", child.ctx); await child.fire("session_shutdown");
 	check(`${mode}/${ui} no child side effects`, () => { assert.equal(child.scans, 0); assert.equal(child.writes, 0); assert.equal(child.statuses.size, 0); assert.equal(child.customCalls, 0); });
 }
+check("published work awaiting live main sync is not done", () => {
+	assert(CLOSE_GUIDANCE.includes("Published work is not done if the required live main checkout has not been synced to the published commit."));
+	assert(CLOSE_GUIDANCE.includes("When required sync is pending, report no unless the user explicitly defers it or requests remote-only publication."));
+});
 check("static guidance and no dynamic model-tool schema", () => { assert(CLOSE_GUIDANCE.includes("Explicit preserved deferrals/handoffs")); assert(CLOSE_GUIDANCE.length < 1000); });
 console.log(`${checks} close-status checks passed`);

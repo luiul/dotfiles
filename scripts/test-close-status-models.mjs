@@ -29,6 +29,11 @@ const { parseCloseReport, CLOSE_GUIDANCE } = await jiti.import(extension);
 const cases = [
   { expected: 'yes', text: 'A requested read-only research report is delivered. No decision, publication, tools, or background work remain.' },
   { expected: 'no', text: 'Implementation is tested. Luis has not reviewed it or approved publication. This session owns unpublished changes.' },
+  { expected: 'no', text: 'The approved changes are published to remote main and deployment was verified separately. Required live main checkout sync is the only remaining task and has not been done.' },
+  { expected: 'yes', text: 'The published commit is present in the live main checkout. All required deployment checks passed. No other session work or decision remains.' },
+  { expected: 'yes', text: 'The approved changes are published. Luis explicitly deferred the live main checkout sync until tomorrow. No other session work or decision remains.' },
+  { expected: 'unknown', text: 'The approved changes are published. The live main checkout must contain that commit, but its sync state is unknown and cannot be checked. No other work is pending.' },
+  { expected: 'yes', text: 'Luis explicitly requested remote-only publication. The approved changes are published. No other session work or decision remains.' },
   { expected: 'yes', text: 'Luis explicitly deferred unpublished work until tomorrow. The named checkout and transcript are preserved. No processes run and no answer is pending.' },
 ];
 async function run(model, text) {
@@ -56,6 +61,7 @@ try {
     console.log(JSON.stringify({ model, expected: scenario.expected, actual: result.parsed?.safe_to_close, cacheRead: result.cacheRead, input: result.input, output: result.output, cost: result.cost }));
     if (result.parsed?.safe_to_close !== scenario.expected) { failures++; console.log(JSON.stringify({ model, invalidReply: result.text })); }
   }
-  console.log(`${9 - failures}/9 sampled model cases passed. This does not establish general reliability.`);
+  const total = models.length * cases.length;
+  console.log(`${total - failures}/${total} sampled model cases passed. This does not establish general reliability.`);
   if (failures) process.exitCode = 1;
 } finally { rmSync(root, { recursive: true, force: true }); }

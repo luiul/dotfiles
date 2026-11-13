@@ -65,6 +65,13 @@ try {
     assert.equal(first.report.report.safe_to_close, 'yes');
     assert(events(host).find(e => e.type === 'model-call').guided, 'Static instruction must reach provider');
     check(mode + ': final yes and static instruction');
+    await command(host, '/close-live-legacy-report');
+    await wait(host, (screen, list) => list.some(e => e.type === 'legacy-report'), 'legacy metadata');
+    const beforeLegacyReload = events(host).filter(e => e.type === 'ready').length;
+    await command(host, '/reload');
+    await wait(host, (screen, list) => list.filter(e => e.type === 'ready').length > beforeLegacyReload && screen.includes('Close status unknown'), 'legacy report reload');
+    check(mode + ': reload rejects old policy report');
+    await prompt(host, 'yes', 'Safe to close (reported)');
     const modelCalls = events(host).filter(e => e.type === 'model-call').length;
     await command(host, '/close-status');
     await wait(host, screen => screen.includes('Closing safety report') && screen.includes('Yes (reported)'), 'report overlay');

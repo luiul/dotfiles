@@ -11,7 +11,7 @@ export const CLOSE_GUIDANCE = `End each final reply with a blank line followed b
 safe_to_close: yes|no|unknown
 close_reason: <one short line>
 next_action: <one short line, or none>
-Choose one lowercase value, not the alternatives. Each reason/action is at most 240 characters. Report yes only when no forgotten session-owned work or unresolved decision remains. Pending answers, approval, publication, requested checks/deployment, or owned background work mean no. Explicit preserved deferrals/handoffs may mean yes. Verify relevant evidence first; unrelated changes do not block closure. Unknown means evidence is missing. This report never authorizes publication, deployment, or worktree removal.`;
+Choose one lowercase value, not the alternatives. Each reason/action is at most 240 characters. Report yes only when no forgotten session-owned work or unresolved decision remains. Pending answers, approval, publication, requested checks/deployment, or owned background work mean no. Published work is not done if the required live main checkout has not been synced to the published commit. When required sync is pending, report no unless the user explicitly defers it or requests remote-only publication. Explicit preserved deferrals/handoffs may mean yes. Verify relevant evidence first; unrelated changes do not block closure. Unknown means evidence is missing. This report never authorizes publication, deployment, or worktree removal.`;
 
 export interface CloseReport {
 	safe_to_close: "yes" | "no" | "unknown";
@@ -19,7 +19,7 @@ export interface CloseReport {
 	next_action: string;
 }
 interface SavedReport {
-	version: 1;
+	version: 2;
 	report?: CloseReport;
 	sourceId?: string;
 	provider?: string;
@@ -72,13 +72,14 @@ export function restoreCloseReport(branch: SessionEntry[]): SavedReport | undefi
 		} else if (entry.type === "custom" && entry.customType === ENTRY_TYPE) {
 			const value = entry.data as Partial<SavedReport> | undefined;
 			saved = undefined;
-			if (value?.version !== 1 || typeof value.at !== "number" || !Number.isFinite(value.at) || value.at < 0 || value.at > 8.64e15) continue;
-			if (!value.report) { saved = { version: 1, at: value.at }; continue; }
+			// Reports from the old policy can be green while a required live sync is pending.
+			if (value?.version !== 2 || typeof value.at !== "number" || !Number.isFinite(value.at) || value.at < 0 || value.at > 8.64e15) continue;
+			if (!value.report) { saved = { version: 2, at: value.at }; continue; }
 			const source = value.sourceId === latest?.id ? latest?.message : undefined;
 			if (!source || !validReply(source) || value.provider !== source.provider || value.model !== source.model) continue;
 			const report = parseCloseReport(replyText(source));
 			if (!report || report.safe_to_close !== value.report.safe_to_close || report.close_reason !== value.report.close_reason || report.next_action !== value.report.next_action) continue;
-			saved = { version: 1, report, sourceId: value.sourceId, provider: source.provider, model: source.model, at: value.at };
+			saved = { version: 2, report, sourceId: value.sourceId, provider: source.provider, model: source.model, at: value.at };
 		}
 	}
 	return saved;
@@ -145,8 +146,8 @@ export default function closeStatus(pi: ExtensionAPI) {
 		}
 		const report = !event.aborted && !ctx.hasPendingMessages() && source?.type === "message" && source.message.role === "assistant" && sameReply(source.message, candidate!.message)
 			? parseCloseReport(replyText(source.message)) : undefined;
-		saved = report ? { version: 1, report, sourceId: candidate!.id, provider: candidate!.message.provider, model: candidate!.message.model, at: Date.now() }
-			: { version: 1, at: Date.now() };
+		saved = report ? { version: 2, report, sourceId: candidate!.id, provider: candidate!.message.provider, model: candidate!.message.model, at: Date.now() }
+			: { version: 2, at: Date.now() };
 		candidate = undefined;
 		// Metadata records final settlement, including failed runs. It never reaches the model.
 		pi.appendEntry(ENTRY_TYPE, saved);

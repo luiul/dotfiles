@@ -82,5 +82,11 @@ export default function fixture(pi: ExtensionAPI) {
 		await ctx.fork(leaf, { position: "at" });
 	} });
 	pi.registerCommand("close-live-resume", { description: "Fixture resume", handler: async (args, ctx) => { await ctx.switchSession(args.trim()); } });
+	pi.registerCommand("close-live-legacy-report", { description: "Fixture old policy report", handler: async (_args, ctx) => {
+		const report = ctx.sessionManager.getBranch().findLast(e => e.type === "custom" && e.customType === "dotfiles.close-status");
+		if (report?.type !== "custom" || !report.data?.report) throw new Error("Missing settled fixture report");
+		pi.appendEntry("dotfiles.close-status", { ...report.data, version: 1 });
+		log("legacy-report");
+	} });
 	pi.registerCommand("close-live-snapshot", { description: "Fixture snapshot", handler: async (_args, ctx) => log("snapshot", snapshot(ctx)) });
 }

@@ -223,11 +223,11 @@ next_action: none
 The fields must form the final three lines, in this order, outside quotes or code fences. A blank line separates them from any earlier content, so Markdown examples cannot continue into the report. Values are lowercase `yes`, `no`, or `unknown`. Reason and action each fit one line of at most 240 characters. Missing, malformed, interrupted, failed, truncated, or stale reports show `Close status unknown`. The extension validates format, not the truth or meaning of free-text reasons.
 
 - `yes` means the agent reports no forgotten session-owned work or unresolved decision. Explicit preserved deferrals and handoffs can be safe, even when the broader task remains incomplete.
-- Pending answers, approval, publication, requested checks or deployment, and owned background work normally mean `no`. Unrelated changes do not block closure.
+- Pending answers, approval, publication, requested checks or deployment, and owned background work normally mean `no`. Published work is not done while its required live main checkout remains unsynced, unless the user explicitly defers sync or requests remote-only publication. Unrelated changes do not block closure.
 - Closing never authorizes publication, deployment, or worktree removal. Remote publication and preservation evidence still need the normal checks.
 - The footer shows `Safe to close (reported)`, `Not safe to close`, or `Close status unknown` after settlement. While Pi works, the existing timer takes the same runtime slot. Narrow layouts use `Close: yes*`, `Close: no`, or `Close: ?`. The asterisk means reported, not independently verified.
 - `/close-status` opens a keyboard-scrollable local report with reason, next action, source model/message, report time, monitoring limits, and a worktree reminder. Enter or Escape closes it. The command makes no model request and grants no approval.
-- A new prompt or Pi bang command clears the old report. Selected-branch metadata restores on resume, fork, reload, tree navigation, and compaction. A final assistant message alone is not a settled report.
+- A new prompt or Pi bang command clears the old report. Selected-branch metadata restores on resume, fork, reload, tree navigation, and compaction. A final assistant message alone is not a settled report. Reports from the earlier policy show unknown after this update until a new turn settles.
 - Reports are snapshots. External edits and other workers are not monitored. Ask the agent for a fresh report when circumstances change. An exact plain-text example at the end of a reply can be indistinguishable from an intended report.
 - The extension adds a short stable prompt section and one small session metadata entry per settled run. Metadata stays outside model context. It registers no model tool, actionable turn boundary, polling timer, watcher, subprocess, or network probe. SDK, print, JSON, and RPC modes remain inert.
 
@@ -243,7 +243,7 @@ bun scripts/bench-status-bar-render.ts --output /tmp/close-status-render.json
 node scripts/bench-status-bar-idle.mjs --baseline /path/to/saved/status-bar.ts --candidate-extension "$PWD/pi/.pi/agent/extensions/close-status.ts" --output /tmp/close-status-idle.json
 ```
 
-The terminal tests use private Rex and a local provider, with no user terminal or external model request. The opt-in model check makes nine bounded samples across three configured router models. Samples do not establish general reliability. Benchmarks compare the reviewed source with a saved baseline. Design and acceptance criteria: https://github.com/luiul/dotfiles/issues/104.
+The terminal tests use private Rex and a local provider, with no user terminal or external model request. The opt-in model check makes twenty-four bounded samples across three configured router models. Samples do not establish general reliability. Benchmarks compare the reviewed source with a saved baseline. Design and acceptance criteria: https://github.com/luiul/dotfiles/issues/104.
 
 ## Enhanced status bar
 

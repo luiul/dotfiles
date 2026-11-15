@@ -34,7 +34,7 @@ wt-herdr repair --dry-run
 wt-herdr repair
 ```
 
-Repair separates clearly identified mixed checkouts while preserving terminal references and running processes. A tab without terminals stays in its original space and keeps its folder context. Repair refuses when it cannot preserve the folder context of a mod pane. A tab with terminals from one checkout stays intact. Repair refuses to split a tab with terminals from different checkouts when that tab also has mod or unclear panes. It also refuses a mixed space containing a marked repository parent pane. It uses version-checked document writes and updates terminal space and tab labels. It keeps a backup before changing the document. Unclear entries need inspection, not guesses.
+Repair separates clearly identified mixed checkouts while preserving terminal references and running processes. A tab without terminals stays in its original space and keeps its folder context. When a shell moves to another checkout, repair can leave that space and its Files tab unchanged and move terminal-only tabs into the matching checkout space. Repair refuses when it cannot preserve the folder context of a mod pane. A tab with terminals from one checkout stays intact. Repair refuses to split a tab with terminals from different checkouts when that tab also has mod or unclear panes. It also refuses a mixed space containing a marked repository parent pane. It uses version-checked document writes and updates terminal space and tab labels. It keeps a backup before changing the document. Unclear entries need inspection, not guesses.
 
 Do not close a running terminal to repair its location. Closing a terminal pane ends its process. Before removing a checkout, stop or hand off its worker and preserve its work. Removal closes verified idle checkout spaces automatically.
 
@@ -65,6 +65,7 @@ Stow this package from the live `~/dotfiles` checkout after review and publicati
 ```sh
 stow --no-folding worktrunk
 uv run scripts/test-wt-herdr.py
+uv run scripts/test-wt-herdr-handoff-safety.py
 uv run scripts/test-wt-herdr-remove.py
 node scripts/test-wt-herdr-remove-live.mjs
 uv run scripts/test-worktree-no-editor.py

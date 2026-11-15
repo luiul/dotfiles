@@ -307,13 +307,171 @@ class Tests(unittest.TestCase):
         self.ready()
         mixed = self.h.doc["spaces"][1]
         mixed["folder"] = self.h.primary
-        mixed["tabs"].insert(0, {"id": "tb-files", "root": {"id": "tb-files", "type": "row", "children": [
-            {"id": "pmod", "type": "block", "content": {"mod": "files", "props": {}}}]}})
+        mixed["tabs"][0]["root"]["children"].append(
+            {"id": "pmod", "type": "block", "content": {"mod": "files", "props": {}}})
         original = copy.deepcopy(self.h.doc)
-        with self.assertRaisesRegex(w.Error, "folder"):
+        terminals = copy.deepcopy(self.h.terminals)
+        with self.assertRaisesRegex(w.Error, "mod.*folder"):
             self.h.repair(repo=self.repo)
         self.assertEqual(self.h.doc, original)
+        self.assertEqual(self.h.terminals, terminals)
         self.assertEqual(self.h.rpc_calls("doc.set"), 0)
+        self.assertEqual(self.h.rpc_calls("terminal.label"), 0)
+        self.assertFalse(list(self.h.state.iterdir()))
+
+    def drifted_files_space(self, pi_count=0):
+        files = {"id": "tb-files", "name": "My files", "custom": ["keep", {"order": 2}],
+                 "root": {"id": "tb-files", "type": "row", "gap": 7, "children": [
+                     {"id": "p-files", "type": "block", "size": {"weight": 0.75},
+                      "content": {"mod": "files", "props": {"folder": "custom", "nested": {"x": [1, 2]}}}}]}}
+        moved = tab("tb-moved", "shell1", "shell2")
+        moved["custom"] = {"keep": [3, 1]}
+        source = space("sp-original", self.h.primary, files, moved)
+        source.update({"name": "My original space", "custom": {"color": "blue"}})
+        self.h.doc["spaces"].append(source)
+        self.h.terminals.update({"shell1": fact("shell1", self.h.child, False),
+                                 "shell2": fact("shell2", self.h.child, False)})
+        if pi_count:
+            child = space("sp-child", self.h.child, *(tab("tb-pi" + str(i), "pi" + str(i))
+                                                          for i in range(1, pi_count + 1)))
+            child["custom"] = {"keep": True}
+            self.h.doc["spaces"].append(child)
+            self.h.terminals.update({"pi" + str(i): fact("pi" + str(i), self.h.child)
+                                     for i in range(1, pi_count + 1)})
+        unrelated = space("sp-unmapped", "/outside", tab("tb-unmapped", "outside", "missing"))
+        self.h.doc["spaces"].append(unrelated)
+        self.h.terminals["outside"] = fact("outside", "/outside", False)
+        for i, terminal in enumerate(self.h.terminals.values(), 1):
+            terminal["pid"] = 100 + i
+            terminal["foreground"]["pid"] = 200 + i
+        return copy.deepcopy(source), copy.deepcopy(moved), copy.deepcopy(unrelated)
+
+    def assert_drifted_repair(self, source, moved, unrelated, before, child_id):
+        spaces = {s["id"]: s for s in self.h.doc["spaces"]}
+        expected_source = copy.deepcopy(source)
+        expected_source["tabs"] = [source["tabs"][0]]
+        self.assertEqual(json.dumps(spaces["sp-original"]), json.dumps(expected_source))
+        self.assertEqual(json.dumps(spaces["sp-unmapped"]), json.dumps(unrelated))
+        self.assertEqual(spaces[child_id]["folder"], self.h.child)
+        self.assertIn(moved, spaces[child_id]["tabs"])
+        self.assertEqual(json.dumps(next(t for t in spaces[child_id]["tabs"] if t["id"] == moved["id"])),
+                         json.dumps(moved))
+        self.assertEqual(w.process_identity(self.h.terminals), before)
+        placements = list(w.placements(self.h.doc))
+        self.assertEqual(sorted(a for a, *_ in placements), sorted([*before, "missing"]))
+        for address, space_id, tab_id, _ in placements:
+            if address not in ("outside", "missing"):
+                labels = self.h.terminals[address]["labels"]
+                self.assertEqual((labels["herdr.space"], labels["herdr.tab"]), (space_id, tab_id))
+                self.assertEqual(labels["herdr.pinned"], "true")
+        self.assertEqual(self.h.terminals["outside"]["labels"], {"herdr.pinned": "true"})
+
+    def assert_repair_idempotent(self):
+        before = copy.deepcopy(self.h.doc)
+        terminals = copy.deepcopy(self.h.terminals)
+        writes = self.h.rpc_calls("doc.set")
+        labels = self.h.rpc_calls("terminal.label")
+        self.assertIn("layout change False, 0 label updates", self.h.repair(dry_run=True, repo=self.repo))
+        self.h.repair(repo=self.repo)
+        self.assertEqual(self.h.doc, before)
+        self.assertEqual(self.h.terminals, terminals)
+        self.assertEqual(self.h.rpc_calls("doc.set"), writes)
+        self.assertEqual(self.h.rpc_calls("terminal.label"), labels)
+
+    def test_scoped_repair_files_anchor_moves_tab_to_existing_child_with_multiple_pis(self):
+        source, moved, unrelated = self.drifted_files_space(pi_count=2)
+        parent = copy.deepcopy(self.h.doc["spaces"][0])
+        child = copy.deepcopy(next(s for s in self.h.doc["spaces"] if s["id"] == "sp-child"))
+        before = w.process_identity(self.h.terminals)
+        self.h.repair(repo=self.repo)
+        self.assert_drifted_repair(source, moved, unrelated, before, "sp-child")
+        self.assertEqual(next(s for s in self.h.doc["spaces"] if s["id"] == parent["id"]), parent)
+        actual_child = copy.deepcopy(next(s for s in self.h.doc["spaces"] if s["id"] == "sp-child"))
+        self.assertEqual({k: v for k, v in actual_child.items() if k != "tabs"},
+                         {k: v for k, v in child.items() if k != "tabs"})
+        self.assertEqual([t for t in actual_child["tabs"] if t["id"] != moved["id"]], child["tabs"])
+        self.assert_repair_idempotent()
+
+        # The child already has multiple Pis, so exercise open on the primary checkout.
+        self.assertIn("Opened", self.h.open(self.repo, self.repo))
+        self.assertIn("Reused", self.h.open(self.repo, self.repo))
+        self.assertEqual(w.process_identity(self.h.terminals, before), before)
+        self.assertEqual(next(s for s in self.h.doc["spaces"] if s["id"] == "sp-child"), actual_child)
+        self.assertEqual(next(s for s in self.h.doc["spaces"] if s["id"] == parent["id"]), parent)
+        self.assertEqual(next(s for s in self.h.doc["spaces"] if s["id"] == "sp-unmapped"), unrelated)
+        self.assertEqual(sum(c[:2] == ["hc", "run"] for c in self.h.calls), 1)
+
+    def test_scoped_repair_files_anchor_creates_child_then_open_creates_and_reuses_pi(self):
+        source, moved, unrelated = self.drifted_files_space()
+        parent = copy.deepcopy(self.h.doc["spaces"][0])
+        before = w.process_identity(self.h.terminals)
+        self.h.repair(repo=self.repo)
+        child_id = next(s for a, s, *_ in w.placements(self.h.doc) if a == "shell1")
+        self.assertNotEqual(child_id, source["id"])
+        self.assert_drifted_repair(source, moved, unrelated, before, child_id)
+        self.assertEqual(next(s for s in self.h.doc["spaces"] if s["id"] == parent["id"]), parent)
+        self.assert_repair_idempotent()
+
+        self.assertIn("Opened", self.h.open(self.repo, self.target))
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        self.assertEqual(w.process_identity(self.h.terminals, before), before)
+        self.assertEqual(next(s for a, s, *_ in w.placements(self.h.doc) if a == "tnew"), child_id)
+        expected_source = {**source, "tabs": [source["tabs"][0]]}
+        self.assertEqual(next(s for s in self.h.doc["spaces"] if s["id"] == source["id"]), expected_source)
+        self.assertEqual(next(s for s in self.h.doc["spaces"] if s["id"] == parent["id"]), parent)
+        self.assertEqual(next(s for s in self.h.doc["spaces"] if s["id"] == "sp-unmapped"), unrelated)
+        self.assertEqual(sum(c[:2] == ["hc", "run"] for c in self.h.calls), 1)
+
+    def test_open_reuses_existing_child_pi_after_files_anchor_repair(self):
+        source, moved, unrelated = self.drifted_files_space(pi_count=1)
+        parent = copy.deepcopy(self.h.doc["spaces"][0])
+        before = w.process_identity(self.h.terminals)
+        self.assertIn("Reused", self.h.open(self.repo, self.target))
+        self.assert_drifted_repair(source, moved, unrelated, before, "sp-child")
+        self.assertEqual(next(s for s in self.h.doc["spaces"] if s["id"] == parent["id"]), parent)
+        self.assertFalse(any(c[:2] == ["hc", "run"] for c in self.h.calls))
+        self.assert_repair_idempotent()
+
+    def test_scoped_repair_files_anchor_refuses_moved_terminal_mod_before_any_write(self):
+        self.drifted_files_space(pi_count=2)
+        source = next(s for s in self.h.doc["spaces"] if s["id"] == "sp-original")
+        source["tabs"][1]["root"]["children"].append(
+            {"id": "p-moved-mod", "type": "block", "content": {"mod": "files", "props": {"keep": True}}})
+        original = copy.deepcopy(self.h.doc)
+        terminals = copy.deepcopy(self.h.terminals)
+        with self.assertRaisesRegex(w.Error, "mod.*folder"):
+            self.h.repair(repo=self.repo)
+        self.assertEqual(self.h.doc, original)
+        self.assertEqual(self.h.terminals, terminals)
+        self.assertEqual(self.h.rpc_calls("doc.set"), 0)
+        self.assertEqual(self.h.rpc_calls("terminal.label"), 0)
+        self.assertFalse(list(self.h.state.iterdir()))
+
+    def test_scoped_repair_files_anchor_refuses_unclear_moved_tabs_before_any_write(self):
+        self.drifted_files_space(pi_count=2)
+        baseline_doc = copy.deepcopy(self.h.doc)
+        baseline_terminals = copy.deepcopy(self.h.terminals)
+        for kind in ("unknown content", "floating terminal"):
+            with self.subTest(kind=kind):
+                self.h.doc = copy.deepcopy(baseline_doc)
+                self.h.terminals = copy.deepcopy(baseline_terminals)
+                root = next(s for s in self.h.doc["spaces"] if s["id"] == "sp-original")["tabs"][1]["root"]
+                if kind == "unknown content":
+                    root["children"].append({"id": "p-unknown", "type": "block",
+                                             "content": {"widget": "unknown", "props": {"keep": True}}})
+                else:
+                    root["floating"] = [{"id": "p-floating", "type": "block",
+                                         "content": {"terminal": "floating"}}]
+                    self.h.terminals["floating"] = fact("floating", self.h.child, False)
+                original = copy.deepcopy(self.h.doc)
+                terminals = copy.deepcopy(self.h.terminals)
+                with self.assertRaisesRegex(w.Error, "unclear"):
+                    self.h.repair(repo=self.repo)
+                self.assertEqual(self.h.doc, original)
+                self.assertEqual(self.h.terminals, terminals)
+                self.assertEqual(self.h.rpc_calls("doc.set"), 0)
+                self.assertEqual(self.h.rpc_calls("terminal.label"), 0)
+                self.assertFalse(list(self.h.state.iterdir()))
 
     def test_mixed_mod_refused(self):
         self.mixed()
@@ -586,15 +744,22 @@ class Tests(unittest.TestCase):
         self.assertNotEqual(stable[0]["id"], parent["id"])
         self.assertIn("caller", {a for a, *_ in w.placements(self.h.doc)})
 
-    def test_demoted_parent_follows_single_checkout_after_caller_cd(self):
+    def test_parent_stays_anchored_after_caller_cd(self):
         parent = self.h.doc["spaces"][0]
         parent["tabs"].append(tab("tb-caller", "caller"))
         self.h.terminals["caller"] = fact("caller", self.h.child, False)
+        self.h.doc["spaces"].append(space("sp-child", self.h.child, tab("tb-pi", "pi")))
+        self.h.terminals["pi"] = fact("pi", self.h.child)
+        parent_before = copy.deepcopy(parent)
+        before = w.process_identity(self.h.terminals)
         self.h.repair(repo=self.repo)
-        former = next(s for s in self.h.doc["spaces"] if s["id"] == parent["id"])
-        self.assertEqual(former["folder"], self.h.child)
+        original = next(s for s in self.h.doc["spaces"] if s["id"] == parent["id"])
+        self.assertEqual(original, {**parent_before, "tabs": [parent_before["tabs"][0]]})
+        self.assertTrue(w.repo_parent(original, self.h.primary))
         self.assertEqual(sum(w.repo_parent(s, self.h.primary) for s in self.h.doc["spaces"]), 1)
-        self.assertEqual(former["tabs"][0]["root"]["children"][0]["content"]["props"], {})
+        self.assertIn(parent_before["tabs"][1], next(s for s in self.h.doc["spaces"] if s["id"] == "sp-child")["tabs"])
+        self.assertEqual(w.process_identity(self.h.terminals), before)
+        self.assert_repair_idempotent()
 
     def test_explicit_repo_basename_name_survives_drift(self):
         self.ready()

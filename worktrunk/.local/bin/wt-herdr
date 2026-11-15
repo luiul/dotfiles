@@ -124,7 +124,7 @@ def terminal_tree(node):
         return False
     if node.get("type") == "block":
         return set(node.get("content", {})) == {"terminal"}
-    return (node.get("type") in {"row", "column"} and bool(node.get("children"))
+    return (node.get("type") in {"row", "column"} and not node.get("content") and bool(node.get("children"))
             and all(terminal_tree(c) for c in node["children"]))
 
 
@@ -160,18 +160,20 @@ def repair_layout(doc, identities, folders, selected=None):
     groups = []
     for space in result["spaces"]:
         addresses = [a for a, _, _, _ in placements({"spaces": [space]})]
-        demoted_parent = False
+        keep_parent = False
         if addresses and (selected is None or space["id"] in selected):
             known_paths = {identities[a]["path"] for a in addresses if identities.get(a)}
             marked_tabs = [t for t in space["tabs"] if not list(placements({"spaces": [{**space, "tabs": [t]}]}))]
-            demoted_parent = bool(marked_tabs) and repo_parent({**space, "tabs": marked_tabs}, space.get("folder"))
+            marked_parent = bool(marked_tabs) and repo_parent({**space, "tabs": marked_tabs}, space.get("folder"))
+            keep_parent = marked_parent and len(known_paths) == 1 and space.get("folder") not in known_paths
             for t in space["tabs"]:
                 for n in nodes(t["root"]):
                     if n.get("content", {}).get("mod") == "files":
                         props = n.get("content", {}).get("props", {})
                         if "wt_herdr_parent" in props and len(known_paths) > 1:
                             raise Error("Mixed space contains a marked Files pane; repair refused")
-                        props.pop("wt_herdr_parent", None)
+                        if not (keep_parent and t in marked_tabs):
+                            props.pop("wt_herdr_parent", None)
         known = [identities.get(a) for a in addresses]
         if addresses and not any(known):
             # A wholly non-Git space needs no worktree grouping.
@@ -198,14 +200,22 @@ def repair_layout(doc, identities, folders, selected=None):
                 untouched[paths[0]] = space
             continue
         anchor = paths[0]
-        if len(paths) > 1 and any(not list(placements({"spaces": [{**space, "tabs": [t]}]})) for t in space["tabs"]):
+        has_empty_tab = any(not list(placements({"spaces": [{**space, "tabs": [t]}]})) for t in space["tabs"])
+        # Keep the original space for its terminal-free tabs when the shell has moved.
+        preserve_folder = len(paths) == 1 and has_empty_tab and space.get("folder") != anchor
+        if keep_parent:
+            if space["folder"] in parents:
+                raise Error("Multiple repository parents; repair refused")
+            parents[space["folder"]] = space
+        if len(paths) > 1 and has_empty_tab:
             # A terminal-free tab can derive its folder from the space. Keep that context.
             if space.get("folder") not in paths:
                 raise Error("Mixed space has an unclear terminal-free tab folder; repair refused")
             anchor = space["folder"]
             paths = [anchor, *(path for path in paths if path != anchor)]
-        targets.setdefault(anchor, space)
-        groups.append((space, paths, demoted_parent))
+        if not preserve_folder:
+            targets.setdefault(anchor, space)
+        groups.append((space, paths, preserve_folder))
     all_identities = {i["path"]: i for i in [*identities.values(), *folders.values()] if i}
     for _, paths, _ in groups:
         for path in paths:
@@ -221,14 +231,28 @@ def repair_layout(doc, identities, folders, selected=None):
                 child = {"id": new_id("sp"), "name": identity["name"], "folder": path, "tabs": []}
                 targets[path] = child
                 result["spaces"].append(child)
-    for space, paths, demoted_parent in groups:
+    for space, paths, preserve_folder in groups:
+        if preserve_folder:
+            retained = []
+            for tab in space["tabs"]:
+                refs = list(placements({"spaces": [{**space, "tabs": [tab]}]}))
+                if not refs:
+                    retained.append(tab)
+                    continue
+                # Unknown pane types may also depend on the original space folder.
+                if not terminal_tree(tab["root"]):
+                    raise Error("Tab move would change a mod or unclear pane folder; repair refused")
+                targets[paths[0]]["tabs"].append(tab)
+            space["tabs"] = retained
+            continue
         if len(paths) == 1:
             # Files-only parents and correctly grouped tabs remain byte-for-byte unchanged.
             if any(True for _ in placements({"spaces": [space]})):
-                if not demoted_parent and space.get("folder") != paths[0] and any(
-                    not list(placements({"spaces": [{**space, "tabs": [t]}]})) for t in space["tabs"]
+                if space.get("folder") != paths[0] and any(
+                    not terminal_tree(t["root"]) for t in space["tabs"]
+                    if list(placements({"spaces": [{**space, "tabs": [t]}]}))
                 ):
-                    raise Error("Space folder change would affect a terminal-free tab; repair refused")
+                    raise Error("Space folder change would affect a mod or unclear pane folder; repair refused")
                 if not space.get("name"):
                     space["name"] = all_identities[paths[0]]["name"]
                 space["folder"] = paths[0]
@@ -268,9 +292,13 @@ def repair_layout(doc, identities, folders, selected=None):
                     fragment["id"] = new_id("tb")
                     fragment["root"]["id"] = fragment["id"]
                 targets[path]["tabs"].append(fragment)
-    for primary in {all_identities[p]["primary"] for _, paths, _ in groups for p in paths}:
+    for primary in sorted({all_identities[p]["primary"] for _, paths, _ in groups for p in paths}):
         parent = parents[primary]
-        related = {s["id"] for s, paths, _ in groups if any(all_identities[p]["primary"] == primary for p in paths)}
+        related = {s["id"] for s, paths, preserve in groups
+                   if s["id"] != parent["id"] and (not preserve or s.get("folder") == primary)
+                   and any(all_identities[p]["primary"] == primary for p in paths)}
+        related.update(targets[p]["id"] for _, paths, _ in groups for p in paths
+                       if all_identities[p]["primary"] == primary and targets[p]["id"] != parent["id"])
         remaining = [s for s in result["spaces"] if s["id"] != parent["id"]]
         index = next((i for i, s in enumerate(remaining) if s["id"] in related), len(remaining))
         remaining.insert(index, parent)
@@ -697,6 +725,16 @@ class Helper:
                 if not foreground.get("pid") or not foreground.get("argv"):
                     raise Error("Unclear foreground process; repair refused")
             value = repair_layout(doc, identities, folders, selected)
+            # A destination outside the requested repo can receive a moved tab. Its
+            # existing terminals also define that space's checkout and must stay put.
+            original_placements = {a: (s, t, p) for a, s, t, p in placements(doc)}
+            destinations = {s for a, s, t, p in placements(value)
+                            if original_placements.get(a) != (s, t, p)}
+            affected.update(a for a, s, *_ in placements(doc) if s in destinations)
+            for address in affected:
+                foreground = facts.get(address, {}).get("foreground") or {}
+                if not identities.get(address) or not foreground.get("pid") or not foreground.get("argv"):
+                    raise Error("Unclear destination terminal context; repair refused")
             labels = {a: {"herdr.space": s, "herdr.tab": t} for a, s, t, _ in placements(value) if a in affected}
             needed = {a: v for a, v in labels.items() if any(facts[a].get("labels", {}).get(k) != x for k, x in v.items())}
             if value != doc or needed:

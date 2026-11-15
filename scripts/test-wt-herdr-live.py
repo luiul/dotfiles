@@ -112,7 +112,7 @@ def main():
             caller_doc = rpc("doc.get", name="herdr-app")
             caller_space = {
                 "id": "sp-test-" + str(os.getpid()), "name": "Fixture caller", "folder": str(repo),
-                "tabs": [{"id": "tb-test-" + str(os.getpid()), "name": "Shell", "root": {
+                "tabs": [{"id": "tb-test-" + str(os.getpid()), "name": "Files", "root": {
                     "id": "tb-test-" + str(os.getpid()), "type": "row", "children": [{
                         "id": "p-test-" + str(os.getpid()), "type": "block",
                         "content": {"mod": "files", "props": {}}
@@ -122,19 +122,47 @@ def main():
             caller_doc["value"]["spaces"].append(caller_space)
             rpc("doc.set", name="herdr-app", value=caller_doc["value"], version=caller_doc["version"])
             owned_spaces.add(caller_space["id"])
+            files_tab_id = caller_space["tabs"][0]["id"]
+            shell_tab_id = "tb-shell-" + str(os.getpid())
             caller_receipt = data("hc", "run", "--bg", "--keep", "--no-parent", "--no-notify", "--cwd", str(repo),
                                   "--label", "herdr.space=" + caller_space["id"],
-                                  "--label", "herdr.tab=" + caller_space["tabs"][0]["id"], "--", "/bin/zsh", "-f")
+                                  "--label", "herdr.tab=" + shell_tab_id, "--", "/bin/zsh", "-f")
             caller = caller_receipt["address"]
             owned_terminals.add(caller)
-            end = time.monotonic() + 15
-            while time.monotonic() < end:
-                shown = data("herdr-app", "ls")["spaces"]
-                if any(p["terminal"] == caller for s in shown for t in s["tabs"] for p in t.get("terminals", [])):
-                    break
-                time.sleep(0.2)
-            else:
-                raise RuntimeError("Herdr caller did not appear")
+
+            def caller_tabs_visible():
+                spaces = data("herdr-app", "ls")["spaces"]
+                matching = [s for s in spaces if s["id"] == caller_space["id"]]
+                if len(matching) != 1:
+                    return None
+                tabs = {t["id"]: t for t in matching[0]["tabs"]}
+                if files_tab_id not in tabs or shell_tab_id not in tabs:
+                    return None
+                if tabs[files_tab_id].get("terminals"):
+                    return None
+                shell_terminals = tabs[shell_tab_id].get("terminals", [])
+                if len(shell_terminals) != 1 or shell_terminals[0]["terminal"] != caller:
+                    return None
+                return matching[0]
+
+            wait_for(caller_tabs_visible, "Distinct Files and caller shell tabs did not appear")
+            initial_space = next(s for s in rpc("doc.get", name="herdr-app")["value"]["spaces"]
+                                 if s["id"] == caller_space["id"])
+            initial_files = next(t for t in initial_space["tabs"] if t["id"] == files_tab_id)
+            assert initial_files == caller_space["tabs"][0], "Files tab changed during setup"
+            files_bytes = json.dumps(initial_files, ensure_ascii=False).encode()
+            assert initial_space["folder"] == str(repo), "Caller folder changed during setup"
+
+            def initial_caller_ready():
+                current = rpc("terminal.get", terminal=caller)
+                foreground = current.get("foreground") or {}
+                if (current.get("state") == "live" and current.get("pid") and current.get("argv")
+                        and current.get("keep") is True and foreground.get("pid") and foreground.get("argv")
+                        and foreground.get("cwd") == str(repo)):
+                    return current
+                return None
+
+            original_caller = wait_for(initial_caller_ready, "Fixture caller identity is not ready")
             # Only the supplementary caller is private. Herdr still changes real app spaces and focus.
             driver = RexTestDriver(deadline_ms=max(1000, int((deadline - time.time()) * 1000)))
             host = driver.create(name=f"ag-wt-herdr-{os.getpid()}", command=["/bin/zsh", "-f"],
@@ -180,22 +208,92 @@ def main():
                         owned_terminals.update(t["terminal"] for t in tab.get("terminals", []))
                 assert len(test_spaces) == 3, "Expected one stable parent, caller conversation and topic conversation: " + repr([(s["name"], s["folder"], s["id"]) for s in test_spaces])
                 assert len(owned_terminals) == 2, "Expected exactly the original shell and one Pi"
+                fixture_terminals = set()
+                for item in rpc("terminal.list", all=True)["terminals"]:
+                    paths = (item.get("cwd"), (item.get("foreground") or {}).get("cwd"))
+                    if item.get("state") == "live" and any(
+                        path and Path(path).is_absolute() and Path(path).is_relative_to(fixture) for path in paths
+                    ):
+                        fixture_terminals.add(item["address"])
+                assert fixture_terminals == owned_terminals, "Unexpected or unplaced fixture terminal"
                 parent = next(s for s in test_spaces if s["name"] == "fixture repo")
                 assert not any(t.get("terminals") for t in parent["tabs"]), "Repo parent gained a terminal"
                 assert parent["folder"] == str(repo)
                 child = next(s for s in test_spaces if s["name"] == "topic")
                 terminal = next(t for t in owned_terminals if t != caller)
-                caller_fact = rpc("terminal.get", terminal=caller)
-                assert caller_fact["foreground"]["cwd"] == str(fixture / "trees/topic"), "Herdr caller shell did not cd"
+                def caller_in_topic():
+                    current = rpc("terminal.get", terminal=caller)
+                    foreground = current.get("foreground") or {}
+                    return current if foreground.get("cwd") == str(fixture / "trees/topic") else None
+
+                caller_fact = wait_for(caller_in_topic, "Herdr caller shell did not cd")
                 fact = rpc("terminal.get", terminal=terminal)
                 assert fact["foreground"]["cwd"] == str(fixture / "trees/topic")
                 assert fact["status"]["app"] == "pi" and fact["reported"] is True
+                layout = rpc("doc.get", name="herdr-app")["value"]
+                source_space = next(s for s in layout["spaces"] if s["id"] == caller_space["id"])
+                files = next(t for t in source_space["tabs"] if t["id"] == files_tab_id)
+                assert json.dumps(files, ensure_ascii=False).encode() == files_bytes, "Original Files tab changed"
+                assert source_space["folder"] == str(repo), "Original Files folder changed"
+                caller_placements = [(s, t, p) for s in spaces for t in s["tabs"]
+                                     for p in t.get("terminals", []) if p["terminal"] == caller]
+                pi_placements = [(s, t, p) for s in spaces for t in s["tabs"]
+                                 for p in t.get("terminals", []) if p["terminal"] == terminal]
+                assert len(caller_placements) == len(pi_placements) == 1, "Terminal placement duplicated or missing"
+                caller_placement = caller_placements[0]
+                pi_placement = pi_placements[0]
+                assert pi_placement[0]["id"] == child["id"], "Pi left the topic space"
+                if index == 0:
+                    assert caller_placement[0]["id"] == caller_space["id"], "Caller moved before shell drift"
+                    assert caller_placement[1]["id"] == shell_tab_id
+                    shell_tab = next(t for t in source_space["tabs"] if t["id"] == shell_tab_id)
+                    shell_bytes = json.dumps(shell_tab, ensure_ascii=False).encode()
+                    caller_pane = caller_placement[2]["pane"]
+                    topic_id = child["id"]
+                    pi_placement_ids = (pi_placement[1]["id"], pi_placement[2]["pane"])
+                    assert (caller_fact["pid"], caller_fact["argv"], caller_fact["keep"]) == (
+                        original_caller["pid"], original_caller["argv"], original_caller["keep"]), \
+                        "Original caller process changed during the first command"
+                    assert (caller_fact["foreground"]["pid"], caller_fact["foreground"]["argv"]) == (
+                        original_caller["foreground"]["pid"], original_caller["foreground"]["argv"]), \
+                        "Original caller foreground changed during the first command"
+                    caller_identity = {k: caller_fact[k] for k in ("pid", "argv", "foreground", "keep")}
+                    pi_identity = {k: fact[k] for k in ("pid", "argv", "foreground", "keep")}
+                else:
+                    assert child["id"] == topic_id, "Existing topic space was replaced"
+                    assert [t["id"] for t in source_space["tabs"]] == [files_tab_id], \
+                        "Original space did not retain only its Files tab"
+                    assert caller_placement[0]["id"] == topic_id, "Caller did not move to the topic space"
+                    assert (caller_placement[1]["id"], caller_placement[2]["pane"]) == (shell_tab_id, caller_pane)
+                    assert (pi_placement[1]["id"], pi_placement[2]["pane"]) == pi_placement_ids
+                    target_space = next(s for s in layout["spaces"] if s["id"] == topic_id)
+                    moved_tab = next(t for t in target_space["tabs"] if t["id"] == shell_tab_id)
+                    assert json.dumps(moved_tab, ensure_ascii=False).encode() == shell_bytes, "Caller tab changed"
+                    assert {k: caller_fact[k] for k in caller_identity} == caller_identity, "Caller identity changed"
+                    assert {k: fact[k] for k in pi_identity} == pi_identity, "Existing Pi identity changed"
                 if index < 2:
                     selected = data("herdr-app", "status")
                     assert selected["space"] == child["id"] and selected["agent"] == terminal
             print("PASS: source cop herdr creates, groups, reuses and focuses one real Pi; shell cd path matches")
-            print("PASS: parent remains terminal-free after the actual Herdr caller shell enters the worktree")
+            print("PASS: parent stays terminal-free; repair preserves the Files tab and moves the intact caller tab")
             print("PASS: cop new and direct wt add no app spaces or terminals")
+            # The confirmation check needs Pi to be the only terminal in its space.
+            # Kill only the owned caller after rechecking its identity and fixture location.
+            assert caller in owned_terminals
+            final_caller = rpc("terminal.get", terminal=caller)
+            assert final_caller.get("state") == "live"
+            assert {k: final_caller[k] for k in caller_identity} == caller_identity
+            assert final_caller["foreground"]["cwd"] == str(fixture / "trees/topic")
+            run("hc", "kill", caller)
+            wait_for(lambda: rpc("terminal.get", terminal=caller).get("state") != "live",
+                     "Fixture caller did not stop")
+            wait_for(lambda: not any(p["terminal"] == caller for s in data("herdr-app", "ls")["spaces"]
+                                     for t in s["tabs"] for p in t.get("terminals", [])),
+                     "Fixture caller remains in the app layout")
+            run("hc", "rm", caller)
+            owned_terminals.remove(caller)
+            assert not any(t["address"] == caller for t in rpc("terminal.list", all=True)["terminals"]), \
+                "Fixture caller Core record remains"
             placement = next((s, t, p) for s in data("herdr-app", "ls")["spaces"]
                              for t in s["tabs"] for p in t.get("terminals", []) if p["terminal"] == terminal)
             initial = rpc("terminal.get", terminal=terminal)

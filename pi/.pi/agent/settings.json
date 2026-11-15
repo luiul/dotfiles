@@ -31,7 +31,11 @@
     },
     "~/.pi/agent/packages/pi-hermes-memory/0.10.0-evidence-v1",
     "npm:pi-blackhole",
-    "npm:@plannotator/pi-extension"
+    "npm:@plannotator/pi-extension",
+    {
+      "source": "git:github.com/nicobailon/visual-explainer@9d5f880b7e8e0a9a80c890b8e1bb6918b68481ad",
+      "extensions": []
+    }
   ],
   "markdown": {
     "codeBlockIndent": ""

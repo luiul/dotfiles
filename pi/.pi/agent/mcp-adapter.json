@@ -6,6 +6,11 @@
     "mcpFooterStatus": "compact"
   },
   "mcpServers": {
+    "dbt": {
+      "command": "/Users/luis.aceituno/.local/bin/pi-dbt-mcp",
+      "lifecycle": "lazy",
+      "directTools": false
+    },
     "kb": {
       "type": "http",
       "url": "https://genai-lab-api.eu.foundations.shared.int.hellofresh.io/mcp/v2",

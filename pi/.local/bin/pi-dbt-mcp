@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Resolve the dbt project from this session's worktree, never from a fixed checkout.
+set -euo pipefail
+
+repo="${PI_DBT_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || true)}"
+if [[ -z "$repo" || ! -f "$repo/databricks/dab/main/dbt/global_ops/dbt_project.yml" ]]; then
+    printf 'pi-dbt-mcp: start from a global-ops checkout or set PI_DBT_REPO_ROOT.\n' >&2
+    exit 1
+fi
+project="$repo/databricks/dab/main/dbt/global_ops"
+if [[ ! -x "$repo/.venv/bin/dbt" ]]; then
+    printf 'pi-dbt-mcp: the repo dbt executable is missing. Set up the repo environment first.\n' >&2
+    exit 1
+fi
+export DBT_PROJECT_DIR="$project"
+export DBT_PROFILES_DIR="$project"
+export DBT_PATH="$repo/.venv/bin/dbt"
+export DBT_TARGET=dev
+export DBT_CLI_TIMEOUT=120
+# Compile can query the warehouse. Do not expose build/run/test by default.
+export DBT_MCP_ENABLE_TOOLS='parse,list,compile,get_lineage_dev,search_product_docs,get_product_doc_pages'
+exec uvx --no-config --default-index https://pypi.org/simple dbt-mcp==2.10.1

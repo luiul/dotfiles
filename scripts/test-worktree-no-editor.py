@@ -13,6 +13,10 @@ import tempfile
 import time
 import tomllib
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,22 +32,50 @@ def wait_for(check, description: str) -> None:
 
 
 def check_hooks(value) -> None:
-    """Keep opening out of lifecycle hooks; removal may run its guarded helper."""
+    """Keep app calls out of lifecycle hooks unless Herdr removal is explicitly enabled."""
     if isinstance(value, dict):
         for name, child in value.items():
             if name.startswith(("pre-", "post-")):
                 inspected = child
                 if name in {"pre-remove", "post-remove"} and isinstance(child, dict):
                     expected = "prepare-remove" if name == "pre-remove" else "finish-remove"
-                    assert child.get("herdr") == f'[ "${{WT_HERDR_REMOVE:-1}}" = 0 ] || wt-herdr {expected} --path {{{{ worktree_path }}}}'
+                    expected_hook = (
+                        f'[ "${{WT_HERDR_REMOVE:-0}}" != 1 ] || wt-herdr {expected} --path {{{{ worktree_path }}}}'
+                    )
+                    assert child.get("herdr") == expected_hook
                     inspected = {k: v for k, v in child.items() if k != "herdr"}
-                assert not re.search(r"\b(?:orca|herdr|herdr-wt-open|wt-herdr|herdr-app|hc)\b", json.dumps(inspected)), (
-                    f"{name} must not call an orchestrator"
-                )
+                assert not re.search(
+                    r"\b(?:orca|herdr|herdr-wt-open|wt-herdr|herdr-app|hc)\b",
+                    json.dumps(inspected),
+                ), f"{name} must not call an orchestrator"
             check_hooks(child)
     elif isinstance(value, list):
         for child in value:
             check_hooks(child)
+
+
+def check_removal_flags(
+    config: dict,
+    env: dict,
+    run: Callable[..., subprocess.CompletedProcess[str]],
+    calls: Path,
+    path: Path,
+) -> None:
+    """Check both hooks with unset, disabled, malformed, and enabled flags."""
+    for flag in (None, "", "0", "false", "2", "1"):
+        if flag is None:
+            env.pop("WT_HERDR_REMOVE", None)
+        else:
+            env["WT_HERDR_REMOVE"] = flag
+        env["HERDR_RESULT"] = "0"
+        for phase, command in (("pre-remove", "prepare-remove"), ("post-remove", "finish-remove")):
+            hook = config[phase]["herdr"].replace("{{ worktree_path }}", str(path))
+            run("/bin/sh", "-c", hook)
+            if flag == "1":
+                assert calls.read_text().splitlines() == [f"{command} --path {path}"]
+                calls.unlink()
+            else:
+                assert not calls.exists(), f"Herdr ran without explicit opt-in: {flag!r}"
 
 
 def main() -> None:
@@ -69,25 +101,41 @@ def main() -> None:
         recorder = bin_dir / "code"
         recorder.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$EDITOR_CALLS"\nexit 99\n')
         recorder.chmod(0o755)
+        herdr_calls = home / "herdr-calls"
+        herdr_recorder = bin_dir / "wt-herdr"
+        herdr_recorder.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$HERDR_CALLS"\nexit "${HERDR_RESULT:-99}"\n')
+        herdr_recorder.chmod(0o755)
+        for name in ("herdr-app", "hc", "orca"):
+            (bin_dir / name).symlink_to(recorder)
         config_dir = home / ".config/worktrunk"
         config_dir.mkdir(parents=True)
         shutil.copyfile(source, config_dir / "config.toml")
         git_config = home / ".gitconfig"
         git_config.write_text("[user]\nname = Fixture\nemail = fixture@example.invalid\n")
         env = dict(os.environ)
-        for key in ("WORKTRUNK_AGENT", "WORKTRUNK_NO_OPEN", "WORKTRUNK_CONFIG", "GIT_DIR", "GIT_WORK_TREE",
-                    "HERDR_ENV", "HERDR_SOCKET_PATH", "HERDR_PANE_ID", "HERDR_TAB_ID", "HERDR_WORKSPACE_ID"):
+        for key in (
+            "WORKTRUNK_AGENT",
+            "WORKTRUNK_NO_OPEN",
+            "WORKTRUNK_CONFIG",
+            "GIT_DIR",
+            "GIT_WORK_TREE",
+            "HERDR_ENV",
+            "HERDR_SOCKET_PATH",
+            "HERDR_PANE_ID",
+            "HERDR_TAB_ID",
+            "HERDR_WORKSPACE_ID",
+            "WT_HERDR_REMOVE",
+            "HERDR_RESULT",
+        ):
             env.pop(key, None)
         env.update(
-            # This creation test owns no app/Core fixture. Exercise removal without
-            # contacting the user's live orchestrator; guarded removal has separate tests.
-            WT_HERDR_REMOVE="0",
             HOME=str(home),
             XDG_CONFIG_HOME=str(home / ".config"),
             XDG_CACHE_HOME=str(home / ".cache"),
             GIT_CONFIG_GLOBAL=str(git_config),
             GIT_CONFIG_NOSYSTEM="1",
             EDITOR_CALLS=str(calls),
+            HERDR_CALLS=str(herdr_calls),
             PATH=str(bin_dir) + os.pathsep + os.environ["PATH"],
         )
         parent = home / "projects/group"
@@ -118,9 +166,7 @@ def main() -> None:
         def verify(branch: str) -> Path:
             path = home / "worktrees/local" / branch / "demo"
             wait_for(
-                lambda: (path / ".venv").is_symlink()
-                and (path / ".env").exists()
-                and registry.exists(),
+                lambda: (path / ".venv").is_symlink() and (path / ".env").exists() and registry.exists(),
                 f"setup hooks for {branch}",
             )
             assert (path / ".venv").resolve() == (repo / ".venv").resolve()
@@ -148,6 +194,13 @@ def main() -> None:
         assert protection.returncode != 0
         assert "refusing to remove protected branch" in protection.stderr
         wt_path = home / "worktrees/local/wt-fixture/demo"
+        env["WT_HERDR_REMOVE"] = "1"
+        refused = run(wt, "remove", "wt-fixture", "--foreground", "--yes", ok=False)
+        assert refused.returncode != 0, "Explicit Herdr guard failure must block removal"
+        assert wt_path.exists(), "Worktree was removed after the Herdr guard failed"
+        assert herdr_calls.read_text().splitlines() == [f"prepare-remove --path {wt_path}"]
+        del env["WT_HERDR_REMOVE"]
+        herdr_calls.unlink()
         valuable = wt_path / "uncommitted.txt"
         valuable.write_text("keep this work\n")
         refused = run(wt, "remove", "wt-fixture", "--foreground", "--yes", ok=False)
@@ -164,18 +217,40 @@ def main() -> None:
         (repo / "parallel-main.txt").write_text("unrelated live work\n")
         remote_head = run("git", "-C", str(wt_path), "rev-parse", "HEAD").stdout.strip()
         run(
-            wt, "switch", "--create", "remote-base-fixture", "--base", "origin/main",
-            "--no-cd", "--yes", "--format", "json",
+            wt,
+            "switch",
+            "--create",
+            "remote-base-fixture",
+            "--base",
+            "origin/main",
+            "--no-cd",
+            "--yes",
+            "--format",
+            "json",
         )
         remote_path = home / "worktrees/local/remote-base-fixture/demo"
         assert run("git", "rev-parse", "HEAD").stdout.strip() == main_before
         assert (repo / "parallel-main.txt").read_text() == "unrelated live work\n"
         assert run("git", "-C", str(remote_path), "rev-parse", "HEAD").stdout.strip() == remote_head
-        for branch in ("wt-fixture", "cop-fixture", "remote-base-fixture"):
-            run(wt, "remove", branch, "--no-delete-branch", "--foreground", "--yes")
-            wait_for(lambda branch=branch: not (home / "worktrees/local" / branch).exists(), "empty branch cleanup")
-        assert not calls.exists(), "An editor was launched"
+        run(wt, "remove", "wt-fixture", "--no-delete-branch", "--foreground", "--yes")
+        wait_for(lambda: not wt_path.parent.exists(), "default wt removal cleanup")
+        run(cop, "remove", "cop-fixture", "--repo", str(repo), "--yes")
+        wait_for(lambda: not (home / "worktrees/local/cop-fixture").exists(), "default cop removal cleanup")
+        assert not herdr_calls.exists(), "Default wt or cop removal called Herdr"
+
+        check_removal_flags(config, env, run, herdr_calls, remote_path)
+        expected_calls = [f"prepare-remove --path {remote_path}", f"finish-remove --path {remote_path}"]
+        run(wt, "remove", "remote-base-fixture", "--no-delete-branch", "--foreground", "--yes")
+        wait_for(
+            lambda: herdr_calls.exists() and herdr_calls.read_text().splitlines() == expected_calls,
+            "explicit Herdr removal hooks",
+        )
+        assert herdr_calls.read_text().splitlines() == expected_calls
+        wait_for(lambda: not remote_path.parent.exists(), "opt-in removal cleanup")
+        assert not calls.exists(), "An editor or another orchestrator was launched"
         print("PASS: real wt and cop create/reuse without editor gates or editor calls")
+        print("PASS: default wt and cop removal make no Herdr calls; explicit opt-in retains both hooks")
+        print("PASS: explicit Herdr guard failure blocks removal; invalid flags do not enable it")
         print("PASS: protected branches and native dirty-work refusal remain without a publication gate")
         print("PASS: fetch-only creation preserves dirty primary and uses the explicit remote base")
 

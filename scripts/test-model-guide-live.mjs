@@ -139,14 +139,14 @@ try {
   assert(screen.includes('Unknown at high'));
   assert(!parse(log).some(e => e.type === 'provider'), 'Guide caused provider request');
   driver.key(host, 'right'); driver.key(host, 'down');
-  await wait(() => capture().includes('GPT-6.1 Sol'));
+  await wait(() => capture().includes('global.openai.gpt-6.2-sol'));
   assert(capture().includes('GPT-6.1 Terra')); assert(!capture().includes('Kimi K3.1 Pro'));
   driver.key(host, 'left'); driver.key(host, 'down');
   await wait(() => capture().includes('Kimi K3.1 Pro'));
-  assert(capture().includes('GPT-6.1 Sol'));
+  assert(capture().includes('global.openai.gpt-6.2-sol'));
   driver.key(host, 'right'); driver.text(host, '/'); driver.text(host, 'budget'); await delay(150); driver.key(host, 'enter');
   await wait(() => capture().includes('GLM 5.3'));
-  assert(capture().includes('Kimi K3.1 Pro')); assert(!capture().includes('GPT-6.1 Sol'));
+  assert(capture().includes('Kimi K3.1 Pro')); assert(!capture().includes('global.openai.gpt-6.2-sol'));
   await pageUntil(host, 'Grove spend/pass');
   assert(capture().includes('$0.06405') && capture().includes('$0.04981'));
   driver.text(host, 'd'); await wait(() => capture().includes('Technical evidence'));
@@ -171,6 +171,12 @@ try {
   assert.equal(parse(log).filter(e => e.type === 'state')[1].model, 'Kimi K3.1 Pro');
   assert.equal(parse(log).filter(e => e.type === 'state')[1].effort, 'high');
   screen = capture(); assert(screen.includes('Kimi K3.1 Pro')); assert(!screen.includes('Code | Hard coding'));
+  // The Think model must resolve to the Bedrock ID and use its configured effort.
+  await send('/model amazon-bedrock/global.openai.gpt-6.2-sol'); await wait(() => capture().includes('global.openai.gpt-6.2-sol'));
+  if (capture().includes('Scope:') || capture().includes('Model Name:')) { driver.key(host, 'enter'); await delay(300); }
+  await send('/fixture-state'); await wait(() => parse(log).filter(e => e.type === 'state').length === 3).catch(error => { console.error(capture()); throw error; });
+  assert.equal(parse(log).filter(e => e.type === 'state')[2].model, 'global.openai.gpt-6.2-sol');
+  assert.equal(parse(log).filter(e => e.type === 'state')[2].effort, 'medium');
   await send('/model-guide'); await wait(() => capture().includes('Compare two scoped models')); driver.key(host, 'enter');
   assert(!parse(log).some(e => e.type === 'provider'));
   driver.key(host, 'ctrl+d'); await wait(() => parse(log).some(e => e.type === 'shutdown'));
@@ -182,7 +188,7 @@ try {
   console.log('PASS real Pi pair matrix, independent columns, search, narrow resize, metric paging, cancel, native scope toggle, Kimi effort and footer identity');
 
   const lightLog = join(root, 'light.jsonl');
-  const light = driver.create({ command: [process.execPath, ...common, '-e', extension, '--use-theme', 'light', '--models', 'ai-model-router/GPT-6.1 Sol:high'],
+  const light = driver.create({ command: [process.execPath, ...common, '-e', extension, '--use-theme', 'light', '--models', 'amazon-bedrock/global.openai.gpt-6.2-sol:high'],
     cwd: root, env: { ...env, GUIDE_LOG: lightLog }, columns: 80, rows: 30 });
   await wait(() => parse(lightLog).some(e => e.type === 'ready')); await delay(300);
   driver.text(light, '/model-guide'); driver.key(light, 'enter');

@@ -4,7 +4,7 @@
   "enabledModels": [
     "ai-model-router/GPT-6.1 Terra",
     "ai-model-router/Kimi K3.1 Pro",
-    "ai-model-router/GPT-6.1 Sol",
+    "amazon-bedrock/global.openai.gpt-6.2-sol",
     "ai-model-router/GLM 5.3",
     "ai-model-router/GPT-6 Luna",
     "google-vertex/gemini-4-argon",
@@ -44,7 +44,7 @@
     "ai-model-router/GLM 5.3": "high",
     "ai-model-router/GPT-6.1 Terra": "high",
     "ai-model-router/Kimi K3.1 Pro": "high",
-    "ai-model-router/GPT-6.1 Sol": "medium",
+    "amazon-bedrock/global.openai.gpt-6.2-sol": "medium",
     "ai-model-router/GPT-6 Luna": "low",
     "ai-model-router/GLM 5.3 Flash": "off",
     "google-vertex/gemini-4-argon": "high"

@@ -1,6 +1,6 @@
 # Scoped model guide
 
-`/model-guide` compares the current session's scoped models without selecting one. Native `/model`, Tab, model cycling and default selection stay unchanged. The seven global favorites are Terra high (Daily), Kimi K3.1 Pro high (Code), Sol medium (Think), GLM high (Budget), Luna low (Quick), Argon high (Vision) and GLM Flash off (Helper). Terra remains the default.
+`/model-guide` compares the current session's scoped models without selecting one. Native `/model`, Tab, model cycling and default selection stay unchanged. The seven global favorites are Terra high (Daily), Kimi K3.1 Pro high (Code), Bedrock GPT-6.2 Sol medium (Think), GLM high (Budget), Luna low (Quick), Argon high (Vision) and GLM Flash off (Helper). Terra remains the default.
 
 ## Use
 

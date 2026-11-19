@@ -29,13 +29,13 @@ console.log("PASS command-only registration and non-TUI guard; no hooks, tools o
 const text = readFileSync(new URL("../pi/.pi/agent/model-guide.json", import.meta.url), "utf8");
 const data = parseEvidence(text);
 assert.equal(data.warning, undefined);
-assert.equal(Object.keys(data.evidence).length, 7);
+assert.equal(Object.keys(data.evidence).length, 8);
 for (const malformed of ["{}", "null", "{bad", '{"version":1,"models":[]}']) assert(parseEvidence(malformed).warning);
 const raw = JSON.parse(text), key = "ai-model-router/GPT-6.1 Terra";
 for (const field of ["score", "url", "reviewed", "effort"]) {
 	const altered = structuredClone(raw); altered.models[key][field] = field === "score" ? -1 : field === "reviewed" ? "2026-02-30" : "";
 	const result = parseEvidence(JSON.stringify(altered)); assert(result.warning); assert(!result.evidence[key]);
-	assert.equal(Object.keys(result.evidence).length, 6);
+	assert.equal(Object.keys(result.evidence).length, 7);
 }
 const temp = mkdtempSync(join(tmpdir(), "model-guide-unit-"));
 try {
@@ -59,7 +59,10 @@ const rows = guideRows(scope, settings, key, "low", data.evidence);
 assert.deepEqual(rows.map(x => x.key), settings.enabledModels);
 assert.equal(rows[0].current, "low"); assert.equal(rows[0].configured, "high");
 assert.equal(rows[1].role, "Code"); assert.equal(rows[1].configured, "high");
-assert.equal(rows[2].configured, "medium");
+assert.equal(rows[2].role, "Think"); assert.equal(rows[2].configured, "medium");
+assert.equal(intelligence(rows[2]).text, "II 53 @ medium");
+assert.equal(rows[2].evidence?.local, undefined);
+assert.equal(data.evidence["ai-model-router/GPT-6.1 Sol"].local!.small.totalUsd, 0.0451822);
 assert.equal(intelligence(rows[0]).text, "II 42 @ high");
 assert(intelligence(rows[1]).text.includes("unknown at high"));
 assert(intelligence(rows[3]).text.includes("published 32 @ max"));
@@ -108,13 +111,13 @@ for (const name of ["dark", "light"]) {
 		assert(lines.join("\n").includes("Terra"));
 	}
 	view.handleInput("\x1b[B");
-	assert(view.render(120).join("\n").includes("Sol"));
+	assert(view.render(120).join("\n").includes("global.openai.gpt-6.2-sol"));
 	view.handleInput("\x1b[6~");
 	assert(!view.render(120).join("\n").includes("Comparison 1/"));
 	view.handleInput("d");
 	assert(view.render(120).join("\n").includes("Technical evidence"));
 	view.handleInput("d"); view.handleInput("/"); view.handleInput("think"); view.handleInput("\r");
-	assert(view.render(120).join("\n").includes("Sol"));
+	assert(view.render(120).join("\n").includes("global.openai.gpt-6.2-sol"));
 	assert(!view.render(120).join("\n").includes("Kimi"));
 	view.handleInput("\x1b");
 	const empty = new GuideView([], theme, kb, tui, () => {});
@@ -154,18 +157,18 @@ assert(pairFrame.includes("No passing patch"));
 assert(pairFrame.includes("4/4 passed"), "Only four small fixtures have automated acceptance checks");
 pair.handleInput("\x1b[C"); pair.handleInput("\x1b[B");
 pairFrame = pair.render(112).join("\n");
-assert(pairFrame.includes("GPT-6.1 Terra") && pairFrame.includes("GPT-6.1 Sol"));
+assert(pairFrame.includes("GPT-6.1 Terra") && pairFrame.includes("global.openai.gpt-6.2-sol"));
 assert(!pairFrame.includes("Kimi K3.1 Pro"), "Right-column navigation must leave the left model unchanged");
 pair.handleInput("\x1b[D"); pair.handleInput("\x1b[B");
 pairFrame = pair.render(112).join("\n");
-assert(pairFrame.includes("Kimi K3.1 Pro") && pairFrame.includes("GPT-6.1 Sol"));
+assert(pairFrame.includes("Kimi K3.1 Pro") && pairFrame.includes("global.openai.gpt-6.2-sol"));
 const changedEffort = new GuideView(pattern, getThemeByName("dark")!, kb, { ...tui, terminal: { rows: 50 } }, () => {});
 assert(changedEffort.render(112).join("\n").includes("Not tested at xhigh"));
 const none = new GuideView([unknown], getThemeByName("dark")!, kb, { ...tui, terminal: { rows: 50 } }, () => {});
 assert(none.render(112).join("\n").includes("Not tested"));
 const activeOther = new GuideView([rows[1], { ...rows[2], current: "medium" }], getThemeByName("dark")!, kb,
 	{ ...tui, terminal: { rows: 50 } }, () => {});
-assert(activeOther.render(112).join("\n").indexOf("GPT-6.1 Sol") < activeOther.render(112).join("\n").indexOf("Kimi K3.1 Pro"));
+assert(activeOther.render(112).join("\n").indexOf("global.openai.gpt-6.2-sol") < activeOther.render(112).join("\n").indexOf("Kimi K3.1 Pro"));
 const duplicateSearch = new GuideView(rows, getThemeByName("dark")!, kb, { ...tui, terminal: { rows: 50 } }, () => {}, "terra");
 assert(duplicateSearch.render(112).join("\n").includes("Kimi K3.1 Pro"));
 assert(duplicateSearch.render(112).join("\n").includes("GPT-6.1 Terra"));

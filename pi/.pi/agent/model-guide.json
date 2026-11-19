@@ -28,6 +28,15 @@
         "grove": { "runs": 2, "passed": 2, "timedOut": 0, "totalUsd": 0.128098 }
       }
     },
+    "amazon-bedrock/global.openai.gpt-6.2-sol": {
+      "score": 53,
+      "benchmark": "Artificial Analysis Intelligence Index",
+      "version": "v5.0.1",
+      "effort": "medium",
+      "reviewed": "2026-11-19",
+      "url": "https://artificialanalysis.ai/models/comparisons/gpt-6-2-sol-vs-gpt-6-1-terra",
+      "qualifier": "Public score uses OpenAI's API. Bedrock behavior and cost can differ."
+    },
     "ai-model-router/GPT-6.1 Sol": {
       "score": 46,
       "benchmark": "Artificial Analysis Intelligence Index",

@@ -41,6 +41,51 @@ The [Coppice workflow](https://github.com/luiul/coppice) combines watching, work
 
 Before deleting a disposable registered repo, close its terminal tabs with `orca terminal close --worktree path:<checkout> --all --json`. Removing its project setup can leave terminal tabs and resume records behind. If the repo is already gone, find the exact stale handle in `orca terminal list --json` and close only that tab with `orca terminal close --terminal <handle> --tab --json`.
 
+## Coordinate a task with `/orca`
+
+Start from a manual shell with `cop orca [repo] -b <branch>`, then give the Pi session `/orca <task>`. Coppice owns watching, wt setup, and safe Pi launch or reuse. The prompt makes that Pi session the coordinator. It brings Orca worker results back to the same chat rather than launching a second coordinator.
+
+When ownership is unknown, use the research repo for the coordinator:
+
+```sh
+cop orca ~/projects/hellofresh/research -b investigate-writeback
+```
+
+Then ask for the outcome:
+
+```text
+/orca Investigate these alerts, prepare approved Jira intake, and coordinate the appropriate fix: [paste alerts]
+```
+
+Pi joins unquoted template arguments with spaces. For logs or code whose layout matters, invoke `/orca` with no arguments, then paste the task and evidence when it asks. Alternatively quote the complete multiline request. The command has no flags, so option-like text inside the request is task content.
+
+For a known HelloFresh ticket and repo, use the required ticket branch instead:
+
+```sh
+cop orca ~/projects/hellofresh/isa-orchestration -b patch/GLOA-123-fix-writeback
+```
+
+```text
+/orca Plan and implement the approved scope in https://hellofresh.atlassian.net/browse/GLOA-123
+```
+
+The prompt supports discovery, planning, review, implementation, and other tasks. It uses the installed [Orca orchestration guide](https://github.com/stablyai/orca/blob/main/skill-guides/orchestration/SKILL.md), starts with a small worker split, and preserves human approval gates. Discovery stays read-only. Planning does not permit edits. A request to coordinate a fix does not approve commits, publication, production changes, reruns, or backfills. No code change can be the correct result.
+
+Workers use verified existing Orca workspaces. Additional checkouts belong to wt or `cop new`, not Orca's native worktree flow. The coordinator must verify setup before dispatch. Agents do not call the interactive `cop orca` entry point. A Run tracks tasks and mail; the coordinator still dispatches ready tasks and handles worker reports. It ends its turn to let Orca wake it rather than polling.
+
+HelloFresh ticket creation stays in a fresh Pi session at exactly `~/projects/hellofresh`, with trusted central settings and memory workers disabled. Intake uses `create-hellofresh-ticket` and Harvest, not native Orca Jira writes. The coordinator delegates that stage only when the exact folder workspace and fresh launch can be verified. Otherwise it returns a manual intake handoff and pauses ticket-dependent work. The fixing session is separate and starts in the confirmed repo after ticket and plan approval.
+
+The command is a Markdown prompt template in `pi/.pi/agent/prompts/orca.md`, like `/proofread`. It guides the agent but does not enforce a permission or security boundary. It does not enable orchestration, change Orca settings, or run a service. If Orca is unavailable or orchestration is disabled, the agent reports the blocker instead of using Pi subagents as a hidden fallback. Run `/reload` in an existing Pi session after deployment.
+
+Verify prompt discovery, argument expansion, and instruction contracts:
+
+```sh
+node scripts/test-orca-prompt.mjs
+PATH="/Applications/Rex Beta.app/Contents/Helpers/Rex Server.rex/Contents/MacOS:$PATH" node scripts/test-orca-prompt-live.mjs
+```
+
+The live check uses a private Rex terminal and a local provider fixture. It proves command discovery and expansion, not model compliance, real worker coordination, Jira access, or production recovery. Add `--live` after deployment to check auto-discovery from the real Pi agent directory without an explicit prompt override.
+
 ## Per-repo worktree sharing
 
 Orca reads per-repo config for what to materialize into fresh worktrees (clean checkouts miss gitignored paths):

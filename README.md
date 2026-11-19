@@ -142,6 +142,9 @@ Custom slash commands live in `pi/.pi/agent/prompts/`. These Pi prompt templates
 
 - `/proofread <message> [--context <text>] [--scratch] [--no-copy]` (pi only): proofreads and polishes a message in ASD-STE100 style and copies the final version to the clipboard. `--context`/`-c` marks everything after it as context only (e.g. a pasted Slack thread), never rewritten. `--no-copy`/`-n` skips the clipboard step. `--scratch`/`-s` also saves the full review to `~/scratch/`. Flags combine freely and work as trailing tokens: `/proofread lgtm, ship it --context <thread> -s`.
 - `/scratch <what to write>`: writes text output to `~/scratch/<descriptive-name>.md`, prints the absolute path, and shows the content in chat. Example: `/scratch write a short summary of the incident timeline`.
+- `/orca <task, context, or ticket URL>`: makes the current Pi session coordinate Orca workers for discovery, planning, review, or approved implementation. It preserves project approval and tracker rules. See the [Orca command workflow](orca/README.md#coordinate-a-task-with-orca).
+
+Run `/reload` after changing prompt templates in an active session. These commands expand instructions for the agent; they do not enforce a security boundary.
 
 Scratch files are opt-in everywhere (see the "Scratch Files" section in `pi/.pi/agent/AGENTS.md`): no tool writes to `~/scratch/` unless a command flag above says so, or the prompt contains the `scratch:` trigger.
 

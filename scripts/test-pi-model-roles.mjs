@@ -21,7 +21,7 @@ const roles={
 const scope=[
  'ai-model-router/GPT-6.1 Terra',
  'ai-model-router/Kimi K3.1 Pro',
- 'amazon-bedrock/global.openai.gpt-6.2-sol',
+ 'ai-model-router/GPT-6.2 Sol',
  'ai-model-router/GLM 5.3',
  'ai-model-router/GPT-6 Luna',
  'google-vertex/gemini-4-argon',
@@ -40,8 +40,8 @@ for(const [role,[id,thinking,description]] of Object.entries(roles)){
  assert.equal(router.models.filter(m=>m.name?.startsWith(role+' | ')).length,1,`Ambiguous ${role}`);
  assert.equal(settings.modelThinkingLevels['ai-model-router/'+id],thinking);
 }
-assert.equal(models.providers['amazon-bedrock'].modelOverrides['global.openai.gpt-6.2-sol'].name,'Think | Hard problems and advice');
-assert.equal(settings.modelThinkingLevels['amazon-bedrock/global.openai.gpt-6.2-sol'],'medium');
+assert.equal(models.providers['ai-model-router'].models.find(m=>m.id==='GPT-6.2 Sol').name,'Think | Hard problems and advice');
+assert.equal(settings.modelThinkingLevels['ai-model-router/GPT-6.2 Sol'],'medium');
 assert.equal(models.providers['google-vertex'].modelOverrides['gemini-4-argon'].name,'Vision | Images, scans and floorplans');
 assert.equal(settings.modelThinkingLevels['google-vertex/gemini-4-argon'],'high');
 assert(router.models.some(m=>m.id==='Kimi K3'),'All-model catalog must preserve Kimi');
@@ -52,7 +52,7 @@ const runtimeDir=path.join(managed,'releases',fs.readFileSync(path.join(managed,
 const {resolveModelScopeFromModels}=await import(path.join(runtimeDir,'dist/core/model-resolver.js'));
 const available=[
  ...router.models.map(model=>({...model,provider:'ai-model-router'})),
- {provider:'amazon-bedrock',id:'global.openai.gpt-6.2-sol',name:models.providers['amazon-bedrock'].modelOverrides['global.openai.gpt-6.2-sol'].name},
+ {provider:'ai-model-router',id:'GPT-6.2 Sol',name:models.providers['ai-model-router'].models.find(m=>m.id==='GPT-6.2 Sol').name},
  {provider:'google-vertex',id:'gemini-4-argon',name:models.providers['google-vertex'].modelOverrides['gemini-4-argon'].name},
 ];
 const resolved=resolveModelScopeFromModels(settings.enabledModels,available);
@@ -72,7 +72,7 @@ if(process.argv[2]){
  assert.equal(merged.getDefaultProvider(),'google-vertex');
  assert.equal(merged.getDefaultModel(),'gemini-4-argon');
  for(const [role,[id,thinking]]of Object.entries(roles))assert.equal(merged.getModelThinkingLevel('ai-model-router',id),thinking,role);
- assert.equal(merged.getModelThinkingLevel('amazon-bedrock','global.openai.gpt-6.2-sol'),'medium');
+ assert.equal(merged.getModelThinkingLevel('ai-model-router','GPT-6.2 Sol'),'medium');
 }
 
 const hermes=json('hermes-memory-config.json');

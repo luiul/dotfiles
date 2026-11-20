@@ -31,7 +31,6 @@
     },
     "amazon-bedrock": {
       "modelOverrides": {
-        "global.openai.gpt-6.2-sol": { "name": "Think | Hard problems and advice" },
         "amazon.nova-lite-v1:0": {
           "cost": {
             "input": 0.06,
@@ -645,7 +644,7 @@
         },
         {
           "id": "GPT-6.2 Sol",
-          "name": "GPT-6.2 Sol",
+          "name": "Think | Hard problems and advice",
           "reasoning": true,
           "input": ["text", "image"],
           "cost": {
@@ -712,7 +711,7 @@
     }
   },
   "grove": {
-    "generatedAt": "2026-11-20T17:49:48Z",
+    "generatedAt": "2026-11-20T21:58:18Z",
     "bedrock": {
       "defaultRegion": "eu-west-1",
       "regions": {

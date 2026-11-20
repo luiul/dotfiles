@@ -121,7 +121,7 @@ Roles are short display names on existing model records. Pi shows each role and 
 | --- | --- | --- | --- |
 | Router GPT-6.1 Terra | Daily | Coding and admin | High |
 | Router Kimi K3.1 Pro | Code | Hard coding and debugging | High |
-| Bedrock GPT-6.2 Sol (global) | Think | Hard problems and advice | Medium |
+| Router GPT-6.2 Sol | Think | Hard problems and advice | Medium |
 | Router GLM 5.3 | Budget | Lower-cost coding | High |
 | Router GPT-6 Luna | Quick | Lookups and simple tasks | Low |
 | Vertex Gemini 4 Argon | Vision | Images, scans and floorplans | High |

@@ -6,7 +6,7 @@ Measured on 2 November 2026 with Pi 1.5.0 and the current AI Model Router catalo
 
 Use router GPT-6.1 Terra at high thinking as the global daily model, following the user's choice of GPT-style output. Keep GLM 5.3 high as the budget alternative. The fixtures do not show Terra is always cheaper. Keep GPT-6 Luna low for narrow Explore work. General-purpose and Plan inherit the main model; no automatic planner/executor pipeline was added. Kimi K3 remains available in the full catalog.
 
-On 19 November 2026, the Think favorite changed from router GPT-6.1 Sol to Bedrock `global.openai.gpt-6.2-sol` at medium for testing. Its global profile can route requests worldwide. Check data residency rules before using it for work. The historical fixture results below do not measure Sol 6.2.
+On 19 November 2026, the Think favorite changed from router GPT-6.1 Sol to Bedrock `global.openai.gpt-6.2-sol` at medium for testing. Its global profile can route requests worldwide. Check data residency rules before using it for work. Think now uses router GPT-6.2 Sol at medium. The historical fixture results below do not measure Sol 6.2.
 
 At the time of the November 2 checks, the six scoped favorites were Terra, Sol, GLM, Luna, Argon and GLM Flash. Roles were Daily, Think, Budget, Quick, Vision and Helper. Sol started at medium; Terra, GLM and Argon started at high; Luna started at low; GLM Flash started with thinking off. The apartment project inherited the global scope but preserved Argon high as its default.
 

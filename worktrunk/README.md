@@ -12,14 +12,15 @@ Keep external worktrees visible in Orca. Create and remove checkouts through Wor
 
 ## Explicit Herdr opening
 
-`wt-herdr` connects an existing Worktrunk checkout to Herdr app. It does not create or remove checkouts.
+`wt-herdr` connects an existing Worktrunk checkout to Herdr app. It does not create or remove checkouts or change the calling shell's directory.
 
 ```sh
 wt-herdr check --repo ~/dotfiles
-wt-herdr open --repo ~/dotfiles --path ~/worktrees/luiul/expense-report/dotfiles
+wt -C ~/dotfiles switch --create task-name --base origin/main --no-cd
+wt-herdr open --repo ~/dotfiles --path ~/worktrees/luiul/task-name/dotfiles
 ```
 
-`cop herdr REPO --branch BRANCH` calls the helper before and after its normal Worktrunk setup. Use `--yes` to skip the existing-branch confirmation. There is no legacy Herdr session option or backend.
+Use the repo's verified remote default branch as the base. If the worktree already exists, pass its root to `open` without running `wt switch`.
 
 `cop new` and ordinary `wt switch` calls do not open an orchestrator. Keep app opening out of Worktrunk lifecycle hooks.
 
@@ -61,7 +62,7 @@ WT_HERDR_REMOVE=1 wt remove
 WT_HERDR_REMOVE=1 cop remove my-branch
 ```
 
-Only the exact value `1` enables these hooks. An unset flag, `0`, or any other value skips Herdr commands. `cop herdr` opens Herdr explicitly but does not enable these removal hooks for later commands.
+Only the exact value `1` enables these hooks. An unset flag, `0`, or any other value skips Herdr commands. Opening with `wt-herdr open` does not enable these hooks.
 
 Do not use `--no-hooks` as the feature switch. It also skips other Worktrunk safeguards. Enabled removal does not start Herdr or Core. If Core is unavailable, the enabled guard cannot establish that no space exists and refuses removal. With Core available and no matching space, enabled removal proceeds without contacting the app window.
 
@@ -78,11 +79,18 @@ stow --no-folding worktrunk
 uv run scripts/test-wt-herdr.py
 uv run scripts/test-wt-herdr-handoff-safety.py
 uv run scripts/test-wt-herdr-remove.py
-node scripts/test-wt-herdr-remove-live.mjs
 uv run scripts/test-worktree-no-editor.py
-uv run scripts/test-wt-herdr-live.py --coppice-source /path/to/coppice/source
 ```
 
-Source tests and live deployment are separate. Test a source helper by its absolute path before updating the live symlink. Live tests use the maintained private Rex driver and close only their own terminals, spaces, and fixture checkouts. The live test starts a real Pi with no submitted task in a temporary repo. Its first command runs in a real Herdr caller shell, then checks the stable parent after shell navigation. It requires the reviewed helper and Coppice source.
+Source tests and live deployment are separate. Test a source helper by its absolute path before updating the live symlink.
+
+Run the live fixtures one at a time while the app is idle. They change app focus and use the maintained private Rex driver. They close only their own terminals, spaces, and worktrees.
+
+```sh
+uv run scripts/test-wt-herdr-live.py
+node scripts/test-wt-herdr-remove-live.mjs
+```
+
+The opening fixture uses Worktrunk and the source `wt-herdr` helper directly. It starts Pi with no submitted task in a temporary repo. Its first command runs in a real Herdr caller shell. The fixture then changes that shell's directory explicitly to test grouping and repair.
 
 See [Herdr app setup](../herdr/README.md) for configuration and installation boundaries.

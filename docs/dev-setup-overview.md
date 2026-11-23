@@ -11,12 +11,11 @@ Worktrees use `~/worktrees/<owner>/<branch>/<repo>`. The repo is the leaf direct
 ```sh
 cop new /path/to/repo --branch task-name --base origin/main
 cop orca /path/to/repo --branch task-name --base origin/main
-cop herdr /path/to/repo --branch task-name --base origin/main
 ```
 
-Replace `origin/main` with the repo's verified remote default branch. `cop new` creates or reuses a worktree and enters it without opening an orchestrator. `cop orca` and `cop herdr` finish setup, open or reuse Pi, focus the chosen workspace, and enter its worktree. Cmd+E opens VS Code when needed. There is no global orchestrator-opening hook.
+Replace `origin/main` with the repo's verified remote default branch. `cop new` creates or reuses a worktree and enters it without opening an orchestrator. `cop orca` finishes setup, opens or reuses Pi, focuses the workspace, and enters its worktree. Cmd+E opens VS Code when needed. There is no global hook to open an orchestrator.
 
-`cop herdr` calls the explicit `wt-herdr` helper in the Worktrunk package for Herdr app/Core. The helper provides `check`, `open`, and explicit `repair`, not a global wt hook or legacy named-session integration. Keep one space per worktree, nested by Git identity. Reuse Pi only for the exact worktree and terminal, including pending launches. The [Herdr package](../herdr/README.md) tracks only proven symlink-safe personal settings, not app/Core runtime state.
+For Herdr app/Core, create or reuse a worktree with Worktrunk first. Then pass the repo and worktree roots to `wt-herdr open`. The helper opens or reuses Pi and focuses it without changing your shell directory. See the [standalone Herdr workflow](../herdr/README.md#explicit-worktrunk-integration). The Herdr package tracks only proven symlink-safe personal settings, not app/Core runtime state.
 
 HelloFresh branches use `type/TICKET-description` from the start. Personal task branches can use short names. Temporary branches do not change the personal publication rule: the remote default branch receives approved work without a PR.
 

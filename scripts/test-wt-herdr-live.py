@@ -1,5 +1,5 @@
 #!/usr/bin/env -S uv run --script
-"""Exercise source cop herdr with Rex and real Herdr app spaces, then remove fixtures.
+"""Exercise Worktrunk and source wt-herdr with Rex and real Herdr app spaces.
 
 This live harness intentionally changes app spaces and focus when run.
 """
@@ -54,15 +54,13 @@ def wait_for(check, message, timeout=15):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--coppice-source", type=Path, required=True)
-    args = parser.parse_args()
+    parser.parse_args()
 
     def interrupted(signum, frame):
         raise RuntimeError("Live test interrupted; cleaning owned resources")
 
     signal.signal(signal.SIGTERM, interrupted)
     signal.signal(signal.SIGINT, interrupted)
-    source = args.coppice_source.resolve(strict=True)
     helper = ROOT / "worktrunk/.local/bin/wt-herdr"
     original = data("herdr-app", "status")
     before = {t["address"]: (t["pid"], t["created_ms"]) for t in rpc("terminal.list")["terminals"]
@@ -83,11 +81,6 @@ def main():
         pi_shim = bin_dir / "pi"
         pi_shim.write_text("#!/bin/sh\nexec " + shlex.quote(pi_binary) + ' --no-session --no-extensions "$@"\n')
         pi_shim.chmod(0o755)
-        shim = bin_dir / "cop"
-        shim.write_text("#!/bin/sh\nexec env PYTHONPATH=" + shlex.quote(str(source / "src"))
-                        + " uv run --no-project --python " + shlex.quote(str(source / ".venv/bin/python"))
-                        + " python -c 'from coppice.cli import app; app()' \"$@\"\n")
-        shim.chmod(0o755)
         config = fixture / "wt.toml"
         config.write_text("worktree-path = " + json.dumps(str(fixture / "trees/{{ branch }}")) + "\n")
         wt_shim = bin_dir / "wt"
@@ -98,6 +91,7 @@ def main():
         env = dict(os.environ)
         env.pop("WORKTRUNK_AGENT", None)
         env.update(PATH=str(bin_dir) + os.pathsep + env["PATH"], WORKTRUNK_CONFIG=str(config),
+                   WT_HERDR_STATE_HOME=str(fixture / "state"),
                    XDG_CACHE_HOME=str(fixture / "cache"), GIT_CONFIG_NOSYSTEM="1")
         run("git", "-C", str(repo), "init", "-q", "-b", "main", env=env)
         run("git", "-C", str(repo), "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
@@ -108,7 +102,7 @@ def main():
         confirm_mod_created = False
         caller = None
         try:
-            # A real caller inside Herdr reproduces post-command shell cd drift.
+            # A real caller inside Herdr can change checkout after opening the Pi terminal.
             caller_doc = rpc("doc.get", name="herdr-app")
             caller_space = {
                 "id": "sp-test-" + str(os.getpid()), "name": "Fixture caller", "folder": str(repo),
@@ -167,19 +161,30 @@ def main():
             driver = RexTestDriver(deadline_ms=max(1000, int((deadline - time.time()) * 1000)))
             host = driver.create(name=f"ag-wt-herdr-{os.getpid()}", command=["/bin/zsh", "-f"],
                                  env=env, cwd=str(repo), columns=140, rows=38)
-            for index, branch in enumerate(["topic", "topic", "plain", "direct"]):
+            repo_arg = shlex.quote(str(repo))
+            for index, branch in enumerate(["topic", "topic", "direct"]):
+                path = fixture / "trees" / branch
+                path_arg = shlex.quote(str(path))
                 result = fixture / f"result-{index}"
                 exit_file = fixture / f"exit-{index}"
                 pwd_file = fixture / f"pwd-{index}"
-                if branch == "direct":
-                    command = f"wt -C {shlex.quote(str(repo))} switch --create direct --no-cd --yes --format json"
+                pwd_before_cd = fixture / f"pwd-before-cd-{index}"
+                create = f"wt -C {repo_arg} switch --create {branch} --base main --no-cd --yes --format json"
+                opening = f"wt-herdr open --repo {repo_arg} --path {path_arg}"
+                if index == 0:
+                    command = f"wt-herdr check --repo {repo_arg} && {create} && {opening}"
                 else:
-                    command = (f"cop {'new' if branch == 'plain' else 'herdr'} {shlex.quote(str(repo))} "
-                               f"--branch {branch} --base main --yes")
-                command_env = {k: env[k] for k in ("PATH", "WORKTRUNK_CONFIG", "XDG_CACHE_HOME", "GIT_CONFIG_NOSYSTEM")}
+                    command = create if branch == "direct" else opening
+                # Opening does not move the caller. Do that explicitly to exercise repair on the next open.
+                command += f" && pwd >{shlex.quote(str(pwd_before_cd))}"
+                if index == 0:
+                    command += f" && cd {path_arg}"
+                command_env = {k: env[k] for k in (
+                    "PATH", "WORKTRUNK_CONFIG", "WT_HERDR_STATE_HOME", "XDG_CACHE_HOME", "GIT_CONFIG_NOSYSTEM",
+                )}
                 exports = " ".join(shlex.quote(f"{k}={v}") for k, v in command_env.items())
-                prefix = "unset WORKTRUNK_AGENT; export " + exports + '; eval "$(command cop shell init zsh)"; '
-                shell = (prefix + command + " >" + shlex.quote(str(result))
+                prefix = "unset WORKTRUNK_AGENT; export " + exports + "; "
+                shell = (prefix + "{ " + command + "; } >" + shlex.quote(str(result))
                          + " 2>&1; result_code=$?; pwd >" + shlex.quote(str(pwd_file))
                          + "; printf '%s' $result_code >" + shlex.quote(str(exit_file)))
                 if index == 0:
@@ -194,9 +199,10 @@ def main():
                     raise RuntimeError("Live command deadline reached")
                 if exit_file.read_text() != "0":
                     raise RuntimeError(result.read_text()[-2500:])
-                path = fixture / "trees" / branch
-                if branch != "direct":
-                    assert pwd_file.read_text().strip() == str(path), "Calling shell did not enter the checkout"
+                expected_cwd = path if index == 0 else repo
+                assert (path.is_dir(), pwd_before_cd.read_text().strip(), pwd_file.read_text().strip()) == (
+                    True, str(repo), str(expected_cwd),
+                ), "Missing checkout or unexpected caller directory"
                 spaces = data("herdr-app", "ls")["spaces"]
                 rendered = fixture / f"screen-{index}"
                 rendered.write_text(driver.capture(host))
@@ -274,9 +280,9 @@ def main():
                 if index < 2:
                     selected = data("herdr-app", "status")
                     assert selected["space"] == child["id"] and selected["agent"] == terminal
-            print("PASS: source cop herdr creates, groups, reuses and focuses one real Pi; shell cd path matches")
-            print("PASS: parent stays terminal-free; repair preserves the Files tab and moves the intact caller tab")
-            print("PASS: cop new and direct wt add no app spaces or terminals")
+            print("PASS: standalone wt-herdr groups, reuses and focuses one real Pi without changing caller cwd")
+            print("PASS: after manual cd, repair preserves the Files tab and moves the intact caller tab")
+            print("PASS: direct wt adds no app spaces or terminals")
             # The confirmation check needs Pi to be the only terminal in its space.
             # Kill only the owned caller after rechecking its identity and fixture location.
             assert caller in owned_terminals
@@ -377,7 +383,7 @@ def main():
                 run("hc", "rm", address)
             for sid in owned_spaces:
                 run("herdr-app", "do", "space.close", json.dumps({"id": sid, "confirmed": True}), check=False)
-            for branch in ["topic", "plain", "direct"]:
+            for branch in ["topic", "direct"]:
                 path = fixture / "trees" / branch
                 if path.exists():
                     dirty = run("git", "-C", str(path), "status", "--porcelain").stdout.strip()

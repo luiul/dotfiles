@@ -4,9 +4,9 @@ Measured on 2 November 2026 with Pi 1.5.0 and the current AI Model Router catalo
 
 ## Decision
 
-Use router GPT-6.1 Terra at high thinking as the global daily model, following the user's choice of GPT-style output. Keep GLM 5.3 high as the budget alternative. The fixtures do not show Terra is always cheaper. Keep GPT-6 Luna low for narrow Explore work. General-purpose and Plan inherit the main model; no automatic planner/executor pipeline was added. Kimi K3 remains available in the full catalog.
+Use router GPT-6.2 Sol at medium thinking as the global startup model and Think favorite, replacing Sol 6.1 by user choice. Keep router GPT-6.1 Terra high as the Daily alternative. Keep GLM 5.3 high as the budget alternative. The fixtures do not show Terra is always cheaper. Keep GPT-6 Luna low for narrow Explore work. General-purpose and Plan inherit the main model; no automatic planner/executor pipeline was added. Kimi K3 remains available in the full catalog.
 
-On 19 November 2026, the Think favorite changed from router GPT-6.1 Sol to Bedrock `global.openai.gpt-6.2-sol` at medium for testing. Its global profile can route requests worldwide. Check data residency rules before using it for work. Think now uses router GPT-6.2 Sol at medium. The historical fixture results below do not measure Sol 6.2.
+On 19 November 2026, the Think favorite changed from router GPT-6.1 Sol to Bedrock `global.openai.gpt-6.2-sol` at medium for testing. Its global profile can route requests worldwide. Check data residency rules before using it for work. The current Think favorite and global startup model use router GPT-6.2 Sol medium by user choice, not a new benchmark result. The historical fixture results below do not measure Sol 6.2.
 
 At the time of the November 2 checks, the six scoped favorites were Terra, Sol, GLM, Luna, Argon and GLM Flash. Roles were Daily, Think, Budget, Quick, Vision and Helper. Sol started at medium; Terra, GLM and Argon started at high; Luna started at low; GLM Flash started with thinking off. The apartment project inherited the global scope but preserved Argon high as its default.
 
@@ -14,11 +14,11 @@ Use GLM 5.3 Flash off for bounded review, explicit web summaries, and Hermes mai
 
 ## Configuration dependencies
 
-[Grove](https://github.com/luiul/grove) owns the router catalog and display names in `~/projects/personal/grove/store.json` and `overlay.json`. [The preserved source commit](https://github.com/luiul/grove/commit/5fb66bc) regenerates this dotfiles snapshot without changes. Use that source or newer reviewed catalog data when running sync. A dotfiles snapshot alone does not preserve the catalog source.
+[Grove](https://github.com/luiul/grove) owns the router catalog and display names in `~/projects/personal/grove/store.json` and `overlay.json`. [The preserved source commit](https://github.com/luiul/grove/commit/9e7619522500f86b77678b09ad6c445520509f43) reproduces the catalog without changes. Use that source or newer reviewed catalog data when running sync. A dotfiles snapshot alone does not preserve the catalog source.
 
 Argon resolves from the live discovered catalog in `~/.pi/agent/models-store.json`. Pi 1.5.0's bundled Vertex catalog does not contain it. A fresh installation needs successful catalog discovery before the Vision favorite can resolve. The model-role test uses a synthetic Argon record, so that test does not prove fresh-install availability.
 
-The Git filter `strip-pi-thinkinglevel` removes the session-wide `defaultThinkingLevel` from committed settings. Keep that local preference separate. The committed `modelThinkingLevels` map sets Terra high and the other model startup levels. Package snapshots retain the installed Plannotator extension and existing helper versions.
+The Git filter `strip-pi-thinkinglevel` removes the session-wide `defaultThinkingLevel` from committed settings. Keep that local preference separate. The committed `modelThinkingLevels` map sets Sol 6.2 medium, Terra high and the other model startup levels. Package snapshots retain the installed Plannotator extension and existing helper versions.
 
 ## Usage Evidence
 

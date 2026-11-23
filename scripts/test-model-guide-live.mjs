@@ -49,7 +49,7 @@ export default function(pi){
  pi.registerCommand('fixture-state',{handler:(_a,ctx)=>{note('state',{model:ctx.model.id,effort:pi.getThinkingLevel()});ctx.ui.notify('STATE_RECORDED','info')}});
 }`);
 fs.writeFileSync(join(agent, 'settings.json'), JSON.stringify({
-  enabledModels: scope, modelThinkingLevels: settings.modelThinkingLevels, defaultProvider: 'ai-model-router', defaultModel: 'GPT-6.1 Terra',
+  enabledModels: scope, modelThinkingLevels: settings.modelThinkingLevels, defaultProvider: settings.defaultProvider, defaultModel: settings.defaultModel,
   quietStartup: true, theme: 'dark', cacheWarming: 'off', compaction: { enabled: false }, retry: { enabled: false },
 }));
 const env = { HOME: home, PATH: process.env.PATH, PI_CODING_AGENT_DIR: agent, PI_OFFLINE: '1', PI_TELEMETRY: '0', LANG: 'en_US.UTF-8' };
@@ -68,6 +68,8 @@ function json(on, n) {
     { cwd: root, env: { ...env, GUIDE_LOG: log }, encoding: 'utf8', timeout: 30000 });
   assert.equal(r.status, 0, r.stderr || r.error?.message || `signal ${r.signal}`); assert(!/Failed to load|Extension error/.test(r.stderr ?? ''));
   const notes = parse(log), provider = notes.find(e => e.type === 'provider'); assert(provider);
+  const ready = notes.find(e => e.type === 'ready');
+  assert.equal(ready.model, 'GPT-6.2 Sol'); assert.equal(ready.effort, 'medium');
   return { ms: performance.now() - start, provider };
 }
 const timings = { baseline: [], guide: [] };
@@ -108,7 +110,8 @@ try {
   }
   console.log('Idle Pi process samples (ps resolution 0.01s):', JSON.stringify(idleSamples));
   const log = join(root, 'tui.jsonl');
-  const host = driver.create({ command: [process.execPath, ...common, '-e', extension, '-e', footer], cwd: root,
+  // Keep Terra active to test the existing pair navigation independently of the startup default.
+  const host = driver.create({ command: [process.execPath, ...common, '--model', 'ai-model-router/GPT-6.1 Terra', '-e', extension, '-e', footer], cwd: root,
     env: { ...env, GUIDE_LOG: log }, columns: 120, rows: 40 });
   await wait(() => parse(log).some(e => e.type === 'ready'));
   await delay(400);
@@ -171,7 +174,7 @@ try {
   assert.equal(parse(log).filter(e => e.type === 'state')[1].model, 'Kimi K3.1 Pro');
   assert.equal(parse(log).filter(e => e.type === 'state')[1].effort, 'high');
   screen = capture(); assert(screen.includes('Kimi K3.1 Pro')); assert(!screen.includes('Code | Hard coding'));
-  // The Think model must resolve to the Bedrock ID and use its configured effort.
+  // The Think model must resolve to router Sol 6.2 and use its configured effort.
   await send('/model ai-model-router/GPT-6.2 Sol'); await wait(() => capture().includes('GPT-6.2 Sol'));
   if (capture().includes('Scope:') || capture().includes('Model Name:')) { driver.key(host, 'enter'); await delay(300); }
   await send('/fixture-state'); await wait(() => parse(log).filter(e => e.type === 'state').length === 3).catch(error => { console.error(capture()); throw error; });

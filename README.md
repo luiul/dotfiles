@@ -107,13 +107,13 @@ The AWS SSO refresh extension remains available to isolated child calls. Review 
 
 ## Pi Subagents
 
-`pi/.pi/agent/agents/Explore.md` overrides the built-in Explore helper from [pi-subagents](https://github.com/tintinweb/pi-subagents). It uses `ai-model-router/GPT-6 Luna` with low thinking for narrow read-only file and symbol searches. General-purpose and Plan inherit the main session model, now `GPT-6.1 Terra` with high thinking. Delegate independent lookups, not the main decision or duplicate work. A manual model override is available for difficult tasks.
+`pi/.pi/agent/agents/Explore.md` overrides the built-in Explore helper from [pi-subagents](https://github.com/tintinweb/pi-subagents). It uses `ai-model-router/GPT-6 Luna` with low thinking for narrow read-only file and symbol searches. General-purpose and Plan inherit the main session model, now `GPT-6.2 Sol` with medium thinking. Delegate independent lookups, not the main decision or duplicate work. A manual model override is available for difficult tasks.
 
 The helper excludes `canopy-status`, since SDK subagents share their parent's process ID and must not publish its dashboard status. The [Canopy extension](https://github.com/luiul/canopy/blob/main/extensions/canopy-status.ts) also accepts only interactive sessions. Apply the helper with `stow --no-folding pi`.
 
 ## Pi Model Picker
 
-The global picker opens with seven scoped favorites. New sessions start on router Terra high. The apartment project inherits the same scope but keeps Argon high as its visual-task default. Resumed sessions retain their saved model.
+The global picker opens with seven scoped favorites. New sessions start on router Sol 6.2 medium. The apartment project inherits the same scope but keeps Argon high as its visual-task default. Resumed sessions retain their saved model.
 
 Roles are short display names on existing model records. Pi shows each role and purpose beside the canonical model ID. They add no provider, extension, request, duplicate ID, or ranking system. Open `/model` or press `Ctrl+L`, then type a model or role. Tab switches between scoped favorites and all authenticated models. `/thinking` or `Shift+Tab` changes effort without changing model.
 
@@ -127,7 +127,7 @@ Roles are short display names on existing model records. Pi shows each role and 
 | Vertex Gemini 4 Argon | Vision | Images, scans and floorplans | High |
 | Router GLM 5.3 Flash | Helper | Summaries and memory checks | Off |
 
-Terra is the chosen GPT-style daily model, not a claim of lower cost on every task. GLM remains the measured budget alternative. Sol is manual escalation, and Luna is for bounded work. Helper is not a deep code reviewer. Other specialists remain under Tab → all. Use exact provider/model IDs to select a specific route. If editor autocomplete expands a filter before submission, press Escape before Enter.
+Sol 6.2 medium is the chosen startup model and Think favorite, replacing Sol 6.1 by user choice. Terra high remains the Daily alternative. GLM remains the measured budget alternative, and Luna is for bounded work. Helper is not a deep code reviewer. Other specialists remain under Tab → all. Use exact provider/model IDs to select a specific route. If editor autocomplete expands a filter before submission, press Escape before Enter.
 
 Grove owns router display names through its `overlay.json`. Bedrock and Vertex names use `modelOverrides` entries. The Sol global Bedrock profile can route requests worldwide. Check data residency rules before using it for work. Keep canonical IDs in settings and worker config. Direct Bedrock Sonnet remains a manual independent reviewer, not an automatic extra call. See [model value checks](docs/pi-model-value.md) for matched costs, acceptance checks, and limits.
 

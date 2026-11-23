@@ -28,9 +28,10 @@ const scope=[
  'ai-model-router/GLM 5.3 Flash',
 ];
 assert.equal(settings.defaultProvider,'ai-model-router');
-assert.equal(settings.defaultModel,'GPT-6.1 Terra');
+assert.equal(settings.defaultModel,'GPT-6.2 Sol');
 // Git intentionally strips the session-wide defaultThinkingLevel. Model pins persist.
-assert(settings.defaultThinkingLevel===undefined||settings.defaultThinkingLevel==='high');
+assert(settings.defaultThinkingLevel===undefined||settings.defaultThinkingLevel==='medium');
+assert.equal(settings.modelThinkingLevels[settings.defaultProvider+'/'+settings.defaultModel],'medium');
 assert.deepEqual(settings.enabledModels,scope);
 assert.equal(new Set(router.models.map(m=>m.id)).size,router.models.length);
 for(const [role,[id,thinking,description]] of Object.entries(roles)){
@@ -41,7 +42,10 @@ for(const [role,[id,thinking,description]] of Object.entries(roles)){
  assert.equal(settings.modelThinkingLevels['ai-model-router/'+id],thinking);
 }
 assert.equal(models.providers['ai-model-router'].models.find(m=>m.id==='GPT-6.2 Sol').name,'Think | Hard problems and advice');
+assert.equal(router.models.filter(m=>m.name?.startsWith('Think | ')).length,1,'Ambiguous Think');
 assert.equal(settings.modelThinkingLevels['ai-model-router/GPT-6.2 Sol'],'medium');
+assert.equal(router.models.find(m=>m.id==='GPT-6.1 Sol').name,'GPT-6.1 Sol');
+assert(!settings.enabledModels.includes('ai-model-router/GPT-6.1 Sol'),'Sol 6.1 stays outside favorites');
 assert.equal(models.providers['google-vertex'].modelOverrides['gemini-4-argon'].name,'Vision | Images, scans and floorplans');
 assert.equal(settings.modelThinkingLevels['google-vertex/gemini-4-argon'],'high');
 assert(router.models.some(m=>m.id==='Kimi K3'),'All-model catalog must preserve Kimi');
@@ -52,7 +56,6 @@ const runtimeDir=path.join(managed,'releases',fs.readFileSync(path.join(managed,
 const {resolveModelScopeFromModels}=await import(path.join(runtimeDir,'dist/core/model-resolver.js'));
 const available=[
  ...router.models.map(model=>({...model,provider:'ai-model-router'})),
- {provider:'ai-model-router',id:'GPT-6.2 Sol',name:models.providers['ai-model-router'].models.find(m=>m.id==='GPT-6.2 Sol').name},
  {provider:'google-vertex',id:'gemini-4-argon',name:models.providers['google-vertex'].modelOverrides['gemini-4-argon'].name},
 ];
 const resolved=resolveModelScopeFromModels(settings.enabledModels,available);
@@ -94,4 +97,4 @@ for(const role of ['observer','reflector','dropper']){
  assert.equal(blackhole[role+'Model'].id,'DeepSeek V4 Flash');
  assert.equal(blackhole[role+'FallbackModels'][0].id,'GLM 5.3 Flash');
 }
-console.log('PASS seven-model scope, Terra default, short roles, effort levels, helper availability and unchanged Blackhole routing');
+console.log('PASS seven-model scope, Sol 6.2 medium default, short roles, effort levels, helper availability and unchanged Blackhole routing');

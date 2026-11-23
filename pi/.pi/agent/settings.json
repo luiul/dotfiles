@@ -1,6 +1,6 @@
 {
   "defaultProvider": "ai-model-router",
-  "defaultModel": "GPT-6.1 Terra",
+  "defaultModel": "GPT-6.2 Sol",
   "enabledModels": [
     "ai-model-router/GPT-6.1 Terra",
     "ai-model-router/Kimi K3.1 Pro",

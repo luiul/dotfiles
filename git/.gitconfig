@@ -5,6 +5,7 @@
 	excludesfile = /Users/luis.aceituno/.gitignore_global
 	editor = code --wait
 	pager = delta
+	hooksPath = /Users/luis.aceituno/.global-git-hooks
 [interactive]
 	diffFilter = delta --color-only
 [delta]

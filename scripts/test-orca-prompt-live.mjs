@@ -65,6 +65,9 @@ try {
     '/orca Discover the owning repo; do not edit files',
     '/orca Plan only for https://hellofresh.atlassian.net/browse/GLOA-123',
     '/orca Implement approved scope; leave changes unstaged',
+    '/orca Research options and plan a migration, then wait. Do not implement.',
+    '/orca Review and verify the approved diff; do not publish.',
+    '/orca Audit this component, summarize the evidence, and prepare a handoff.',
     '/orca "First alert\nUSER_ACCESS_DISABLED\nCluster: example"',
     '/orca',
   ];
@@ -79,8 +82,10 @@ try {
     const expected = expandPromptTemplate(inputs[i], templates.templates);
     assert.equal(list.filter(e => e.type === 'expanded').at(-1).prompt, expected);
     assert.equal(list.filter(e => e.type === 'model-call').at(-1).prompt, expected);
+    assert(expected.includes('Ending your turn is not finishing the workflow'), 'Lifecycle guidance must reach the provider');
+    assert(expected.includes('Coordination: run <id>; task <id>; dispatch <id>; workspace <path>'), 'Recovery reference must reach the provider');
     assert.equal(list.filter(e => e.type === 'model-call').length, i + 1);
-    console.log('PASS real TUI input, template expansion and provider delivery: ' + ['discovery', 'planning', 'implementation', 'multiline evidence', 'empty request'][i]);
+    console.log('PASS real TUI input, template expansion and provider delivery: ' + ['discovery', 'planning', 'implementation', 'research and plan stop', 'review and verify', 'specialized audit and handoff', 'multiline evidence', 'empty request'][i]);
   }
   driver.text(host, '/reload'); driver.key(host, 'enter');
   await wait(host, (_screen, list) => list.filter(e => e.type === 'ready').length === 2, 'reload');

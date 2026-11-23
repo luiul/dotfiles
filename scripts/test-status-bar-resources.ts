@@ -943,11 +943,15 @@ for (const identity of ["/repo/one\n/repo/one/.git\n/repo/one/.git\n", "/repo/li
 	const h = harness(code);
 	const state = h.context();
 	await h.fire("session_start", state);
-	for (const [label, compact] of [["Safe to close (reported)", "Close: yes*"], ["Not safe to close", "Close: no"], ["Close status unknown", "Close: ?"]]) {
-		state.statuses.set("close-status", label);
+	for (const [label, compact] of [["SAFE TO CLOSE", "CLOSE: YES"], ["KEEP OPEN", "KEEP OPEN"], ["NOT CHECKED", "CLOSE: ?"], ["WORKING", "WORKING"]]) {
+		state.statuses.set("close-status", state.theme.bold(state.theme.fg("success", label)));
 		check(`closing runtime slot preserves ${label} at narrow widths`, () => {
 			for (const width of [36, 44, 60, 79, 80, 120, 160]) {
-				const rows = state.footer.render(width).map(strip);
+				const rawRows = state.footer.render(width);
+				const rows = rawRows.map(strip);
+				const displayed = rows[0].includes(label) ? label : compact;
+				const role = label === "SAFE TO CLOSE" ? "success" : label === "KEEP OPEN" ? "warning" : label === "WORKING" ? "accent" : "muted";
+				assertStyle(rawRows[0], displayed, role, true);
 				assert.ok(rows[0].includes(label) || rows[0].includes(compact), `${width}: ${rows[0]}`);
 				assert.ok(rows.at(-1).includes(state.ctx.sessionManager.getSessionId()));
 				assert.ok(!rows.at(-1).includes(label));
@@ -959,7 +963,7 @@ for (const identity of ["/repo/one\n/repo/one/.git\n/repo/one/.git\n", "/repo/li
 	check("working timer overrides stale closing state", () => {
 		const rows = state.footer.render(120).map(strip);
 		assert.ok(rows[0].includes("working 0s"));
-		assert.ok(!rows.join("\n").includes("Close status unknown"));
+		assert.ok(!rows.join("\n").includes("WORKING"));
 	});
 	await h.fire("session_shutdown", state);
 }

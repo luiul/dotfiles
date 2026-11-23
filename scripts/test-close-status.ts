@@ -1,6 +1,9 @@
 // Run: bun scripts/test-close-status.ts. No processes, timers, files, or model requests.
 import assert from "node:assert/strict";
-import closeStatus, { CLOSE_GUIDANCE, parseCloseReport, restoreCloseReport } from "../pi/.pi/agent/extensions/close-status";
+import closeStatus, { CLOSE_GUIDANCE, formatCloseReport, parseCloseReport, restoreCloseReport } from "../pi/.pi/agent/extensions/close-status";
+
+import { getMarkdownTheme, initTheme } from "@earendil-works/pi-coding-agent";
+import { Markdown } from "@earendil-works/pi-tui";
 
 let checks = 0;
 function check(name: string, fn: () => void) { fn(); checks++; console.log(`ok ${name}`); }
@@ -34,20 +37,23 @@ function harness(mode = "tui", hasUI = true) {
 		ui: { setStatus: (key: string, value?: string) => value === undefined ? statuses.delete(key) : statuses.set(key, value), notify() {},
 			custom: async (factory: Function) => { customCalls++; const body = factory({ terminal: { rows: 32 }, requestRender() {} }, { fg: (_: string, text: string) => text }, { matches: () => false }, () => {}); assert.ok(body.render(50).every((line: string) => line.length <= 50)); } },
 		sessionManager: { getBranch: () => { scans++; return branch; }, getEntry: (id: string) => branch.find(e => e.id === id), getLeafEntry: () => branch.at(-1) } };
+	let transformer: ((markdown: string, context: any) => string) | undefined;
+	let transformerOptions: any;
 	closeStatus({ on: (name: string, handler: Function) => handlers.set(name, handler), registerCommand: (name: string, def: any) => commands.set(name, def),
+		registerMarkdownTransformer: (fn: typeof transformer, options: any) => { transformer = fn; transformerOptions = options; },
 		appendEntry: (customType: string, data: any) => { writes++; branch.push({ type: "custom", customType, data, id: `c${++serial}`, parentId: branch.at(-1)?.id ?? null }); } } as any);
 	const fire = async (name: string, event: any = {}) => handlers.get(name)?.(event, ctx);
 	const start = async () => { idle = false; await fire("before_agent_start", { systemPromptOptions: { sections: {} } }); await fire("agent_start"); };
 	const end = async (message = assistant(), aborted = false) => { const record = entry(message, `a${++serial}`, branch.at(-1)?.id ?? null); branch.push(record); await fire("agent_end", { messages: [message] }); idle = true; await fire("agent_settled", { aborted }); };
-	return { fire, start, end, ctx, branch, statuses, handlers, commands, get scans() { return scans; }, get writes() { return writes; }, get customCalls() { return customCalls; }, set pending(value: boolean) { pending = value; } };
+	return { fire, start, end, ctx, branch, statuses, handlers, commands, get transformer() { return transformer!; }, get transformerOptions() { return transformerOptions; }, get scans() { return scans; }, get writes() { return writes; }, get customCalls() { return customCalls; }, set pending(value: boolean) { pending = value; } };
 }
 const h = harness();
 await h.fire("session_start");
-check("new session unknown and no persisted write", () => { assert.equal(h.statuses.get("close-status"), "Close status unknown"); assert.equal(h.writes, 0); });
+check("new session unknown and no persisted write", () => { assert.equal(h.statuses.get("close-status"), "NOT CHECKED"); assert.equal(h.writes, 0); });
 await h.start();
-check("working clears closing label", () => assert.equal(h.statuses.size, 0));
+check("working replaces closing label", () => assert.equal(h.statuses.get("close-status"), "WORKING"));
 await h.end();
-check("settled yes uses metadata, not a model message", () => { assert.equal(h.statuses.get("close-status"), "Safe to close (reported)"); assert.equal(h.writes, 1); assert.equal(h.scans, 1); assert.equal(h.branch.at(-1).type, "custom"); });
+check("settled yes uses metadata, not a model message", () => { assert.equal(h.statuses.get("close-status"), "SAFE TO CLOSE"); assert.equal(h.writes, 1); assert.equal(h.scans, 1); assert.equal(h.branch.at(-1).type, "custom"); });
 check("no actionable boundaries or stream hooks", () => { assert(!h.handlers.has("turn_end")); assert(!h.handlers.has("agent_before_settle")); assert(!h.handlers.has("message_update")); });
 await h.commands.get("close-status").handler("", h.ctx);
 check("command opens local report with no write or branch scan", () => { assert.equal(h.customCalls, 1); assert.equal(h.writes, 1); assert.equal(h.scans, 1); });
@@ -67,33 +73,33 @@ check("compaction retains raw branch report", () => assert.equal(restoreCloseRep
 for (const type of ["custom_message", "branch_summary", "context_edit"]) check(`${type} invalidates`, () => assert.equal(restoreCloseReport([...validBranch, { type, id: "new" }]), undefined));
 check("malformed saved data fails closed", () => assert.equal(restoreCloseReport([...validBranch, { type: "custom", customType: "dotfiles.close-status", data: { version: 2, at: 100, report: { safe_to_close: "yes" }, sourceId: "a1" } }]), undefined));
 await h.fire("user_bash");
-check("idle bang command invalidates cached yes without persistence", () => { assert.equal(h.statuses.get("close-status"), "Close status unknown"); assert.equal(h.writes, 1); });
+check("idle bang command invalidates cached yes without persistence", () => { assert.equal(h.statuses.get("close-status"), "NOT CHECKED"); assert.equal(h.writes, 1); });
 await h.fire("before_agent_start", { systemPromptOptions: { sections: {} } });
 await h.commands.get("close-status").handler("", h.ctx);
-check("failed preparation never sticks at working", () => assert.equal(h.statuses.get("close-status"), "Close status unknown"));
+check("failed preparation never sticks at working", () => assert.equal(h.statuses.get("close-status"), "NOT CHECKED"));
 await h.fire("input");
-check("new input invalidates cached yes", () => assert.equal(h.statuses.get("close-status"), "Close status unknown"));
+check("new input invalidates cached yes", () => assert.equal(h.statuses.get("close-status"), "NOT CHECKED"));
 for (const stop of ["error", "aborted", "length", "pending", "toolUse", "deferred"]) {
 	await h.start(); await h.end(assistant(suffix(), stop));
-	check(`${stop} cannot produce green`, () => assert.equal(h.statuses.get("close-status"), "Close status unknown"));
+	check(`${stop} cannot produce green`, () => assert.equal(h.statuses.get("close-status"), "NOT CHECKED"));
 }
 await h.start(); await h.end(assistant(), true);
-check("settlement abort rejects valid-looking yes", () => assert.equal(h.statuses.get("close-status"), "Close status unknown"));
+check("settlement abort rejects valid-looking yes", () => assert.equal(h.statuses.get("close-status"), "NOT CHECKED"));
 await h.start(); await h.end(assistant("No fields."));
-check("missing fields unknown", () => assert.equal(h.statuses.get("close-status"), "Close status unknown"));
+check("missing fields unknown", () => assert.equal(h.statuses.get("close-status"), "NOT CHECKED"));
 await h.start(); await h.end(assistant(suffix("no", "Awaiting review.", "Review the diff.")));
-check("no label", () => assert.equal(h.statuses.get("close-status"), "Not safe to close"));
+check("no label", () => assert.equal(h.statuses.get("close-status"), "KEEP OPEN"));
 await h.start(); h.pending = true; await h.end(); h.pending = false;
-check("pending follow-up cannot expose yes", () => assert.equal(h.statuses.get("close-status"), "Close status unknown"));
+check("pending follow-up cannot expose yes", () => assert.equal(h.statuses.get("close-status"), "NOT CHECKED"));
 await h.start();
 const intermediate = assistant(); h.branch.push(entry(intermediate, "intermediate"));
 await h.fire("agent_end", { messages: [intermediate] });
-check("agent_end is not final display boundary", () => assert.equal(h.statuses.size, 0));
+check("agent_end is not final display boundary", () => assert.equal(h.statuses.get("close-status"), "WORKING"));
 await h.fire("agent_start"); await h.end(assistant(suffix("no", "Follow-up needs an answer.", "Answer.")));
-check("retry/follow-up latest report wins", () => assert.equal(h.statuses.get("close-status"), "Not safe to close"));
+check("retry/follow-up latest report wins", () => assert.equal(h.statuses.get("close-status"), "KEEP OPEN"));
 await h.start(); const replaced = assistant(); h.branch.push(entry(replaced, "replaced")); await h.fire("agent_end", { messages: [replaced] });
 h.branch.push({ type: "context_edit", id: "edit", parentId: "replaced" }); await h.fire("agent_settled", { aborted: false });
-check("boundary context edit invalidates candidate", () => assert.equal(h.statuses.get("close-status"), "Close status unknown"));
+check("boundary context edit invalidates candidate", () => assert.equal(h.statuses.get("close-status"), "NOT CHECKED"));
 await h.fire("session_shutdown");
 check("shutdown clears only its status", () => assert.equal(h.statuses.size, 0));
 for (const [mode, ui] of [["print", false], ["json", false], ["rpc", true], ["tui", false]] as const) {
@@ -104,5 +110,51 @@ check("published work awaiting live main sync is not done", () => {
 	assert(CLOSE_GUIDANCE.includes("Published work is not done if the required live main checkout has not been synced to the published commit."));
 	assert(CLOSE_GUIDANCE.includes("When required sync is pending, report no unless the user explicitly defers it or requests remote-only publication."));
 });
-check("static guidance and no dynamic model-tool schema", () => { assert(CLOSE_GUIDANCE.includes("Explicit preserved deferrals/handoffs")); assert(CLOSE_GUIDANCE.length < 1000); });
+check("static guidance and no dynamic model-tool schema", () => { assert(CLOSE_GUIDANCE.includes("Explicit preserved deferrals/handoffs")); assert(CLOSE_GUIDANCE.length < 1200); });
+check("legacy heading without blank line matches screenshot", () => {
+	const text = `Test received.\n\n**SAFE TO CLOSE (reported)**\n${suffix()}`;
+	assert.equal(parseCloseReport(text)?.safe_to_close, "yes");
+	const rendered = formatCloseReport(text);
+	assert.match(rendered, /\*\*Reported: Safe to close\*\*/);
+	assert.doesNotMatch(rendered, /safe_to_close:|next_action:|close_reason:/);
+	assert.equal(formatCloseReport(`> ${text.replaceAll("\n", "\n> ")}`), `> ${text.replaceAll("\n", "\n> ")}`);
+});
+for (const [value, label] of [["yes", "Safe to close (reported)"], ["no", "Keep open"], ["unknown", "Not checked"]]) {
+	check(`display ${value} hides machine fields and keeps a neutral reported verdict`, () => {
+		const rendered = formatCloseReport(suffix(value, "Plain reason.", value === "no" ? "Review [the diff]." : "none"));
+		assert(rendered.includes(`**Reported: ${label.replace(" (reported)", "")}**`));
+		assert.doesNotMatch(rendered, /safe_to_close:|close_reason:|next_action:/);
+		assert.equal(rendered.includes("**Next:**"), value === "no");
+	});
+	check(`legacy ${value} heading needs blank separation from prior prose`, () => {
+		assert.equal(parseCloseReport(`> Example\n**${label}**\n${suffix(value)}`), undefined);
+		assert.equal(parseCloseReport(`\n**${label}**\n${suffix(value)}`)?.safe_to_close, value);
+	});
+}
+check("mismatched legacy heading fails closed", () => assert.equal(parseCloseReport(`**Keep open**\n${suffix()}`), undefined));
+check("stream bypass and assistant-only scope", () => {
+	assert.deepEqual(h.transformerOptions, { messageTypes: ["assistant"] });
+	assert.equal(h.transformer(suffix(), { isStreaming: true }), suffix());
+	assert.doesNotMatch(h.transformer(suffix(), { isStreaming: false }), /safe_to_close:/);
+});
+check("display formatter preserves examples and literal values in native Markdown", () => {
+	assert.equal(formatCloseReport("Normal reply."), "Normal reply.");
+	for (const text of invalid) assert.equal(formatCloseReport(text), text);
+	initTheme("dark");
+	const theme = getMarkdownTheme();
+	const strip = (text: string) => text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+	for (const value of ["Review [the diff].", "Review (path).", "A [x] B", "http://example.com", "$x^2$", "Use `diff` and **bold**.", "![image](url)", "\\[x\\]", "<img> & text", "# heading"]) {
+		const raw = suffix("no", value, value);
+		const rendered = new Markdown(formatCloseReport(raw), 0, 0, theme).render(120).map(strip).join("\n");
+		assert(rendered.includes(value), rendered);
+		assert(rendered.includes("Next:"), rendered);
+	}
+});
+check("heading removal preserves inline and quoted prose", () => {
+	for (const prefix of ["A quoted label is **Safe to close (reported)**", "> **Safe to close (reported)**"]) assert(formatCloseReport(`${prefix}\n\n${suffix()}`).startsWith(prefix));
+});
+check("HTML examples fail closed, closed examples permit a real report", () => {
+	for (const start of ["<!-- example", "<pre>", "<script>", "<div>", '<pre\nclass="example">', '<script\ntype="text/plain">', '<div\nclass="example">']) assert.equal(parseCloseReport(`${start}\n\n${suffix()}`), undefined);
+	for (const example of [`<!--\n${suffix()}\n-->`, `<pre>\n${suffix()}\n</pre>`]) assert.equal(parseCloseReport(`${example}\n\n${suffix("no")}`)?.safe_to_close, "no");
+});
 console.log(`${checks} close-status checks passed`);

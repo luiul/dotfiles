@@ -468,13 +468,13 @@ export default function (pi: ExtensionAPI) {
 					];
 					const statuses = footerData.getExtensionStatuses?.();
 					// Closing safety shares the runtime slot. It is a report, never Git-derived proof.
-					const closing = statusText(statuses?.get("close-status") ?? "");
-					const closeColor = closing === "Safe to close (reported)" ? "success" : closing === "Not safe to close" ? "warning" : "muted";
-					const compactClose = closing === "Safe to close (reported)" ? "Close: yes*" : closing === "Not safe to close" ? "Close: no" : "Close: ?";
+					const closing = plain(statuses?.get("close-status") ?? "");
+					const closeColor = closing === "SAFE TO CLOSE" ? "success" : closing === "KEEP OPEN" ? "warning" : closing === "WORKING" ? "accent" : "muted";
+					const compactClose = closing === "SAFE TO CLOSE" ? "CLOSE: YES" : closing === "NOT CHECKED" ? "CLOSE: ?" : closing;
 					const runtime: FooterSegment = turnStartedAt != null
 						? { text: workingTag(), priority: 0, required: true }
-						: { text: closing ? theme.fg(closeColor, closing) : "", priority: 0, required: true, minWidth: 12,
-							render: size => theme.fg(closeColor, truncateToWidth(compactClose, size, "…")) };
+						: { text: closing ? theme.bold(theme.fg(closeColor, width < 60 ? compactClose : closing)) : "", priority: 0, required: true, minWidth: visibleWidth(compactClose),
+							render: size => theme.bold(theme.fg(closeColor, truncateToWidth(compactClose, size, "…"))) };
 					const gitStatus: FooterSegment[] = [
 						{ text: git.dirty > 0 ? label("changed", String(git.dirty), "warning") : "", priority: 3 },
 						{ text: git.ahead > 0 ? label("ahead", String(git.ahead)) : "", priority: 4 },

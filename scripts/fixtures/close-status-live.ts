@@ -39,6 +39,7 @@ export default function fixture(pi: ExtensionAPI) {
 					const value = /^(no|approval|publication|background)$/.test(prompt) || prompt.includes("pending review") || prompt === "continue" && continueOnce ? "no" : "yes";
 					const reason = value === "no" ? "Review and publication approval remain." : "Research delivered or work explicitly deferred.";
 					let text = `CLOSE_REPLY_${calls}\n\nsafe_to_close: ${value}\nclose_reason: ${reason}\nnext_action: ${value === "no" ? "Review the diff." : "none"}`;
+					if (prompt === "legacy-heading") text = `Test received.\n\n**SAFE TO CLOSE (reported)**\n${text.split("\n\n").at(-1)}`;
 					if (prompt === "missing") text = "CLOSE_MISSING_FIELDS";
 					if (prompt === "quoted") text = `\`\`\`text\n${text}\n\`\`\``;
 					message.content.push({ type: "text", text: "" });

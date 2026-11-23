@@ -7,7 +7,7 @@ export const CLOSE_STATUS_KEY = "close-status";
 const ENTRY_TYPE = "dotfiles.close-status";
 const MAX_VALUE = 240;
 // This stable section adds no per-run state and does not replace the cached system prompt.
-export const CLOSE_GUIDANCE = `End each final reply with a blank line followed by these three plain lines, in this order, outside quotes or code fences:
+export const CLOSE_GUIDANCE = `End each final reply with a blank line followed by these three plain lines, in this order, outside quotes or code fences. Do not add a separate verdict heading. Pi formats these fields for display:
 safe_to_close: yes|no|unknown
 close_reason: <one short line>
 next_action: <one short line, or none>
@@ -32,14 +32,31 @@ const cleanValue = (value: unknown): value is string => typeof value === "string
 /** Exact suffix only. Markdown examples are not reports, even with an unclosed fence. */
 export function parseCloseReport(text: string): CloseReport | undefined {
 	const lines = text.replace(/\r\n/g, "\n").replace(/\n+$/, "").split("\n");
-	if (lines.length < 3 || lines.length > 3 && lines.at(-4)?.trim() !== "") return;
+	if (lines.length < 3) return;
 	const suffix = lines.slice(-3);
 	const match = /^safe_to_close: (yes|no|unknown)$/.exec(suffix[0]);
 	if (!match || !suffix[1].startsWith("close_reason: ") || !suffix[2].startsWith("next_action: ")) return;
+	const heading = match[1] === "yes" ? "Safe to close (reported)" : match[1] === "no" ? "Keep open" : "Not checked";
+	const prior = lines.at(-4);
+	if (prior?.trim() && !(prior.toLowerCase() === `**${heading.toLowerCase()}**` && !lines.at(-5)?.trim())) return;
 	const reason = suffix[1].slice(14), action = suffix[2].slice(13);
 	if (!cleanValue(reason) || !cleanValue(action)) return;
 	let fence: { char: string; length: number } | undefined;
+	let htmlEnd: RegExp | undefined;
 	for (const line of lines.slice(0, -3)) {
+		// Raw HTML examples can hide valid-looking fields from the native Markdown renderer.
+		if (!fence && !htmlEnd) {
+			if (/<!--/.test(line)) htmlEnd = /-->/;
+			else {
+				const rawTag = /^ {0,3}<(pre|script|style|textarea)(?:\s|>|$)/i.exec(line);
+				if (rawTag) htmlEnd = new RegExp(`</${rawTag[1]}\\s*>`, "i");
+				else if (/^ {0,3}<(?:[A-Za-z][\w-]*(?:\s|\/?>|$)|[!?])/.test(line)) return;
+			}
+		}
+		if (htmlEnd) {
+			if (htmlEnd.test(line)) htmlEnd = undefined;
+			continue;
+		}
 		// Duplicate plain fields make the report ambiguous. Quoted/fenced examples stay examples.
 		if (!fence && /^(?:safe_to_close|close_reason|next_action):/.test(line)) return;
 		const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
@@ -47,7 +64,7 @@ export function parseCloseReport(text: string): CloseReport | undefined {
 		if (!fence) fence = { char: marker[1][0], length: marker[1].length };
 		else if (marker[1][0] === fence.char && marker[1].length >= fence.length && !marker[2].trim()) fence = undefined;
 	}
-	if (fence) return;
+	if (fence || htmlEnd) return;
 	return { safe_to_close: match[1] as CloseReport["safe_to_close"], close_reason: reason, next_action: action };
 }
 const cleanSource = (text: string) => text.replace(/[\x00-\x1f\x7f-\x9f\u2028\u2029]/g, "");
@@ -85,7 +102,31 @@ export function restoreCloseReport(branch: SessionEntry[]): SavedReport | undefi
 	return saved;
 }
 
+/** Display only. The native renderer keeps the original fields in the session and model context. */
+export function formatCloseReport(markdown: string): string {
+	if (!markdown.slice(-600).includes("\nnext_action: ")) return markdown;
+	const report = parseCloseReport(markdown);
+	if (!report) return markdown;
+	const labels = { yes: "Safe to close", no: "Keep open", unknown: "Not checked" };
+	const label = labels[report.safe_to_close];
+	const body = markdown.trimEnd().split("\n").slice(0, -3).join("\n").trimEnd();
+	const previousHeading = `**${label}${report.safe_to_close === "yes" ? " (reported)" : ""}**`;
+	const bodyLines = body.split("\n");
+	const standalone = bodyLines.at(-1)?.toLowerCase() === previousHeading.toLowerCase() && !bodyLines.at(-2)?.trim();
+	const prefix = standalone ? bodyLines.slice(0, -1).join("\n").trimEnd() : body;
+	// Native LaTeX uses \\( and \\[ delimiters. Code spans preserve syntax-heavy values literally.
+	const literal = (value: string) => {
+		if (!/[\\`*_[\]<>$|]/.test(value) && !/^(?:#{1,6}\s|[-+]\s|\d+[.)]\s)/.test(value)) return value;
+		const fence = "`".repeat(Math.max(0, ...Array.from(value.matchAll(/`+/g), match => match[0].length)) + 1);
+		return `${fence} ${value} ${fence}`;
+	};
+	const next = report.next_action === "none" ? "" : `\n\n**Next:** ${literal(report.next_action)}`;
+	return `${prefix ? `${prefix}\n\n` : ""}**Reported: ${label}**\n\n${literal(report.close_reason)}${next}`;
+}
+
 export default function closeStatus(pi: ExtensionAPI) {
+	// Streaming is an O(1) bypass. Transcript verdicts stay neutral because message_end precedes settlement.
+	pi.registerMarkdownTransformer((markdown, { isStreaming }) => isStreaming ? markdown : formatCloseReport(markdown), { messageTypes: ["assistant"] });
 	let saved: SavedReport | undefined;
 	let candidate: { message: AssistantMessage; id: string } | undefined;
 	let working = false;
@@ -93,7 +134,10 @@ export default function closeStatus(pi: ExtensionAPI) {
 	const display = (ctx: ExtensionContext) => {
 		if (!terminal(ctx)) return;
 		const state = saved?.report?.safe_to_close ?? "unknown";
-		ctx.ui.setStatus(CLOSE_STATUS_KEY, working ? undefined : state === "yes" ? "Safe to close (reported)" : state === "no" ? "Not safe to close" : "Close status unknown");
+		const label = working ? "WORKING" : state === "yes" ? "SAFE TO CLOSE" : state === "no" ? "KEEP OPEN" : "NOT CHECKED";
+		const color = working ? "accent" : state === "yes" ? "success" : state === "no" ? "warning" : "muted";
+		const theme = ctx.ui.theme;
+		ctx.ui.setStatus(CLOSE_STATUS_KEY, theme ? theme.bold(theme.fg(color, label)) : label);
 	};
 	const restore = (ctx: ExtensionContext) => {
 		if (!terminal(ctx)) return;

@@ -43,15 +43,11 @@ Before deleting a disposable registered repo, close its terminal tabs with `orca
 
 ## Coordinate a task with `/orca`
 
-Start from a manual shell with `cop orca [repo] -b <branch>`, then give the Pi session `/orca <task>`. Coppice owns watching, wt setup, and safe Pi launch or reuse. The prompt makes that Pi session the coordinator. It brings Orca worker results back to the same chat rather than launching a second coordinator.
+Use plain chat unless you need separate Orca workers. `/orca <task>` makes the current Pi session the coordinator and brings worker results back to that chat. See [Project homes and worktrees](../README.md#project-homes-and-worktrees) for where to start.
 
-When ownership is unknown, use the research repo for the coordinator:
+For HelloFresh investigations or work across repos, open the existing HelloFresh Home checkout at `~/projects/hellofresh/hf-home` in Orca. Keep the coordinator there even when the target repos are known. Use target worktrees for changes and follow Home's README for session recovery.
 
-```sh
-cop orca ~/projects/hellofresh/research -b investigate-writeback
-```
-
-Then ask for the outcome:
+Ask for the outcome and say where to stop:
 
 ```text
 /orca Investigate these alerts, prepare approved Jira intake, and coordinate the appropriate fix: [paste alerts]
@@ -75,7 +71,7 @@ It uses the installed [Orca orchestration guide](https://github.com/stablyai/orc
 
 Workers use verified existing Orca workspaces. Additional checkouts belong to wt or `cop new`, not Orca's native worktree flow. The coordinator must verify setup before dispatch. Agents do not call the interactive `cop orca` entry point. A Run tracks tasks and mail; the coordinator still dispatches ready tasks and handles worker reports. It ends its turn to let Orca wake it rather than polling.
 
-HelloFresh ticket creation stays in a fresh Pi session at exactly `~/projects/hellofresh`, with trusted central settings and memory workers disabled. Intake uses `create-hellofresh-ticket` and Harvest, not native Orca Jira writes. The coordinator delegates that stage only when the exact folder workspace and fresh launch can be verified. Otherwise it returns a manual intake handoff and pauses ticket-dependent work. The fixing session is separate and starts in the confirmed repo after ticket and plan approval.
+HelloFresh ticket intake follows `~/projects/hellofresh/AGENTS.md` and the [ticket intake skill](https://github.com/luiul/pi-skills). The [`/orca` prompt](../pi/.pi/agent/prompts/orca.md#approval-and-tracker-boundaries) defines when the coordinator can delegate intake and when it must stop for a manual handoff.
 
 The command is a Markdown prompt template in `pi/.pi/agent/prompts/orca.md`, like `/proofread`. It guides the agent but does not enforce a permission or security boundary. It does not enable orchestration, change Orca settings, or run a service. If Orca is unavailable or orchestration is disabled, the agent reports the blocker instead of using Pi subagents as a hidden fallback. Run `/reload` in an existing Pi session after deployment.
 
@@ -122,10 +118,10 @@ Discover maps the actual environment. Research compares evidence and options. De
 
 ### Copyable examples
 
-Each line is a request, not an enforced mode switch. Use the same command for any repo after the manual `cop orca` entry point.
+Each line is a request, not an enforced mode switch. Use the same command from Home or a target repo's Pi session.
 
 ```text
-/orca Discover the repos and owners for this export. Read-only. Return the evidence and gaps.
+/orca Find the repos that define and consume this export. Read-only. Return the evidence and gaps.
 /orca Research these two options using official sources. Compare them against our constraints and recommend one.
 /orca Diagnose these alerts. Do not rerun jobs or change accounts. Stop with checked evidence and recovery options.
 /orca Design the retry behavior. Preserve the existing consumer contract and compare rollback options. No edits.
@@ -145,7 +141,7 @@ Each line is a request, not an enforced mode switch. Use the same command for an
 For several stages, name both the outcome and the stop point:
 
 ```text
-/orca Discover ownership and plan the correction, then wait. Do not implement or create a ticket yet.
+/orca Find where the correction belongs and plan it, then wait. Do not implement or create a ticket yet.
 /orca Review and fix the issues within the approved scope, then verify. Leave the changes unstaged for my review.
 /orca Diagnose, prepare approved central Jira intake, then coordinate the approved fix. Pause at the existing approval gates.
 ```

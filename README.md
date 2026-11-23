@@ -17,6 +17,23 @@ The script is idempotent and prompts before each step. It will:
 5. Generate an ed25519 SSH key (if missing) and add it to the macOS Keychain
 6. Clean stale `.zwc` files, configure git hooks, and create `.env` from `example.env`
 
+## Project homes and worktrees
+
+A project home is a Pi workspace for investigating issues, locating code or config, and coordinating work across repos. Keep coordination in Home even when all the target repos are known. Make approved changes in each target repo's worktree. Open the existing Home checkout in Orca: `~/projects/personal/personal-home` for personal work or `~/projects/hellofresh/hf-home` for HelloFresh work. Each Home keeps its own repo catalog and session recovery steps. HelloFresh Home replaces the old `research` repo for new investigations.
+
+![Where HelloFresh work starts, which instructions apply, and how Coppice, Worktrunk, Orca, and Pi fit together](docs/diagrams/project-homes.drawio.svg)
+
+| Need | Start here |
+| --- | --- |
+| Investigate or locate code or config | Ask Pi in Home. For an existing ticket, `jira-worktree <key>` offers `investigate`, which copies a prompt for Home without creating a worktree. |
+| Plan or coordinate work across repos | Stay in Home, even if you know which repos are involved. Use plain chat by default. Use [`/orca <task>`](orca/README.md#coordinate-a-task-with-orca) when you need separate workers that report back to this Pi session. |
+| Create a HelloFresh Jira ticket | Start a fresh Pi session at `~/projects/hellofresh`. Use `/skill:create-hellofresh-ticket`, not Home. |
+| Implement in a target repo | From a shell, `cop orca <repo> -b <branch>` sets up or reuses the checkout and opens Pi in Orca. Use the required ticket branch for HelloFresh work. |
+
+**Which rules apply.** [Global Pi instructions](pi/.pi/agent/AGENTS.md) set defaults. `~/projects/hellofresh/AGENTS.md` adds work rules and approval gates. Home instructions apply in Home. The target repo's instructions add local rules for implementation without relaxing work approval or privacy rules. [`/orca`](pi/.pi/agent/prompts/orca.md) adds coordination steps, not authority.
+
+**Which tool owns what.** [Coppice](https://github.com/luiul/coppice) calls [Worktrunk](https://worktrunk.dev) for worktree setup. `cop orca` also opens Pi in Orca. `cop new` does not. Worktrunk owns worktree creation and removal. [Orca](orca/README.md) opens and tracks workspaces and workers, but does not create or remove Worktrunk worktrees. Pi reads instructions and does the work. See [worktree setup and inherited instructions](docs/dev-setup-overview.md#setup-hooks) for how linked checkouts work.
+
 ## Stow Packages
 
 Each top-level directory is a stow package that mirrors `$HOME`:

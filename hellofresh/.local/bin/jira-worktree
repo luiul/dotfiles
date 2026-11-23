@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Create or reuse a coppice worktree for a Jira ticket without opening an editor.
-# Copy a plan-only pi prompt for the ticket to the clipboard.
+# Route a Jira ticket to HelloFresh Home or a Coppice worktree.
+# Copy a read-only Pi prompt for the selected route to the clipboard.
 # The user starts pi and pastes the prompt. Cmd+E inside pi opens VS Code when needed.
 #
 # This is a script, not a zsh function, because jira-today's fzf `become`
@@ -43,10 +43,6 @@ REPOS_ROOT="${JIRA_TODAY_REPOS_ROOT:-$HOME/projects/hellofresh}"
 PREFIX="${JIRA_TODAY_BRANCH_PREFIX:-}"
 PROMPT="Read jira ticket $TICKET (description and comments), explore the relevant code in this repo, and write an implementation plan. Do not implement anything yet."
 
-command -v cop >/dev/null || {
-	echo "jira-worktree: cop not on PATH" >&2
-	exit 1
-}
 command -v fzf >/dev/null || {
 	echo "jira-worktree: fzf not on PATH" >&2
 	exit 1
@@ -70,20 +66,9 @@ sanitize() {
 	printf '%s' "$s"
 }
 
-# Immediate subdirs that are git repos (have a .git entry), which naturally
-# excludes non-repo dirs like findings/.
-repos=()
-for d in "$REPOS_ROOT"/*/; do
-	[ -e "$d/.git" ] && repos+=("$(basename "$d")")
-done
-if [ ${#repos[@]} -eq 0 ]; then
-	echo "jira-worktree: no git repos found under $REPOS_ROOT" >&2
-	exit 1
-fi
-
-# Picker lines: existing worktrees for the ticket first (reopen), then one
-# line per repo (new). Tab-separated tag/branch/repo fields so the selection
-# parses back unambiguously. wt sanitizes the branch for the worktree dir
+# Picker lines: existing worktrees first, then Home for investigation, then
+# new worktrees in owning repos. Use tabs to separate the fields.
+# wt sanitizes the branch for the worktree dir
 # name (/ becomes -), so the glob prefix is the sanitized branch prefix;
 # stripping it from a match yields the slug suffix, and the real branch name
 # is $PREFIX$TICKET$suffix.
@@ -102,12 +87,25 @@ for d in "$HOME/worktrees/hellofresh/$dirprefix" "$HOME/worktrees/hellofresh/$di
 		lines+=("reopen"$'\t'"$PREFIX$TICKET$suffix"$'\t'"$repo")
 	done
 done
-for repo in "${repos[@]}"; do
+home_repo="$REPOS_ROOT/hf-home"
+if [ -e "$home_repo/.git" ]; then
+	lines+=("investigate"$'\t'"hf-home")
+fi
+for d in "$REPOS_ROOT"/*/; do
+	[ -e "$d/.git" ] || continue
+	repo=$(basename "$d")
+	case "$repo" in
+		hf-home|research) continue ;;
+	esac
 	lines+=("new"$'\t'"$repo")
 done
+if [ ${#lines[@]} -eq 0 ]; then
+	echo "jira-worktree: no eligible targets under $REPOS_ROOT" >&2
+	exit 1
+fi
 
 # Esc (fzf non-zero) or an empty selection aborts.
-if ! selection=$(printf '%s\n' "${lines[@]}" | fzf --prompt="worktree for $TICKET> " --header='reopen: reuse the existing worktree · new: create one in that repo' --height=40% --layout=reverse --border); then
+if ! selection=$(printf '%s\n' "${lines[@]}" | fzf --prompt="route $TICKET> " --header='investigate: use HelloFresh Home | reopen: reuse a worktree | new: create a worktree' --height=40% --layout=reverse --border); then
 	echo "jira-worktree: aborted" >&2
 	exit 1
 fi
@@ -116,7 +114,19 @@ if [ -z "$selection" ]; then
 	exit 1
 fi
 
-if [ "$(printf '%s' "$selection" | cut -f1)" = reopen ]; then
+route=$(printf '%s' "$selection" | cut -f1)
+if [ "$route" = investigate ]; then
+	printf '%s' "Read Jira ticket $TICKET and investigate from HelloFresh Home. Check which repos define the relevant code or config and which, if any, need changes. Report the evidence and next steps. Do not implement or update the ticket." | pbcopy
+	printf 'jira-worktree: open HelloFresh Home in Orca at %s and paste the copied prompt into Pi. No worktree was created.\n' "$home_repo"
+	exit 0
+fi
+
+command -v cop >/dev/null || {
+	echo "jira-worktree: cop not on PATH" >&2
+	exit 1
+}
+
+if [ "$route" = reopen ]; then
 	BRANCH=$(printf '%s' "$selection" | cut -f2)
 	repo=$(printf '%s' "$selection" | cut -f3)
 else

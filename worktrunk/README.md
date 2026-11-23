@@ -47,6 +47,10 @@ Repair separates clearly identified mixed checkouts while preserving terminal re
 
 Do not close a running terminal to repair its location. Closing a terminal pane ends its process. Before removing a checkout, stop or hand off its worker and preserve its work. Opt-in removal closes verified idle checkout spaces automatically.
 
+## Rex tab cleanup
+
+Run `wt remove` from the worktree's shell in Rex to close that tab after Worktrunk removes the checkout and moves the shell out of it. This uses the Dotfiles Zsh wrapper and applies only to a verified single-pane caller with no shell jobs. Failed removals, tabs already split when checked, other checkouts, and calls outside Rex leave the tab open. If another pane is added during closure, Rex closes only the caller's pane and leaves the new pane open. Worktrunk still owns removal and its safety checks. `command wt remove` bypasses the Zsh wrapper and leaves the tab open.
+
 ## Opt-in Herdr removal
 
 Default `wt remove` and `cop remove` calls do not contact Herdr. They retain the protected-branch check, native Worktrunk removal checks, and empty branch-directory cleanup. They do not inspect Herdr terminals or close Herdr spaces. Before removing a Herdr-used checkout, close its space or enable the Herdr guard explicitly.
@@ -80,6 +84,7 @@ uv run scripts/test-wt-herdr.py
 uv run scripts/test-wt-herdr-handoff-safety.py
 uv run scripts/test-wt-herdr-remove.py
 uv run scripts/test-worktree-no-editor.py
+node scripts/test-wt-rex-remove.mjs
 ```
 
 Source tests and live deployment are separate. Test a source helper by its absolute path before updating the live symlink.

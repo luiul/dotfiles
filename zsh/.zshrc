@@ -306,7 +306,11 @@ if (( $+functions[wt] && ! $+functions[_wt_shell_orig] )); then
   }
   wt() {
     local -i _wt_rc=0
-    local _wt_old_pwd=$PWD
+    local _wt_old_pwd=$PWD _wt_rex_root=
+    if [[ ${1-} == remove && -n ${REX_BLOCK-} && -o interactive && -t 0 && -t 1 && $ZSH_SUBSHELL == 0 ]] &&
+       (( $+functions[_wt_rex_checkout] )); then
+      _wt_rex_root=$(_wt_rex_checkout) || _wt_rex_root=
+    fi
     _wt_shell_orig "$@"
     _wt_rc=$?
     if (( _wt_rc == 0 )) && [[ "$1" == (switch|remove|merge) ]]; then
@@ -319,6 +323,9 @@ if (( $+functions[wt] && ! $+functions[_wt_shell_orig] )); then
           (( $#stale )) && command rm -f -- $stale
         }
       done
+      if [[ -n $_wt_rex_root ]]; then
+        _wt_rex_close_removed_tab "$_wt_rex_root" || print -u2 'Worktree removed, but the Rex tab could not be closed.'
+      fi
       _wt_comp_warm "$PWD"
     fi
     return _wt_rc

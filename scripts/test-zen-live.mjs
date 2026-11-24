@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Streaming TUI checks in private Rex, without model network, clipboard or app access.
- * Passive renderer probes are pinned to the installed managed Pi 1.5.1 package.
- * ZEN_LIVE_PI_CLI=/absolute/1.5.1/package/dist/cli.js selects an explicit matching runtime.
+ * Passive renderer probes are pinned to the verified managed Pi 1.6.0 package.
+ * ZEN_LIVE_PI_CLI=/absolute/1.6.0/package/dist/cli.js selects an explicit matching runtime.
  * ZEN_LIVE_EXTENSION=/absolute/baseline.ts ZEN_LIVE_MEASURE_ONLY=1 node scripts/test-zen-live.mjs
  */
 import assert from 'node:assert/strict';
@@ -10,13 +10,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deflateSync } from 'node:zlib';
 import { performance } from 'node:perf_hooks';
 import { RexTestDriver } from './rex-test-driver.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const candidate = resolve(process.env.ZEN_LIVE_EXTENSION ?? join(repo, 'pi/.pi/agent/extensions/zen.ts'));
 const fixture = join(repo, 'scripts/fixtures/zen-live.ts');
-const pinnedVersion = '1.5.1', backend = 'rex';
+const pinnedVersion = '1.6.0', backend = 'rex';
 const managed = join(homedir(), '.pi/agent/install');
 const managedVersion = readFileSync(join(managed, 'current-version'), 'utf8').trim();
 assert.equal(managedVersion, pinnedVersion, 'Managed Pi changed; verify renderer instrumentation before updating the pin');
@@ -115,6 +116,18 @@ async function stop(h) {
   assert(!h.pid || !alive(h.pid), `Owned Pi target remains: ${h.pid}`);
   assert(!h.children.some(alive), `Observed Pi descendants remain: ${h.children.filter(alive)}`);
 }
+function imageFixture() {
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    let crc = 0xffffffff;
+    for (const byte of body) { crc ^= byte; for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0); }
+    const length = Buffer.alloc(4), checksum = Buffer.alloc(4);
+    length.writeUInt32BE(data.length); checksum.writeUInt32BE((crc ^ 0xffffffff) >>> 0);
+    return Buffer.concat([length, body, checksum]);
+  };
+  const header = Buffer.alloc(13); header.writeUInt32BE(1, 0); header.writeUInt32BE(1, 4); header[8] = 8; header[9] = 2;
+  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk('IHDR', header), chunk('IDAT', deflateSync(Buffer.from([0,255,0,0]))), chunk('IEND', Buffer.alloc(0))]);
+}
 async function start(mode) {
   const area = join(root, `host-${++sequence}`); mkdirSync(area);
   const home = join(area, 'home'), agent = join(home, '.pi/agent'); mkdirSync(agent, { recursive: true });
@@ -126,6 +139,7 @@ async function start(mode) {
   writeFileSync(join(area, 'shell-case.sh'), '#!/bin/bash\n/bin/sleep 0.3\nprintf "ZEN_PARTIAL_SECRET_BASH_ONE\\n"\n/bin/sleep 0.3\nprintf "ZEN_PARTIAL_SECRET_BASH_TWO\\n"\n/bin/sleep 0.3\n');
   writeFileSync(join(area, 'shell-interact.sh'), '#!/bin/bash\nprintf "ZEN_PARTIAL_SECRET_ONE\\n"\n/bin/sleep 0.8\nprintf "ZEN_PARTIAL_SECRET_TWO\\n"\n/bin/sleep 0.8\nprintf "ZEN_PARTIAL_SECRET_THREE\\n"\n/bin/sleep 0.8\n');
   writeFileSync(join(area, 'shell-abort.sh'), '#!/bin/bash\nprintf "bounded abort fixture\\nZEN_PARTIAL_SECRET_ABORT\\n"\n/bin/sleep 4\n');
+  writeFileSync(join(area, 'read-case.png'), imageFixture());
   writeFileSync(join(area, 'read-case.txt'), 'ZEN_READ_SECRET_ONE\nZEN_READ_SECRET_TWO\n');
   const h = { name: `ag-zen-${process.pid}-${sequence}`, area, mode, width: 120, config, events: join(area, 'events.jsonl'), raw: join(area, 'ansi.log'), samples: [] };
   const env = { HOME: home, PATH: '/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin', TERM: 'xterm-256color', LANG: 'en_US.UTF-8', SHELL: '/bin/bash',
@@ -183,7 +197,7 @@ async function turn(h, scenario, { interact = false, abort = false } = {}) {
     assert(frames.some((e) => e.mono < progressing.mono && sameArgs(e, call.args)), 'Empty args frame sampled');
     assert(frames.some((e) => e.mono >= progressing.mono && e.mono < full.mono && sameArgs(e, progressing.args)), 'Progressive args frame sampled');
     assert(frames.some((e) => e.mono >= full.mono && e.mono < ended.mono && sameArgs(e, full.args) && !e.started), 'Full args frame sampled before execution');
-    // Pi 1.5.1 sets argsComplete at assistant message_end. Full argument values
+    // Pi 1.6.0 sets argsComplete at assistant message_end. Full argument values
     // must still paint before call-end; the native completion flag comes later.
     const complete = list.find((e) => e.type === 'args-complete' && e.id === call.id);
     assert(complete && complete.mono >= ended.mono, 'Native argsComplete must follow call-end');
@@ -322,6 +336,16 @@ async function main() {
         await resize(h, 80); await turn(h, 'BASH_ABORT', { abort: true });
         await turn(h, 'ABORT', { abort: true }); await turn(h, 'READ');
         if (mode === 'fullscreen') await mouse(h);
+        await turn(h, 'IMAGE');
+        check(`${mode}: compact image warning survives real read and preserves source`, () => {
+          assert(capture(h).includes('image not sent'), JSON.stringify(events(h).filter(e => e.type === 'tool-end' && e.id === h.lastId)));
+          const session = events(h).filter(e => e.type === 'ready').at(-1).session;
+          const messages = readFileSync(session, 'utf8').split('\n').filter(Boolean).map(JSON.parse);
+          const image = messages.find(e => e.message?.toolCallId === h.lastId);
+          assert.equal(image.message.details.imageUnsupportedByModel, 'fixture');
+          assert(image.message.content.some(c => c.type === 'image' && c.data.length > 0));
+          assert(!JSON.stringify(image).includes('image not sent'));
+        });
         await toggles(h); await resize(h, 120); await reload(h); await idle(h);
       } finally { await stop(h); }
     }

@@ -8,6 +8,7 @@ let checks = 0;
 const pass = text => { checks++; console.log('PASS ' + text); };
 const plain = lines => lines.map(strip).map(line => line.trimEnd()).join('\n');
 const before = tui.Markdown.prototype.render;
+const beforeToken = tui.Markdown.prototype.renderToken;
 assert(candidate.installCodeFrames('future').reason);
 assert.equal(tui.Markdown.prototype.render, before);
 pass('Unsupported Pi versions leave native Markdown untouched');
@@ -21,6 +22,8 @@ try {
         const component = markdown(source, installed.patch, { pad, mermaid: true });
         const rows = component.render(width);
         assert(rows.every(line => visibleWidth(line) <= width), name + ' exceeds width ' + width);
+        assert.equal(component.render(width), rows, 'Native readonly cache identity changed');
+        Object.freeze(rows);
         assert.deepEqual(component.render(width), rows, 'Cached repaint changed output');
       }
     }
@@ -121,6 +124,19 @@ try {
   pass('Duplicate installations do not stack prototype wrappers');
 } finally { installed.dispose(); }
 assert.equal(tui.Markdown.prototype.render, before);
+assert.equal(tui.Markdown.prototype.renderToken, beforeToken);
+// Unknown hook shapes stay fail-open even on an otherwise verified release.
+tui.Markdown.prototype.renderToken = undefined;
+try { assert.match(candidate.installCodeFrames().reason, /hook changed/); }
+finally { tui.Markdown.prototype.renderToken = beforeToken; }
+pass('Changed hook shape does not install a partial patch');
+const guarded = candidate.installCodeFrames();
+const otherRender = function(width) { return guarded.patch.wrapped.call(this, width); };
+tui.Markdown.prototype.render = otherRender;
+guarded.dispose();
+assert.equal(tui.Markdown.prototype.render, otherRender, 'Shutdown must preserve a newer owner');
+tui.Markdown.prototype.render = before;
+pass('Shutdown preserves later prototype owners');
 assert(plain(markdown(fixtures.small).render(96)).includes('```typescript'));
 pass('Shutdown restores native Markdown');
 console.log(checks + ' checks passed');

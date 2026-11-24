@@ -6,15 +6,39 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const resources = resolve(dirname(fileURLToPath(import.meta.url)), '../pi/.pi/agent/patches/hermes-memory');
-export const revision = 'hermes-evidence-scope-v1';
+export const revision = 'hermes-evidence-scope-v2';
+export const legacyRevision = 'hermes-evidence-scope-v1';
 export const supportedVersions = ['0.9.11', '0.10.0'];
 const digest = (text) => createHash('sha256').update(text).digest('hex');
 function replaceOnce(text, oldText, newText) {
   if (!text.includes(oldText) || text.indexOf(oldText) !== text.lastIndexOf(oldText)) throw new Error('Hermes source shape changed');
   return text.replace(oldText, newText);
 }
-function transform(file, text) {
-  if (file === 'src/handlers/message-parts.ts') return readFileSync(join(resources, file), 'utf8');
+function transform(file, text, patchRevision = revision) {
+  if (file === 'src/handlers/message-parts.ts') return readFileSync(join(resources, patchRevision === legacyRevision ? 'legacy-v1/handlers/message-parts.ts' : file), 'utf8');
+  if (file === 'src/handlers/child-process-watchdog.mjs') return readFileSync(join(resources, file), 'utf8');
+  if (file === 'src/handlers/pi-child-process.ts') {
+    text = 'import { createServer } from "node:net";\n' + text;
+    text = replaceOnce(text, '  const temporaryPrompt = await writePromptToTemporaryFile(prompt);', `  const temporaryPrompt = await writePromptToTemporaryFile(prompt);
+  // The accepted socket is a host-owned lifetime pipe, not a PID heartbeat.
+  const ownerPath = join(temporaryPrompt.dir, "owner.sock");
+  const sockets = new Set<import("node:net").Socket>();
+  const owner = createServer(socket => { sockets.add(socket); socket.on("close", () => sockets.delete(socket)); });
+  try {
+    await new Promise<void>((resolve, reject) => { owner.once("error", reject); owner.listen(ownerPath, resolve); });
+  } catch (error) {
+    owner.close();
+    await dependencies.removeTemporaryDirectory(temporaryPrompt.dir);
+    throw error;
+  }`);
+    // Pi exec does not accept env. Pass the owner socket as an argument.
+    text = replaceOnce(text, '  cancellationPath = "-",', '  cancellationPath = "-",\n  ownerPath = "-",');
+    text = replaceOnce(text, '      cancellationPath,\n      invocation.command,', '      cancellationPath,\n      ownerPath,\n      invocation.command,');
+    if (text.split('        cancellationPath,\n').length !== 2 || text.split('      cancellationPath,\n    );').length !== 2) throw new Error('Child invocation shape changed');
+    text = text.replace('        cancellationPath,\n', '        cancellationPath,\n        ownerPath,\n').replace('      cancellationPath,\n    );', '      cancellationPath,\n      ownerPath,\n    );');
+    text = replaceOnce(text, '    options.signal?.removeEventListener("abort", requestCancellation);', '    options.signal?.removeEventListener("abort", requestCancellation);\n    for (const socket of sockets) socket.destroy();\n    await new Promise<void>(resolve => owner.close(() => resolve()));');
+    return text;
+  }
   if (file === 'src/handlers/background-review.ts') {
     text = replaceOnce(text, 'applyRecentMessageLimit, collectMessageParts', 'collectReviewBatch, CURSOR_TYPE');
     text = replaceOnce(text, '      let allParts: string[] = [];', '      let allParts: string[] = [];\n      let cursor: { throughId: string } | null = null;');
@@ -110,21 +134,23 @@ export function preparePatch(packageDir) {
   const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
   if (!supportedVersions.includes(version)) throw new Error(`Hermes patch requires version ${supportedVersions.join(' or ')}`);
   const manifest = version === '0.9.11' ? 'baseline.json' : `baseline-${version}.json`;
-  const baseline = JSON.parse(readFileSync(join(resources, manifest), 'utf8'));
   const markerPath = safePath(root, join(root, '.pi-memory-hardening.json'));
   const marker = existsSync(markerPath) ? JSON.parse(readFileSync(markerPath, 'utf8')) : null;
-  if (marker && marker.revision !== revision) throw new Error('Unknown Hermes patch revision');
+  if (marker && ![revision, legacyRevision].includes(marker.revision)) throw new Error('Unknown Hermes patch revision');
+  const patchRevision = marker?.revision ?? revision;
+  const baseline = JSON.parse(readFileSync(join(resources, manifest), 'utf8'));
+  if (patchRevision === revision) Object.assign(baseline, JSON.parse(readFileSync(join(resources, 'baseline-child.json'), 'utf8')));
   const updates = [];
   for (const [file, hash] of Object.entries(baseline)) {
-    const path = join(root, file);
+    const path = safePath(root, join(root, file));
     if (!realpathSync(path).startsWith(root + sep) || lstatSync(path).isSymbolicLink()) throw new Error('Patch target escapes package');
     const current = readFileSync(path, 'utf8');
-    if (digest(current) === hash) updates.push({ file, path, old: current, text: transform(file, current) });
+    if (digest(current) === hash) updates.push({ file, path, old: current, text: transform(file, current, patchRevision) });
     else {
       const backupPath = safePath(root, join(root, '.pi-memory-hardening-baseline', file));
       if (!existsSync(backupPath) || lstatSync(backupPath).isSymbolicLink()) throw new Error(`Hermes source drift: ${file}`);
       const original = readFileSync(backupPath, 'utf8');
-      if (digest(original) !== hash || current !== transform(file, original)) throw new Error(`Hermes source drift: ${file}`);
+      if (digest(original) !== hash || current !== transform(file, original, patchRevision)) throw new Error(`Hermes source drift: ${file}`);
       updates.push({ file, path, old: current, text: current });
     }
   }
@@ -133,11 +159,19 @@ export function preparePatch(packageDir) {
     if (existsSync(path) && (lstatSync(path).isSymbolicLink() || readFileSync(path, 'utf8') !== text)) throw new Error(`Unexpected patch helper: ${file}`);
     updates.push({ file, path, old: existsSync(path) ? readFileSync(path, 'utf8') : null, text });
   }
-  return { root, version, baseline, updates, alreadyApplied: updates.every(x => x.old === x.text) };
+  return { root, version, revision: patchRevision, baseline, updates, alreadyApplied: updates.every(x => x.old === x.text) };
+}
+function patchMarker(plan) {
+  const files = Object.fromEntries(plan.updates.map(x => [x.file, digest(x.text)]));
+  return { files, text: JSON.stringify({ revision: plan.revision, version: plan.version, files }, null, 2) + '\n' };
+}
+function assertMutableCopy(root) {
+  if (existsSync(join(root, '.rolling-package.json'))) throw new Error('Rolling copy is immutable. Prepare a new destination.');
 }
 export function recoverPatch(packageDir, approved = false) {
   if (!approved) throw new Error('Recovery requires explicit approval');
   const root=realpathSync(packageDir),lock=safePath(root,join(root,'.pi-memory-hardening-lock'));
+  assertMutableCopy(root);
   const ownerPath=safePath(root,join(lock,'owner.json'));
   if (!existsSync(ownerPath)) throw new Error('Recovery owner is unknown. Preserve the package and inspect manually.');
   const before=readFileSync(ownerPath,'utf8'),owner=JSON.parse(before);
@@ -145,12 +179,14 @@ export function recoverPatch(packageDir, approved = false) {
   try {process.kill(owner.pid,0);throw new Error('Recovery owner PID is live or reused. Inspect manually.');}
   catch(error){if(error.code!=='ESRCH')throw error;}
   const plan=preparePatch(root);
-  for(const item of plan.updates){
-    const tmp=safePath(root,item.path+'.hardening-tmp');
-    if(existsSync(tmp)&&readFileSync(tmp,'utf8')!==item.text)throw new Error('Unknown staging bytes. Preserve and inspect manually.');
+  const staging = plan.updates.map(item => ({ path: safePath(root,item.path+'.hardening-tmp'), text: item.text }));
+  staging.push({ path: safePath(root,join(root,'.pi-memory-hardening.json.hardening-tmp')), text: patchMarker(plan).text });
+  // Validate all source and marker bytes before deleting any staging or lock.
+  for (const item of staging) {
+    if(existsSync(item.path)&&readFileSync(item.path,'utf8')!==item.text)throw new Error('Unknown staging bytes. Preserve and inspect manually.');
   }
   if(readFileSync(ownerPath,'utf8')!==before)throw new Error('Recovery owner changed');
-  for(const item of plan.updates){const tmp=item.path+'.hardening-tmp';if(existsSync(tmp))rmSync(tmp);}
+  for (const item of staging) if(existsSync(item.path))rmSync(item.path);
   rmSync(ownerPath);rmSync(lock,{recursive:true});
   return applyPatch(root,true);
 }
@@ -158,6 +194,9 @@ export function recoverPatch(packageDir, approved = false) {
 export function applyPatch(packageDir, approved = false) {
   if (!approved) throw new Error('Patch application requires --approved. Stop affected sessions before patching live packages.');
   const root = realpathSync(packageDir);
+  assertMutableCopy(root);
+  const planBeforeLock = preparePatch(root);
+  if (planBeforeLock.revision !== revision) throw new Error('Legacy copy is immutable. Prepare a new rolling destination.');
   const lock = join(root, '.pi-memory-hardening-lock');
   mkdirSync(lock, { mode: 0o700 });
   writeFileSync(join(lock,'owner.json'),JSON.stringify({pid:process.pid}),{mode:0o600,flag:'wx'});
@@ -165,7 +204,8 @@ export function applyPatch(packageDir, approved = false) {
   const temporary = [];
   try {
     const plan = preparePatch(root);
-    if (plan.alreadyApplied) return { applied: false, revision };
+    if (plan.revision !== revision) throw new Error('Legacy copy is immutable. Prepare a new rolling destination.');
+    if (plan.alreadyApplied && existsSync(join(root, '.pi-memory-hardening.json'))) return { applied: false, revision };
     const backup = safePath(root, join(root, '.pi-memory-hardening-baseline'));
     mkdirSync(backup, { recursive: true, mode: 0o700 });
     // Preflight every file before changing any source. Publish the marker last.
@@ -186,10 +226,10 @@ export function applyPatch(packageDir, approved = false) {
       if (item.old !== null && readFileSync(item.path, 'utf8') !== item.old) throw new Error('Concurrent Hermes source change');
       renameSync(item.path + '.hardening-tmp', item.path); changed.push(item);
     }
-    const files = Object.fromEntries(plan.updates.map(x => [x.file, digest(x.text)]));
+    const { files, text: markerText } = patchMarker(plan);
     const marker = join(root, '.pi-memory-hardening.json');
     const tmp = marker + '.hardening-tmp';
-    writeFileSync(tmp, JSON.stringify({ revision, version: plan.version, files }, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
+    writeFileSync(tmp, markerText, { mode: 0o600, flag: 'wx' });
     temporary.push(tmp);
     renameSync(tmp, marker);
     return { applied: true, revision, files: Object.keys(files).length };
@@ -209,7 +249,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   try {
     const args = process.argv.slice(2), dir = args[args.indexOf('--package-dir') + 1];
     if (!args.includes('--package-dir') || !dir) throw new Error('Usage: patch-hermes-memory.mjs --package-dir PATH [--approved]');
-    const result = args.includes('--recover') ? recoverPatch(dir,args.includes('--approved')) : args.includes('--approved') ? applyPatch(dir, true) : { verified: true, alreadyApplied: preparePatch(dir).alreadyApplied, revision };
+    const result = args.includes('--recover') ? recoverPatch(dir,args.includes('--approved')) : args.includes('--approved') ? applyPatch(dir, true) : (() => { const plan = preparePatch(dir); return { verified: true, alreadyApplied: plan.alreadyApplied, revision: plan.revision }; })();
     console.log(JSON.stringify(result));
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

@@ -1,16 +1,15 @@
 // Regression tests against Pi's actual tool components and renderers.
-// Run: bun scripts/test-zen-components.ts
-import { realpathSync } from "node:fs";
-import { homedir } from "node:os";
+// Run: node scripts/test-zen-components.ts
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import zen, { makeResolver, __setConfigPathForTest } from "../pi/.pi/agent/extensions/zen.ts";
+const { loadExtension, repo, base, tui } = await import('./fixtures/code-blocks-runtime.mjs');
+const { default: zen, makeResolver, __setConfigPathForTest } = await loadExtension(join(repo, 'pi/.pi/agent/extensions/zen.ts'));
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 const temp = mkdtempSync(join(tmpdir(), "zen-components-"));
 __setConfigPathForTest(join(temp, "zen.json"));
 
-const release = realpathSync(join(homedir(), ".pi/agent/install/releases/1.4.0/node_modules/@earendil-works/pi-coding-agent/dist"));
+const release = base;
 const load = (path: string) => import(pathToFileURL(join(release, path)).href);
 const themes = await load("modes/interactive/theme/theme.js");
 themes.initTheme("dark");
@@ -18,7 +17,7 @@ const { theme } = themes;
 const { ToolExecutionComponent } = await load("modes/interactive/components/tool-execution.js");
 const { createShellRenderers } = await load("core/tools/renderers/bash.js");
 const { readRenderers } = await load("core/tools/renderers/read.js");
-const { Text, visibleWidth } = await import("@earendil-works/pi-tui");
+const { Text, visibleWidth } = tui;
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let pass = 0;
 let fail = 0;

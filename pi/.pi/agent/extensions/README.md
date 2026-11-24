@@ -191,7 +191,7 @@ The E2E asserts: compact start (success one line with suffix, failure one line w
 
 This is a small adaptation of [pi-markdown-blocks](https://github.com/FasalZein/pi-markdown-blocks/tree/2403950d2916c67559f108f3cc11770123d4bb59), with its MIT notice in `code-blocks/LICENSE`. The extra parser dependency, custom shell highlighter, environment settings, automatic block scans, and picker shortcut are removed. No workers, timers, network requests, or runtime dependencies are added.
 
-- Pi has no public code-token frame hook. The private boundary is isolated and enabled only for verified Pi 1.5.1. Other versions warn and retain native rendering.
+- Pi has no public code-token frame hook. The private boundary is isolated and enabled only for verified Pi 1.5.1 and 1.6.0. Other versions warn and retain native rendering.
 - The public assistant-only Markdown transformer sets render scope without parsing or changing text. Native Mermaid runs first, so rendered diagrams never enter the code-frame hook.
 - Very narrow and indented blocks keep native rendering. Source control sequences are stripped from framed display before trusted syntax colors are added.
 - `/copyblock [number]` copies original fenced source from the latest reply, without visual wrapping or frame characters. Block parsing happens only when requested. Terminal text selection still copies display rows, so use this command for long executable lines.
@@ -398,35 +398,23 @@ The mock harness covers cap math (keep the N most recent), placeholder text and 
 
 ### Why it exists
 
-Pi 0.84.2 correctly exposes reasoning capable GPT 5.6 models and advertises `xhigh` in the model catalog, but its Bedrock adapter only adds reasoning request fields for Claude models. Without this extension, selecting `high`, `xhigh`, or another thinking level changes pi's local state but does not send GPT 5.6's effort parameter to Bedrock.
+Pi 1.6.0 sends GPT reasoning fields natively for enabled thinking levels. The extension no longer duplicates those mappings or overrides model-specific native mappings. Thinking `off` still omits reasoning fields natively, so the extension keeps the legacy explicit `none` request until its removal is verified against Bedrock.
 
 ### How it works
 
-Before each provider request, the extension checks the active model ID for `openai.gpt-5.6-`. For a matching model, it reads pi's effective thinking level and returns the request payload with this Bedrock Converse field merged in:
+Before each provider request, the extension checks for the `bedrock-converse-stream` API and an `openai.gpt-5.6-` model ID. Only when effective thinking is `off`, it merges this field into the Converse payload:
 
 ```json
 {
   "additionalModelRequestFields": {
     "reasoning": {
-      "effort": "xhigh"
+      "effort": "none"
     }
   }
 }
 ```
 
-The mapping is:
-
-| Pi level | Bedrock effort |
-| --- | --- |
-| `off` | `none` |
-| `minimal` | `low` |
-| `low` | `low` |
-| `medium` | `medium` |
-| `high` | `high` |
-| `xhigh` | `xhigh` |
-| `max` | `max` |
-
-It only changes GPT 5.6 Bedrock payloads. Other models and providers are left untouched. It also preserves any existing fields in `additionalModelRequestFields` and any other provider payload fields.
+Enabled thinking levels stay owned by Pi. The compatibility path preserves existing request fields and never mutates the source payload. Other APIs and models remain untouched.
 
 ### After changing the thinking level
 
@@ -434,13 +422,11 @@ Use `/reload` after installing or editing the extension. Then select the desired
 
 ### Verification
 
-To verify the extension is present and pi can load it:
-
 ```sh
-pi --list-models | grep 'gpt-5.6-luna'
+node scripts/test-bedrock-reasoning.mjs
 ```
 
-For a payload level check, temporarily add a `console.log(JSON.stringify(event.payload))` line inside the `before_provider_request` handler, run one small prompt, and remove the logging afterward. Do not leave request payload logging enabled because prompts and tool definitions may contain sensitive data.
+The check loads the current managed Pi runtime, captures native Bedrock payloads before transport and verifies the compatibility path. It makes no network request and needs no credentials. It does not prove Bedrock accepts omission instead of explicit `none`, so the `off` compatibility path remains.
 
 ## Open cwd in VS Code
 
@@ -448,33 +434,16 @@ For a payload level check, temporarily add a `console.log(JSON.stringify(event.p
 
 Verification: `pi --no-extensions -e ~/.pi/agent/extensions/open-vscode.ts` inside tmux, run `/hotkeys`, confirm `super+e` is listed, then press `Cmd+E` in ghostty and confirm VS Code opens the session directory.
 
-## What to do after updating pi
+## What to do after updating Pi
 
-The extension is stored in this dotfiles repository, not inside pi's installed package. A normal pi update should not delete it.
+Custom extensions live in this repository, not inside installed Pi packages. A normal Pi update does not delete their source. Managed Pi uses `~/.pi/agent/install/current-version` to select its release. Tests must resolve that version explicitly. A development module symlink can still point at an older runtime, so green tests through that link do not prove current-runtime compatibility.
 
-Since pi 1.4.0, pi self manages its install under `~/.pi/agent/install/releases/<version>` (`pi update` installs a new release there). `~/.pi/agent/install/current` is a local symlink to the active release, created by hand: the dev module links in `~/dotfiles/node_modules` and the adapter inspection path below go through it, so after `pi update` refresh it first:
+1. Run current-runtime regression checks before changing version guards.
+2. Use `pi-extensions-upgrade` for package updates. It audits the result and restores and verifies the pinned context-mode patch, including partial-failure paths.
+3. After a direct package update or reinstall, run `pi-resources-patch`.
+4. Run `node scripts/test-bedrock-reasoning.mjs` to check native reasoning fields before transport.
+5. Run `/reload` only when the session is idle, or restart it after its task is complete.
 
-```sh
-ln -sfn "releases/$(cat ~/.pi/agent/install/current-version)" ~/.pi/agent/install/current
-```
+Do not edit installed runtime files by hand or run the retired web-access and peer-dependency repair scripts. The updated upstream packages no longer need those repairs. Do not drop the remaining Bedrock `off` shim until omission and explicit `none` have been verified as equivalent.
 
-After updating pi:
-
-1. Restart pi or run `/reload`.
-2. Run `pi --list-models | grep 'gpt-5.6-luna'`.
-3. Check that pi still loads `pi/.pi/agent/extensions/bedrock-openai-reasoning.ts` through `~/.pi/agent/extensions/bedrock-openai-reasoning.ts`.
-4. Test one small GPT 5.6 request with `xhigh` selected.
-5. If a newer pi release natively supports GPT 5.6 Bedrock effort, remove this workaround only after confirming the native payload behavior. Otherwise, keep it.
-
-Do not edit the installed files inside `~/.pi/agent/install/` (pi's self managed install since 1.4.0; the old `/opt/homebrew/lib/node_modules` package is gone). The source of truth is this file in dotfiles. The live extension path is a symlink created by GNU Stow or the equivalent dotfiles setup.
-
-To check whether the workaround is still needed, inspect the installed adapter for GPT 5.6 handling:
-
-```sh
-grep -n -A80 'function buildAdditionalModelRequestFields' \
-  ~/.pi/agent/install/current/node_modules/@earendil-works/pi-ai/dist/api/bedrock-converse-stream.js
-```
-
-(In the 1.4.0 managed layout, `pi-ai` is a flat sibling of `pi-coding-agent` under `@earendil-works/`, no longer nested inside its `node_modules`.)
-
-If the adapter natively emits `additionalModelRequestFields.reasoning.effort` for OpenAI GPT 5.6 models, disable or remove this extension to avoid duplicate ownership of the behavior. The extension merges the field safely, but native support is preferable.
+The active Hermes package is an immutable hardened copy. Updating the disabled npm Hermes package does not update that copy. Use the reviewed rolling-copy helper for a new revision and verify future-session selection separately. Context-mode remains pinned until its resource safeguards have been ported and tested against a newer release.

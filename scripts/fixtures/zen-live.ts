@@ -1,6 +1,7 @@
 /** Local provider, native tools and passive render probes for test-zen-live.mjs. */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { createAssistantMessageEventStream, Type } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { ProcessTerminal, Text, stripTerminalSequences } from "@earendil-works/pi-tui";
 import assert from "node:assert/strict";
 import { appendFileSync, readFileSync } from "node:fs";
@@ -14,11 +15,11 @@ export default async function (pi: ExtensionAPI) {
 		JSON.stringify({ type, pid: process.pid, mono: Number(process.hrtime.bigint()) / 1e6, elapsed: performance.now(), ...data }) + "\n");
 	const componentPath = process.env.ZEN_LIVE_TOOL_COMPONENT!;
 	const packageRoot = join(dirname(componentPath), "../../../..");
-	assert.equal(JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")).version, "1.5.1");
+	assert.equal(JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")).version, "1.6.0");
 	const { ToolExecutionComponent } = await import(pathToFileURL(componentPath).href);
 	const proto = ToolExecutionComponent.prototype;
 	for (const method of ["render", "updateResult", "updateArgs", "setArgsComplete", "markExecutionStarted", "setExpanded"])
-		assert.equal(typeof proto[method], "function", `Missing Pi 1.5.1 component method: ${method}`);
+		assert.equal(typeof proto[method], "function", `Missing Pi 1.6.0 component method: ${method}`);
 	assert.equal(typeof ProcessTerminal.prototype.write, "function", "Missing terminal write probe");
 	const originalRender = proto.render, originalResult = proto.updateResult, originalComplete = proto.setArgsComplete,
 		originalWrite = ProcessTerminal.prototype.write;
@@ -33,7 +34,7 @@ export default async function (pi: ExtensionAPI) {
 			assert(component.args && typeof component.args === "object", "Missing actual argument state");
 		} catch (error) { note("fixture-error", { error: String(error) }); throw error; }
 	};
-	note("instrumentation", { version: "1.5.1", componentPath });
+	note("instrumentation", { version: "1.6.0", componentPath });
 	// Instrument actual host components, not a second component simulation. Never trigger a paint here.
 	proto.render = function (width: number) {
 		const lines = originalRender.call(this, width);
@@ -54,7 +55,7 @@ export default async function (pi: ExtensionAPI) {
 	};
 	proto.setArgsComplete = function () {
 		validate(this);
-		// Pi 1.5.1 marks completion at assistant message_end, not the full-value delta.
+		// Pi 1.6.0 marks completion at assistant message_end, not the full-value delta.
 		// Observe the native transition only. Do not invoke render or invalidate.
 		note("args-complete", { id: this.toolCallId, args: this.args });
 		return originalComplete.call(this);
@@ -132,9 +133,9 @@ export default async function (pi: ExtensionAPI) {
 					await emit({ type: "start", partial: message });
 					if (last?.role === "user") {
 						const scenario = text.replace(/^ZEN_/, "");
-						const name = scenario.startsWith("BASH") ? "bash" : scenario === "READ" ? "read" : scenario === "GENERIC" ? "zen_generic" : "zen_native";
+						const name = scenario.startsWith("BASH") ? "bash" : scenario === "READ" || scenario === "IMAGE" ? "read" : scenario === "GENERIC" ? "zen_generic" : "zen_native";
 						const args = name === "bash" ? { command: `/bin/bash ./shell-${scenario === "BASH_ABORT" ? "abort" : scenario === "BASH_INTERACT" ? "interact" : "case"}.sh`, timeout: 10 } :
-							name === "read" ? { path: "read-case.txt", offset: 1, limit: 2 } : { name: scenario };
+							name === "read" ? scenario === "IMAGE" ? { path: "read-case.png" } : { path: "read-case.txt", offset: 1, limit: 2 } : { name: scenario };
 						const call = { type: "toolCall", id: `zen-${++serial}`, name, arguments: {} };
 						message.content.push(call); message.stopReason = "toolUse";
 						note("call-start", { id: call.id, tool: name, scenario, args: call.arguments });
@@ -170,7 +171,9 @@ export default async function (pi: ExtensionAPI) {
 	});
 	pi.on("session_start", (_event, ctx) => note("ready", { mode: ctx.mode, session: ctx.sessionManager.getSessionFile() }));
 	pi.on("tool_execution_start", (event) => note("tool-start", { id: event.toolCallId, tool: event.toolName }));
-	pi.on("tool_execution_end", (event) => note("tool-end", { id: event.toolCallId, error: event.isError, durationMs: event.durationMs }));
+	pi.on("tool_execution_end", (event) => note("tool-end", { id: event.toolCallId, error: event.isError, durationMs: event.durationMs,
+		details: (event.result as any)?.details, contentTypes: (event.result as any)?.content?.map((c: any) => c.type),
+		text: (event.result as any)?.content?.filter((c: any) => c.type === 'text').map((c: any) => c.text) }));
 	pi.on("agent_settled", (event) => note("settled", { aborted: event.aborted }));
 	pi.on("session_shutdown", () => {
 		note("shutdown");

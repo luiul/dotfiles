@@ -8,18 +8,14 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { transforms } from '../pi/.pi/agent/patches/context-mode/transforms.mjs';
 
-export const VERSION = '1.0.169';
-export const REVISION = 'context-mode-resources-v2';
+// Share the reviewed runtime hashes with the per-call guard, not installed markers.
+const approved = JSON.parse(fs.readFileSync(new URL('../pi/.pi/agent/patches/context-mode/approved-files.json', import.meta.url), 'utf8'));
+export const VERSION = approved.version;
+export const REVISION = approved.revision;
 const BUN = '/opt/homebrew/bin/bun';
 const BUN_VERSION = '1.3.14';
 const BASELINE = '2cdd2def7ef24c1cc594d59b04dd4d1f74f729b7f0bbdf8f7405678fb4a87a76';
-const EXPECTED_PATCHED = {
-  'build/adapters/pi/mcp-bridge.js': '8b74b8953fe848bd44c155140d871c79c9eb859dfba9afe1d4369151af6ccb2e',
-  'build/executor.js': 'e87e296fe9053ba051b4a42f2f738e1538e9d9b482380b40bc25592504861431',
-  'build/server.js': '2de8b2ff88da3c02601e612bd54b3102334af46acbe73aa41c6c46765bdfd4eb',
-  'build/lifecycle.js': '90b3d6c07e0b419ed971426941fa3adcd5532d92fd11eaad63f80269f89f6604',
-  'server.bundle.mjs': '0bdae90524baf36fd55fdd7ef12a212a3778abf892138ae6df1c00bf1fcda295',
-};
+const EXPECTED_PATCHED = approved.files;
 // Only these explicit historical hashes can migrate to the current revision.
 // Keep this v1 entry separate from the current revision's hash set.
 export const LEGACY_PATCHES = [{ revision: 'context-mode-resources-v1', files: {

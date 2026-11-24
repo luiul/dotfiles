@@ -29,7 +29,7 @@
       "prompts": [],
       "themes": []
     },
-    "~/.pi/agent/packages/pi-hermes-memory/0.10.0-evidence-v1",
+    "~/.pi/agent/packages/pi-hermes-memory/0.10.0-evidence-v2",
     "npm:pi-blackhole",
     "npm:@plannotator/pi-extension",
     {

@@ -171,9 +171,12 @@ export function infoFromResult(
 		ok: !ctx.isError,
 		durationMs: ctx.durationMs,
 		errLine: ctx.isError ? truncateVisible(singleLine(firstTextLine(result.content)), 200) : "",
-		warning: result.details?.truncation?.truncated || result.details?.matchLimitReached ||
+		// Static labels only. Metadata can change without a new content array.
+		warning: [result.details?.imageUnsupportedByModel ? "image not sent" : "",
+			result.details?.truncation?.truncated || result.details?.matchLimitReached ||
 			result.details?.resultLimitReached || result.details?.linesTruncated ? "truncated" :
 			typeof result.details?.fullOutputPath === "string" && result.details.fullOutputPath ? "full output" : "",
+		].filter(Boolean).join(", "),
 	};
 }
 
@@ -195,7 +198,8 @@ export function suffixFor(info: ZenInfo | undefined, theme: any): string {
 	const durText = dur ? ` (${dur})` : "";
 	if (info.ok) return theme.fg("muted", " ✓") +
 		(info.warning ? theme.fg("warning", ` ${info.warning}`) : "") + theme.fg("muted", durText);
-	return theme.fg("error", ` ✗ ${info.errLine}${durText}`);
+	return theme.fg("error", ` ✗ ${info.errLine}`) +
+		(info.warning ? theme.fg("warning", ` ${info.warning}`) : "") + theme.fg("error", durText);
 }
 
 // ─── per-tool call-line formatting (pure; exported for unit tests) ───────────
@@ -269,15 +273,18 @@ function storeFinalInfo(result: any, ctx: any, state: any): void {
 		result.details?.resultLimitReached || result.details?.linesTruncated);
 	const errorSource = ctx.isError ? result.content?.find((block: any) => block.type === "text" && block.text)?.text : undefined;
 	const outputPath = result.details?.fullOutputPath;
+	const imageUnsupported = !!result.details?.imageUnsupportedByModel;
 	if (state.zenContent === result.content && state.zenError === ctx.isError &&
 		state.zenDuration === ctx.durationMs && state.zenTruncated === truncated &&
-		state.zenOutputPath === outputPath && state.zenErrorSource === errorSource && state[INFO_KEY]) return;
+		state.zenOutputPath === outputPath && state.zenImageUnsupported === imageUnsupported &&
+		state.zenErrorSource === errorSource && state[INFO_KEY]) return;
 	state.zenContent = result.content;
 	state.zenError = ctx.isError;
 	state.zenDuration = ctx.durationMs;
 	state.zenTruncated = truncated;
 	state.zenErrorSource = errorSource;
 	state.zenOutputPath = outputPath;
+	state.zenImageUnsupported = imageUnsupported;
 	const info = infoFromResult(result, ctx);
 	if (!infoChanged(state[INFO_KEY], info)) return;
 	state[INFO_KEY] = info;
@@ -390,7 +397,8 @@ function compactRow(tool: string): any {
 			// Errors and structured warnings outrank elapsed time on narrow panes.
 			if (info && terminalWidth(status) > budget - titleWidth) {
 				const available = Math.max(0, budget - titleWidth);
-				const text = info.ok ? ` ✓${info.warning ? ` ${info.warning}` : ""}` : ` ✗ ${info.errLine}`;
+				const text = info.ok ? ` ✓${info.warning ? ` ${info.warning}` : ""}` :
+					` ✗${info.warning ? ` ${info.warning}:` : ""} ${info.errLine}`;
 				status = theme.fg(info.ok ? info.warning ? "warning" : "muted" : "error", truncateVisible(text, available));
 			}
 			const callBudget = Math.max(0, budget - terminalWidth(status));
@@ -410,37 +418,16 @@ function compactRow(tool: string): any {
 	};
 }
 
-/** Avoid re-flattening unchanged native detail rows on every cached paint. */
-class DetailFrame extends Box {
-	private paintedWidth = -1;
-	private paintedLines: string[] | undefined;
-	private cacheAllowed = false;
-	invalidateCache(): void {
-		super.invalidateCache();
-		this.paintedLines = undefined;
-	}
-	handleMouse(event: any): any {
-		this.paintedLines = undefined;
-		return super.handleMouse(event);
-	}
-	setCacheAllowed(allowed: boolean): void { this.cacheAllowed = allowed; }
-	render(width: number): string[] {
-		if (this.cacheAllowed && this.paintedLines && this.paintedWidth === width) return this.paintedLines;
-		this.paintedWidth = width;
-		return this.paintedLines = super.render(width);
-	}
-}
-
 /** Native framing through public Box, never private Pi components. */
 function nativeFrame(call: any, theme: any, ctx: any, state: any): any {
 	const pad = ctx.outputPad ?? 1;
 	if (!state.zenFrame || state.zenFramePad !== pad) {
-		state.zenFrame = new DetailFrame(pad, 1);
+		// Pi's Box caches readonly lines and still observes child and theme changes.
+		state.zenFrame = new Box(pad, 1);
 		state.zenFramePad = pad;
 	}
 	state.zenFrameExpanded = ctx.expanded;
 	const box = state.zenFrame;
-	box.setCacheAllowed(state.zenCacheDetail === true);
 	box.setBgFn((line: string) => theme.bg(ctx.isPartial ? "toolPendingBg" : ctx.isError ? "toolErrorBg" : "toolSuccessBg", line));
 	box.clear();
 	box.addChild(call);
@@ -527,7 +514,6 @@ function wrapNative(toolName: string, native: { renderCall?: any; renderResult?:
 				const call = safeNative(native.renderCall, args, theme, nativeContext(ctx, state, state[CALL_KEY])) ??
 					new Text(registeredCallText(toolName, args, theme, ctx.expanded), 0, 0);
 				state[CALL_KEY] = call;
-				state.zenCacheDetail = NATIVE_ONE_LINE_TOOLS.has(toolName) || toolName === "write" || toolName === "edit";
 				return self ? call : nativeFrame(call, theme, ctx, state);
 			}
 			const row = state[STATE_KEY] ??= compactRow(toolName);
@@ -635,7 +621,6 @@ function genericRenderers(toolName: string, registered: boolean, self = false): 
 			}
 			if (registered) {
 				text.setText(registeredCallText(toolName, args, theme, ctx.expanded));
-				state.zenCacheDetail = true;
 				return self ? text : nativeFrame(text, theme, ctx, state);
 			}
 			// Unknown native fallback keeps arguments and output in one Text.
@@ -752,5 +737,6 @@ export default function (pi: ExtensionAPI) {
 	// Container rebuilds: fresh components resolve renderers again, and
 	// the registry must not keep closures of dead blocks.
 	pi.on("session_tree", () => clearRegistry());
-	pi.on("compaction", () => clearRegistry());
+	pi.on("session_compact", () => clearRegistry());
+	pi.on("session_shutdown", () => clearRegistry());
 }

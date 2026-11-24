@@ -13,16 +13,17 @@
 //   views delegate to native. Collapsed partial results stay hidden.
 //   native throws fall back (fail-open), never returning undefined.
 // - Registry: renderers remember per-block invalidate closures; the
-//   session_start/session_tree/compaction handlers clear them.
+//   session_start/session_tree/session_compact handlers clear them.
 //
-// Run: bun scripts/test-zen-extension.ts
+// Run: node scripts/test-zen-extension.ts
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const TMP = mkdtempSync(join(tmpdir(), "zen-v2-"));
 
-const M = await import("../pi/.pi/agent/extensions/zen.ts");
+const { loadExtension, repo } = await import('./fixtures/code-blocks-runtime.mjs');
+const M = await loadExtension(join(repo, 'pi/.pi/agent/extensions/zen.ts'));
 const {
 	loadFilterOn,
 	saveFilterOn,
@@ -413,8 +414,9 @@ console.log("registry");
 	check("registry grows again", __registrySizeForTest() >= 1);
 	(events["session_tree"] ?? []).forEach((fn) => fn());
 	check("session_tree clears registry", __registrySizeForTest() === 0);
-	(events["compaction"] ?? []).forEach((fn) => fn());
-	check("compaction handler exists and no-ops", (events["compaction"] ?? []).length === 1);
+	r.renderCall({ command: "x" }, theme, ctx);
+	(events["session_compact"] ?? []).forEach((fn) => fn());
+	check("session_compact clears registry", (events["session_compact"] ?? []).length === 1 && __registrySizeForTest() === 0);
 }
 
 // ─── cleanup ─────────────────────────────────────────────────────────────────

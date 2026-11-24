@@ -5,25 +5,34 @@
  * zen.ts, not retired implementations. Use bare/off/zen for current variants.
  */
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { RexTestDriver } from './rex-test-driver.mjs';
-import { candidate, cli, version, start, stop, inspect, alive } from './test-zen-extension-live.mjs';
+import { candidate, baseline, cli, version, start, stop, inspect, alive } from './test-zen-extension-live.mjs';
 
 const [mode, ...variants] = process.argv.slice(2);
 assert(['startup', 'seeded'].includes(mode) && variants.length > 0,
   'Usage: bench-zen-startup.sh startup|seeded bare zen1 [zen2 ...]');
 assert(new Set(variants).size === variants.length, 'Duplicate variants do not form independent samples');
-for (const variant of variants) assert(['bare', 'off', 'zen', 'zen1', 'zen2'].includes(variant), `Unknown variant: ${variant}`);
+for (const variant of variants) assert(['bare', 'off', 'zen', 'zen1', 'zen2', 'baseline'].includes(variant), `Unknown variant: ${variant}`);
 const repeats = Number(process.env.REPEATS ?? 7);
 assert(Number.isInteger(repeats) && repeats >= 7 && repeats <= 15, 'REPEATS must be 7 through 15');
 assert(process.env.ZEN_E2E_LIVE !== '1' && process.env.ZEN_E2E_ALLOW_MODEL_CALL !== '1', 'Benchmark never runs live models');
 const deadline = Date.now() + 12 * 60_000;
-const report = { backend: 'RexTestDriver private Rex', pi: version, cli, candidate, mode, repeats, pane: '120x44',
+const hash = file => createHash('sha256').update(readFileSync(file)).digest('hex');
+const report = { hashes: { candidate: hash(candidate), ...(baseline ? { baseline: hash(baseline) } : {}) }, baseline,
+  backend: 'RexTestDriver private Rex', pi: version, cli, candidate, mode, repeats, pane: '120x44',
   measurement: 'Rex target creation through stable captured Pi ready paint, includes creation/login startup and target registration overhead; excludes private server startup and seed creation',
   pollMs: 100, stability: 'two consecutive equal captures after real ready event and footer paint',
   comparison: 'Only variants measured in this Rex run. No old timing comparisons.',
   aliases: 'zen1 and zen2 both use current checkout zen.ts; neither measures a retired version',
   samples: [], summary: {} };
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+const stats = host => {
+  const [rss, time] = execFileSync('ps', ['-p', String(host.pid), '-o', 'rss=', '-o', 'time='], { encoding: 'utf8', timeout: 3000 }).trim().split(/\s+/);
+  return { rssKB: Number(rss), cpuMs: time.split(':').map(Number).reduce((n, x) => n * 60 + x, 0) * 1000 };
+};
 const median = values => {
   const sorted = [...values].sort((a, b) => a - b), half = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[half] : (sorted[half - 1] + sorted[half]) / 2;
@@ -31,7 +40,8 @@ const median = values => {
 let driver, host, sequence = 0;
 try {
   driver = await RexTestDriver.start({ deadlineMs: 13 * 60_000 });
-  for (let round = 0; round < repeats; round++) {
+  // Round zero warms every variant and is excluded from measured pairs.
+  for (let round = 0; round <= repeats; round++) {
     // Rotate the first variant each round. Fixed-order interleaving gives the
     // first variant all cold-start effects and hides systematic ordering noise.
     const offset = round % variants.length;
@@ -55,8 +65,13 @@ try {
       const rows = mode === 'seeded' ? transcript.split('\n').filter(line => line.trim() &&
         !/Could not restore model|tmux extended-keys|tokens/.test(line)).length : 0;
       assert(mode !== 'seeded' || rows > 0, 'Empty history row count');
-      report.samples.push({ round: round + 1, position: position + 1, variant, ms: host.startupMs, rows });
-      console.log(`SAMPLE ${round + 1}/${repeats} ${variant} ${host.startupMs.toFixed(0)}ms ${rows} rows`);
+      const before = stats(host), bytes = driver.capture(host, { format: 'vt', history: true });
+      await pause(1000);
+      const after = stats(host);
+      const idleChanged = driver.capture(host, { format: 'vt', history: true }) !== bytes;
+      if (round > 0) report.samples.push({ round, position: position + 1, variant, ms: host.startupMs, rows,
+        rssKB: after.rssKB, idleCpuMs: after.cpuMs - before.cpuMs, idleChanged });
+      console.log(`SAMPLE ${round}/${repeats} ${variant} ${host.startupMs.toFixed(0)}ms ${rows} rows${round === 0 ? ' warmup' : ''}`);
       if (process.env.KEEP === '1') {
         report.captures ??= [];
         report.captures.push({ round: round + 1, variant, viewport, transcript });
@@ -70,6 +85,8 @@ try {
     const med = median(samples.map(sample => sample.ms));
     report.summary[variant] = { n: samples.length, medianMs: med,
       madMs: median(samples.map(sample => Math.abs(sample.ms - med))),
+      medianRssKB: median(samples.map(s => s.rssKB)), maxIdleCpuMs: Math.max(...samples.map(s => s.idleCpuMs)),
+      idleChanged: samples.some(s => s.idleChanged),
       ...(mode === 'seeded' ? { medianRows: median(samples.map(sample => sample.rows)) } : {}) };
   }
 } finally {

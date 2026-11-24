@@ -26,12 +26,10 @@
  */
 
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { basename, dirname, join, relative } from "node:path";
+import { existsSync } from "node:fs";
+import { basename, dirname, relative } from "node:path";
 import { promisify } from "node:util";
-import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
-import { copyToClipboard, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { copyToClipboard, SettingsManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 const execFileAsync = promisify(execFile);
@@ -39,8 +37,6 @@ const execFileAsync = promisify(execFile);
 const GIT_POLL_MS = 4000;
 const NARROW_WIDTH = 80;
 const DETAIL_WIDTH = 140;
-// Matches pi's compaction default; overridden from settings.json when present.
-const DEFAULT_RESERVE_TOKENS = 16384;
 
 interface GitState {
 	dirty: number;
@@ -48,9 +44,23 @@ interface GitState {
 	behind: number;
 }
 
-interface CompactionConfig {
-	enabled: boolean;
-	reserveTokens: number;
+interface BranchStats {
+	sm: ExtensionContext["sessionManager"];
+	sessionId: string;
+	leafId: string | null;
+	leaf: ReturnType<ExtensionContext["sessionManager"]["getLeafEntry"]>;
+	model: ExtensionContext["model"];
+	modelId: string | undefined;
+	provider: string | undefined;
+	window: number | undefined;
+	branchReader: ExtensionContext["sessionManager"]["getBranch"];
+	contextReader: ExtensionContext["getContextUsage"];
+	input: number;
+	output: number;
+	cache: number;
+	cost: number;
+	lastHitRate: number | null;
+	usage: ReturnType<ExtensionContext["getContextUsage"]>;
 }
 
 interface CheckoutIdentity {
@@ -172,45 +182,23 @@ const relabelMeterLetters = (s: string): string => {
 	return parts.join("");
 };
 
-// Read compaction settings (project overrides global; falls back to pi defaults).
-// The extension context does not expose settings, so we read the files directly.
-const readCompactionConfig = (cwd: string): CompactionConfig => {
-	const candidates = [
-		join(cwd, ".pi", "settings.json"),
-		join(homedir(), ".pi", "agent", "settings.json"),
-	];
-	let enabled = true;
-	let reserveTokens = DEFAULT_RESERVE_TOKENS;
-	let sawEnabled = false;
-	let sawReserve = false;
-	for (const path of candidates) {
-		try {
-			const raw = JSON.parse(readFileSync(path, "utf8")) as {
-				compaction?: { enabled?: boolean; reserveTokens?: number };
-			};
-			const c = raw?.compaction;
-			if (c) {
-				if (!sawEnabled && typeof c.enabled === "boolean") {
-					enabled = c.enabled;
-					sawEnabled = true;
-				}
-				if (!sawReserve && typeof c.reserveTokens === "number" && c.reserveTokens > 0) {
-					reserveTokens = c.reserveTokens;
-					sawReserve = true;
-				}
-			}
-		} catch {
-			// Missing or malformed settings file: keep defaults.
-		}
-	}
-	return { enabled, reserveTokens };
-};
-
 export default function (pi: ExtensionAPI) {
 	let git: GitState = { dirty: 0, ahead: 0, behind: 0 };
 	let checkout: CheckoutIdentity | undefined;
 	let checkoutResolved = false;
-	let compaction: CompactionConfig = { enabled: true, reserveTokens: DEFAULT_RESERVE_TOKENS };
+	let settingsKey: string | undefined;
+	let settings: SettingsManager;
+	// Pi exposes snapshots, not a settings-change event. This stays in memory.
+	// Let the public resolver own defaults, validation and exact model overrides.
+	const getCompaction = (ctx: ExtensionContext) => {
+		const compaction = pi.getSettings().compaction;
+		const key = JSON.stringify(compaction);
+		if (!settings || key !== settingsKey) {
+			settings = SettingsManager.inMemory({ compaction });
+			settingsKey = key;
+		}
+		return settings.getCompactionSettings(ctx.model);
+	};
 	let timer: ReturnType<typeof setInterval> | undefined;
 	let enabled = true;
 	let activeContext: ExtensionContext | undefined;
@@ -249,30 +237,38 @@ export default function (pi: ExtensionAPI) {
 		return `${Math.floor(h / 24)}d`;
 	};
 
-	// Sum token usage and cost across the current branch's assistant messages, and
-	// capture the most recent valid usage so we can report last-turn cache reuse.
-	const tally = (ctx: ExtensionContext) => {
-		let input = 0,
-			output = 0,
-			cache = 0,
-			cost = 0;
+	// Session entries are append-only: even hidden cache-warm usage moves the leaf.
+	// Identity checks catch navigation and replacement without copying all entries.
+	// Explicit invalidation also supports a host rebuilding an existing branch.
+	let stats: BranchStats | undefined;
+	const readStats = (ctx: ExtensionContext): BranchStats => {
+		const sm = ctx.sessionManager;
+		const sessionId = sm.getSessionId(), leafId = sm.getLeafId(), leaf = sm.getLeafEntry();
+		const model = ctx.model;
+		if (stats && stats.sm === sm && stats.sessionId === sessionId && stats.leafId === leafId && stats.leaf === leaf &&
+			stats.model === model && stats.modelId === model?.id && stats.provider === model?.provider && stats.window === model?.contextWindow &&
+			stats.branchReader === sm.getBranch && stats.contextReader === ctx.getContextUsage) return stats;
+		let input = 0, output = 0, cache = 0, cost = 0;
 		let lastHitRate: number | null = null;
-		for (const e of ctx.sessionManager.getBranch()) {
-			if (e.type === "message" && e.message.role === "assistant") {
-				const m = e.message as AssistantMessage;
-				const u = m.usage;
-				input += u.input;
-				output += u.output;
-				cache += u.cacheRead + u.cacheWrite;
-				cost += u.cost.total;
-				// Cache reuse for the last real turn: share of the prompt served from cache.
-				if (m.stopReason !== "aborted" && m.stopReason !== "error") {
-					const prompt = u.input + u.cacheRead;
-					if (prompt > 0) lastHitRate = (u.cacheRead / prompt) * 100;
-				}
+		// Match Pi 1.6's native usage sources, but only on the SELECTED branch.
+		// Summaries and tool/cache-warm calls never replace the real turn's hit rate.
+		for (const e of sm.getBranch()) {
+			const message = e.type === "message" ? e.message : undefined;
+			const usage = message?.role === "assistant" || message?.role === "toolResult" ? message.usage
+				: e.type === "usage" || e.type === "compaction" || e.type === "branch_summary" ? e.usage : undefined;
+			if (!usage) continue;
+			input += usage.input;
+			output += usage.output;
+			cache += usage.cacheRead + usage.cacheWrite;
+			cost += usage.cost.total;
+			if (message?.role === "assistant" && message.stopReason !== "aborted" && message.stopReason !== "error") {
+				// Preserve this footer's input + cacheRead denominator, not native CH.
+				const prompt = usage.input + usage.cacheRead;
+				if (prompt > 0) lastHitRate = (usage.cacheRead / prompt) * 100;
 			}
 		}
-		return { input, output, cache, cost, lastHitRate };
+		return stats = { sm, sessionId, leafId, leaf, model, modelId: model?.id, provider: model?.provider, window: model?.contextWindow,
+			branchReader: sm.getBranch, contextReader: ctx.getContextUsage, input, output, cache, cost, lastHitRate, usage: ctx.getContextUsage() };
 	};
 
 	const refreshGit = async (ctx: ExtensionContext, epoch: number) => {
@@ -369,6 +365,7 @@ export default function (pi: ExtensionAPI) {
 			// Context bar with a marker at the auto-compaction threshold. Colour tracks
 			// proximity to that threshold (where compaction fires), not the raw window.
 			const contextBar = (
+				compactionEnabled: boolean,
 				tokens: number,
 				contextWindow: number,
 				usable: number,
@@ -383,7 +380,7 @@ export default function (pi: ExtensionAPI) {
 					compactRatio >= 0.95 ? "error" : compactRatio >= 0.75 ? "warning" : "muted";
 				// Slot (1-based) just before which auto-compaction becomes reachable.
 				const threshold =
-					compaction.enabled && contextWindow > 0
+					compactionEnabled && contextWindow > 0
 						? Math.min(slots, Math.max(1, Math.round((usable / contextWindow) * slots)))
 						: 0;
 				let out = "";
@@ -420,20 +417,37 @@ export default function (pi: ExtensionAPI) {
 			const label = (name: string, value: string, color: "muted" | "dim" | "warning" | "error" = "muted") =>
 				theme.fg("dim", `${name} `) + theme.fg(color, plain(value));
 
+			// One-frame cache. Read settings before checking it so /settings and
+			// model overrides take effect on the very next paint without polling.
+			let rendered: { inputs: unknown[]; rows: string[] } | undefined;
 			return {
 				dispose,
-				invalidate() {},
+				invalidate() { stats = undefined; rendered = undefined; },
 				render(width: number): string[] {
 					const sm = ctx.sessionManager;
 					const project = checkout?.repository ?? (basename(ctx.cwd) || ctx.cwd);
 					const name = sm.getSessionName();
 					const id = plain(sm.getSessionId());
-					const { input, output, cache, cost, lastHitRate } = tally(ctx);
-					const usage = ctx.getContextUsage();
+					const branchStats = readStats(ctx);
+					const { input, output, cache, cost, lastHitRate, usage } = branchStats;
+					const compaction = getCompaction(ctx);
+					const statuses = footerData.getExtensionStatuses?.();
+					const statusEntries = [...(statuses?.entries() ?? [])];
+					const branch = footerData.getGitBranch();
+					const m = ctx.model;
+					const inputs = [width, branchStats, project, checkout?.worktree, checkout?.subdirectory,
+						name, id, branch, m?.id, m?.name, m?.provider, pi.getThinkingLevel(),
+						compaction.enabled, compaction.reserveTokens, git.dirty, git.ahead, git.behind,
+						turnStartedAt, turnStartedAt == null ? null : Math.floor((Date.now() - turnStartedAt) / 1000),
+						theme.colors, theme.fg, theme.bold, theme.getThinkingBorderColor, ...statusEntries.flat()];
+					if (rendered && inputs.length === rendered.inputs.length && inputs.every((value, i) => value === rendered!.inputs[i])) return rendered.rows;
+					const remember = (rows: string[]): string[] => {
+						rendered = { inputs, rows };
+						return rows;
+					};
 					// Picker role descriptions are not model identities. Keep the canonical
 					// id for these names and show only their short role as optional metadata.
 					// Bedrock also keeps its raw id, including the invocation region.
-					const m = ctx.model;
 					const role = m?.name?.match(/^(Daily|Code|Think|Budget|Quick|Vision|Helper)\s*\|/)?.[1];
 					const model = !m
 						? "no model"
@@ -463,10 +477,9 @@ export default function (pi: ExtensionAPI) {
 					const identity: FooterSegment[] = [
 						{ text: theme.fg("text", theme.bold(plain(project))), priority: 0, required: true, minWidth: Math.min(12, visibleWidth(plain(project))) },
 						{ text: checkout ? label("worktree", checkout.worktree) : "", priority: 1, required: true, minWidth: 12 },
-						{ text: footerData.getGitBranch() ? label("branch", footerData.getGitBranch()!) : "", priority: 2, minWidth: 12 },
+						{ text: branch ? label("branch", branch) : "", priority: 2, minWidth: 12 },
 						{ text: checkout?.subdirectory ? label("dir", checkout.subdirectory) : "", priority: 5, minWidth: 10 },
 					];
-					const statuses = footerData.getExtensionStatuses?.();
 					// Closing safety shares the runtime slot. It is a report, never Git-derived proof.
 					const closing = plain(statuses?.get("close-status") ?? "");
 					const closeColor = closing === "SAFE TO CLOSE" ? "success" : closing === "KEEP OPEN" ? "warning" : closing === "WORKING" ? "accent" : "muted";
@@ -501,7 +514,7 @@ export default function (pi: ExtensionAPI) {
 					];
 					const contextDetails: FooterSegment[] = [
 						{ text: usage?.percent != null ? theme.fg("muted", `${Math.round(usage.percent)}%`) : "", priority: 8 },
-						{ text: contextTokens != null ? contextBar(contextTokens, contextWindow, usableWindow, 10) : "", priority: 9 },
+						{ text: contextTokens != null ? contextBar(compaction.enabled, contextTokens, contextWindow, usableWindow, 10) : "", priority: 9 },
 					];
 					const hitColor = lastHitRate != null && lastHitRate >= 80 ? "success" : lastHitRate != null && lastHitRate >= 50 ? "muted" : "dim";
 					const amount = `$${cost.toFixed(3)}`;
@@ -516,7 +529,7 @@ export default function (pi: ExtensionAPI) {
 						{ text: role ? theme.fg("muted", role) : "", priority: 6 },
 						{ text: think, priority: 3, required: true },
 					];
-					const extensions: FooterSegment[] = [...(statuses?.entries() ?? [])].filter(([key, value]) => key !== "close-status" && value)
+					const extensions: FooterSegment[] = statusEntries.filter(([key, value]) => key !== "close-status" && value)
 						.map(([, value]) => ({ text: relabelMeterLetters(statusText(value)), priority: 2 }));
 					// A UUID is never shortened if 36 columns fit. Its label yields first.
 					const session: FooterSegment = {
@@ -529,18 +542,18 @@ export default function (pi: ExtensionAPI) {
 					const checkoutRow = fitGroups(identity, [spending, ...(detail ? traffic : []), ...gitStatus], width);
 					const sessionRow = fitGroups([session, sessionName], [...extensions, cacheHit], width);
 					if (width < NARROW_WIDTH) {
-						return [
+						return remember([
 							checkoutRow,
 							fitGroups([modelSegment], modelMetadata, width),
 							fitGroups(context.slice(0, 1), context.slice(1), width),
 							sessionRow,
-						];
+						]);
 					}
-					return [
+					return remember([
 						checkoutRow,
 						fitGroups([modelSegment, ...modelMetadata], [...context, ...(detail ? contextDetails : [])], width),
 						sessionRow,
-					];
+					]);
 				},
 			};
 		});
@@ -549,6 +562,7 @@ export default function (pi: ExtensionAPI) {
 	const stopFooter = () => {
 		// Invalidate completions before releasing the footer or replacing its context.
 		generation++;
+		stats = undefined;
 		activeContext = undefined;
 		pendingGit = undefined;
 		if (timer !== undefined) clearInterval(timer);
@@ -578,7 +592,6 @@ export default function (pi: ExtensionAPI) {
 		checkout = undefined;
 		checkoutResolved = false;
 		const epoch = generation;
-		compaction = readCompactionConfig(ctx.cwd);
 		applyFooter(ctx, epoch);
 		void refreshGit(ctx, epoch);
 		// One git timer also requests rendering after the refresh completes.

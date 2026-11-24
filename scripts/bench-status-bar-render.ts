@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { modules } from "./test-status-bar-runtime.mjs";
 
 const repo = resolve(import.meta.dir, "..");
 const candidate = join(repo, "pi/.pi/agent/extensions/status-bar.ts");
@@ -14,7 +15,10 @@ const arg = (name: string) => {
 	const i = process.argv.indexOf(name);
 	return i >= 0 ? process.argv[i + 1] : undefined;
 };
+const settingsFixture = JSON.parse(readFileSync(join(repo, "pi/.pi/agent/settings.json"), "utf8"));
+const settingsFixtureBytes = Buffer.byteLength(JSON.stringify(settingsFixture));
 const root = mkdtempSync(join(tmpdir(), "sb-render-bench-"));
+writeFileSync(join(root, "settings-fixture.json"), JSON.stringify(settingsFixture));
 try {
 	const baselineArg = arg("--baseline");
 	const baseline = baselineArg ? resolve(baselineArg) : join(root, "baseline.ts");
@@ -39,9 +43,12 @@ const {Script,createContext} = require('node:vm');
 const {promisify} = require('node:util');
 const {join} = require('node:path');
 const {performance} = require('node:perf_hooks');
-const [root,repo] = process.argv.slice(2);
+const [root,repo,modules] = process.argv.slice(2);
 const load = createRequire(join(repo,'scripts/bench-status-bar-render.ts'));
-const width = load('@earendil-works/pi-tui').visibleWidth;
+const tui = load(join(modules,'@earendil-works/pi-tui/dist/index.js'));
+const {SettingsManager} = load(join(modules,'@earendil-works/pi-coding-agent/dist/core/settings-manager.js'));
+const width = tui.visibleWidth;
+const settingsFixture = JSON.parse(fs.readFileSync(join(root,'settings-fixture.json'),'utf8'));
 function host(source, count, closing, candidate) {
   let now=0, footer, activeTimers=0, gitCalls=0, reads=0, renders=0;
   const handlers=new Map();
@@ -58,15 +65,16 @@ function host(source, count, closing, candidate) {
   new Script(source).runInContext(createContext({module,exports:module.exports,console,Date:Clock,
     setInterval:()=>{activeTimers++;return {unref(){}}},clearInterval:()=>{activeTimers--},
     require:(name)=>name==='node:child_process'?{execFile}:name==='node:fs'?{existsSync:()=>true,readFileSync:()=>{reads++;return '{}'}}:
-      name==='@earendil-works/pi-coding-agent'?{copyToClipboard:async()=>{}}:load(name)}));
-  module.exports.default({on:(name,fn)=>handlers.set(name,fn),registerCommand(){},getThinkingLevel:()=> 'high'});
+      name==='@earendil-works/pi-coding-agent'?{SettingsManager,copyToClipboard:async()=>{}}:
+      name==='@earendil-works/pi-tui'?tui:load(name)}));
+  module.exports.default({on:(name,fn)=>handlers.set(name,fn),registerCommand(){},getThinkingLevel:()=> 'high',getSettings:()=>structuredClone(settingsFixture)});
   const theme={fg:(color,text)=>'\x1b[38;5;'+(color.length+230)+'m'+text+'\x1b[0m',bold:text=>'\x1b[1m'+text+'\x1b[22m',getThinkingBorderColor:()=>text=>text};
   const statuses=new Map([['meter','\x1b[32mblackhole obs ▕▏▏▏\x1b[0m']]);
   if (closing) statuses.set('close-status', candidate ? theme.bold(theme.fg('success', 'SAFE TO CLOSE')) : 'Safe to close (reported)');
   let modelName='GPT-6.1 Sol';
   const ctx={mode:'tui',hasUI:true,cwd:'/repo/worktree/dotfiles',model:{id:'gpt-6.1-sol',get name(){return modelName},provider:'ai-model-router'},
     ui:{setFooter:factory=>{footer=factory?.({requestRender(){renders++}},theme,{getGitBranch:()=> 'feature-example',getExtensionStatuses:()=>statuses,onBranchChange:()=>()=>{}})},notify(){}},
-    sessionManager:{getSessionId:()=> '12345678-abcd-4321-8765-0123456789ab',getSessionFile:()=>'/test.jsonl',getSessionName:()=> 'Benchmark session',getBranch:()=>branch},
+    sessionManager:{getSessionId:()=> '12345678-abcd-4321-8765-0123456789ab',getSessionFile:()=>'/test.jsonl',getSessionName:()=> 'Benchmark session',getLeafId:()=>branch.at(-1)?.id,getLeafEntry:()=>branch.at(-1),getBranch:()=>branch},
     getContextUsage:()=>({tokens:30000,contextWindow:128000,percent:23.4375})};
   const stats=()=>({gitCalls,reads,renders,activeTimers});
   return {ctx,stats,fire:async name=>{await handlers.get(name)?.({},ctx);for(let i=0;i<12;i++)await Promise.resolve()},
@@ -106,10 +114,12 @@ const summarize=values=>({medianUs:median(values),madUs:median(values.map(x=>Mat
     units:'microseconds per render, p95 across batch means, not individual render tail latency',jitWarmup:300,rotatingOrder:true,results},null,2));
 })().catch(e=>{console.error(e);process.exitCode=1});
 `);
-	const measured = spawnSync("node", [join(root, "runner.cjs"), root, repo], { cwd: repo, encoding: "utf8", timeout: 180000 });
+	const measured = spawnSync("node", [join(root, "runner.cjs"), root, repo, modules], { cwd: repo, encoding: "utf8", timeout: 180000 });
 	assert.equal(measured.status, 0, measured.stderr);
 	const report = JSON.parse(measured.stdout);
 	for (const [name, path] of Object.entries(sources)) assert.equal(fingerprint(path), sourceHashes[name], `Source changed during measurement: ${path}`);
+	report.piModules = modules;
+	report.settingsFixture = { bytes: settingsFixtureBytes, keys: Object.keys(settingsFixture).length, sha256: createHash("sha256").update(JSON.stringify(settingsFixture)).digest("hex") };
 	report.sources = Object.fromEntries(Object.entries(sources).map(([name, path]) => [name, { path, sha256: sourceHashes[name] }]));
 	if (arg("--output")) writeFileSync(resolve(arg("--output")!), JSON.stringify(report, null, 2) + "\n");
 	console.log(JSON.stringify(report, null, 2));

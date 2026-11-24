@@ -150,7 +150,7 @@ async function scenario(name, fn) {
   try { await fn(); }
   catch (error) { report.failures.push({ name, error: String(error).slice(0, 6000) }); console.error(`FAIL ${name}: ${error.message}`); }
 }
-function seed(area, cwd, { unknown = false } = {}) {
+function seed(area, cwd, { unknown = false, accounting = false } = {}) {
   const timestamp = new Date().toISOString();
   const uuid = randomUUID();
   const usage = { input: 30000, output: 1000, cacheRead: 40000, cacheWrite: 0, totalTokens: 71000,
@@ -164,6 +164,22 @@ function seed(area, cwd, { unknown = false } = {}) {
       message: { role: 'assistant', api: 'sb-live-stream', provider, model: 'fixture', timestamp: Date.now(),
         content: [{ type: 'text', text: 'SB_SEED_DONE' }], stopReason: 'stop', usage } },
   ];
+  if (accounting) {
+    const paid = { ...usage, cost: { ...usage.cost, total: 0.1 } };
+    // An abandoned sibling is persisted but must not enter SELECTED branch totals.
+    records.push({ ...records[3], id: 'abandoned', parentId: 'u0000001', message: { ...records[3].message,
+      usage: { ...paid, cost: { ...paid.cost, total: 9 } } } });
+    // Place the compaction before the paid real response so context remains known.
+    records.splice(3, 0, { type: 'compaction', id: 'paid-compact', parentId: 'u0000001', timestamp,
+      summary: 'Paid fixture summary', firstKeptEntryId: 'u0000001', tokensBefore: 71000, usage: paid });
+    records.find(r => r.id === 'a0000001').parentId = 'paid-compact';
+    records.push(
+      { type: 'usage', id: 'warm', parentId: 'a0000001', timestamp, kind: 'cache_warm', provider, model: 'fixture', usage: paid },
+      { type: 'message', id: 'nested', parentId: 'warm', timestamp, message: { role: 'toolResult', toolCallId: 'fixture-tool', toolName: 'fixture',
+        content: [{ type: 'text', text: 'Paid nested result' }], isError: false, timestamp: Date.now(), usage: paid } },
+      { type: 'branch_summary', id: 'paid-branch', parentId: 'nested', timestamp, fromId: 'abandoned', summary: 'Paid branch summary', usage: paid },
+    );
+  }
   if (unknown) records.push({ type: 'compaction', id: 'c0000001', parentId: 'a0000001', timestamp,
     summary: 'Fixture summary', firstKeptEntryId: 'c0000001', tokensBefore: 71000 });
   const file = join(area, 'sessions', `seed_${uuid}.jsonl`);
@@ -171,7 +187,7 @@ function seed(area, cwd, { unknown = false } = {}) {
   writeFileSync(file, records.map((record) => JSON.stringify(record)).join('\n') + '\n');
   return { file, uuid };
 }
-async function start(mode, { cwd = repo, width = 160, seeded = true, unknown = false, compact = true } = {}) {
+async function start(mode, { cwd = repo, width = 160, seeded = true, unknown = false, compact = true, accounting = false } = {}) {
   assert(Date.now() < deadline - 35_000, 'Suite deadline reached');
   const area = join(root, `host-${++sequence}`);
   const home = join(area, 'home');
@@ -180,8 +196,9 @@ async function start(mode, { cwd = repo, width = 160, seeded = true, unknown = f
   const settings = { quietStartup: true, theme: 'dark', defaultProvider: provider, defaultModel: 'fixture',
     compaction: { enabled: compact, reserveTokens: 16384 }, retry: { enabled: false }, cacheWarming: 'off',
     enableInstallTelemetry: false, enableAnalytics: false, fullscreenCopyOnSelect: false };
+  if (accounting) settings.compaction.modelOverrides = { [`${provider}/fixture`]: { reserveTokens: 0 }, [`${provider}/alternate`]: { reserveTokens: 32000 } };
   writeFileSync(join(config, 'settings.json'), JSON.stringify(settings));
-  const initial = seeded ? seed(area, cwd, { unknown }) : undefined;
+  const initial = seeded ? seed(area, cwd, { unknown, accounting }) : undefined;
   const host = { name: `ag-sb-${process.pid}-${sequence}`, mode, width, cwd, area,
     events: join(area, 'events.jsonl'), log: join(area, 'ansi.log'), pid: undefined, initial };
   const env = { HOME: home, PATH: process.env.PATH, TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'en_US.UTF-8',
@@ -530,9 +547,31 @@ async function fallback(mode, compact) {
     check(`${mode}: non-Git identity and ${compact ? 'post-compaction unknown context' : 'auto compact off'} survive resize`);
   } finally { await stop(host); }
 }
+async function accounting(mode) {
+  const host = await start(mode, { width: 200, accounting: true });
+  try {
+    const verify = async (reserve) => {
+      const state = await snapshot(host);
+      const headroom = Math.max(0, state.usage.contextWindow - reserve - state.usage.tokens);
+      const format = n => n < 1000 ? String(n) : `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k`;
+      await wait(host, screen => {
+        const rows = footer(screen, host.width);
+        return rows[0].includes('$0.436') && rows.at(-1).includes('hit 57%') && rows[1].includes(`until compact ${format(headroom)}`);
+      }, 'native summary/tool/cache-warm totals and per-model headroom');
+      assert(!events(host).some(e => e.type === 'response-start'), 'Accounting smoke must not invoke a model');
+    };
+    await verify(0);
+    check(`${mode}: Pi 1.6 persisted selected-branch usage includes tool, compaction, branch summary and cache warm, excludes abandoned $9`);
+    await command(host, '/sb-live-model alternate');
+    await wait(host, screen => screen.includes('Kimi K3 Preview'), 'accounting model change');
+    await verify(32000);
+    check(`${mode}: exact model reserve switches from zero to 32k without restart or model call`);
+  } finally { await stop(host); }
+}
 try {
   driver = await RexTestDriver.start({ deadlineMs: Math.max(1000, deadline - Date.now()) });
   for (const mode of ['regular', 'fullscreen']) {
+    await scenario(`${mode} selected branch accounting`, () => accounting(mode));
     await scenario(`${mode} footer lifecycle`, () => lifecycle(mode));
     await scenario(`${mode} fresh and unavailable context`, () => fresh(mode));
     await scenario(`${mode} unknown context and cwd fallback`, () => fallback(mode, true));

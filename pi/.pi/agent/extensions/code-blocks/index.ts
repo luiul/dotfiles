@@ -11,9 +11,9 @@ const STATE = Symbol.for("dotfiles.reply-code-blocks.v1");
 const RESET_BG = "\x1b[49m";
 const GUIDANCE = "In replies, use top-level Mermaid fences for useful diagrams, short labels, and vertical layouts. Use a language-only code fence; put filenames outside it. Keep saved documentation diagram conventions unchanged.";
 type Token = { type: string; text: string; lang?: string; codeBlockStyle?: string };
-type Runtime = { theme: MarkdownTheme; blockHighlightedCode?: Map<string, string[]> };
-type RenderToken = (this: Runtime, token: Token, width: number, next?: string, style?: unknown) => string[];
-type Render = (this: Markdown, width: number) => string[];
+type Runtime = { theme: MarkdownTheme; blockHighlightedCode?: Map<string, readonly string[]> };
+type RenderToken = (this: Runtime, token: Token, width: number, next?: string, style?: unknown) => readonly string[];
+type Render = (this: Markdown, width: number) => readonly string[];
 type Patch = { original: RenderToken; render: Render; patched: RenderToken; wrapped: Render; active: boolean; scopes: boolean[] };
 type Prototype = { renderToken: RenderToken; render: Render; [STATE]?: Patch };
 
@@ -60,7 +60,9 @@ function frame(owner: Runtime, token: Token, width: number, next: string | undef
 /** Exported for tests and benchmarks, not a second renderer. */
 export function installCodeFrames(version = VERSION): { patch?: Patch; reason?: string; dispose(): void } {
 	const prototype = Markdown.prototype as unknown as Prototype;
-	if (version !== "1.5.1") return { reason: `Pi ${version} is not verified for code frames`, dispose() {} };
+	// Both releases use the same renderToken arguments and block-owned highlight cache.
+	// Pi 1.6 returns shared readonly render lines. Never modify native arrays here.
+	if (version !== "1.5.1" && version !== "1.6.0") return { reason: `Pi ${version} is not verified for code frames`, dispose() {} };
 	if (prototype[STATE]) return { reason: "Another code-frame instance is active", dispose() {} };
 	if (typeof prototype.renderToken !== "function" || typeof prototype.render !== "function") {
 		return { reason: "The native Markdown hook changed", dispose() {} };

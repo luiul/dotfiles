@@ -1,5 +1,6 @@
 {
   "workflowsEnabled": false,
+  "worktreeIsolation": false,
   "maxConcurrent": 3,
   "maxConcurrentForeground": 2,
   "defaultMaxTurns": 60,

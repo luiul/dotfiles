@@ -12,7 +12,7 @@ Task progress stays in the session and approved issue or ticket, not durable mem
 
 User, assistant, and tool-result records keep distinct labels and source entry IDs. System prompts and thinking are excluded. Content is JSON-quoted, so embedded role labels cannot create a new transcript record. This is evidence framing, not a complete prompt-injection defense.
 
-User text keeps up to 16,000 characters. Longer text keeps both ends and an explicit omission marker. Assistant and tool text keep 500 characters, with both ends and an omission marker. Review instructions forbid inferring facts from omitted text or treating assistant claims as user preferences.
+User text keeps up to 16,000 source characters. Longer text keeps both ends and an explicit omission marker. Assistant and tool text keep 500 source characters. The encoded record budget includes JSON escaping and omission markers. Entry IDs, timestamps and tool names each have a 1,024-character JSON budget, with explicit head and tail omissions. Exact IDs still drive checkpoints in the original session. Every record and every joined background evidence batch stays within 48,000 characters. Review instructions forbid inferring facts from omitted text or treating assistant claims as user preferences.
 
 Background reviews process unseen records in oldest-first batches capped at 48,000 characters. A positive `reviewRecentMessages` setting limits batch size without acknowledging omitted records. Only a validated direct review whose operations all succeed advances the active-branch checkpoint. A valid empty operations decision advances it. Blank output, errors, cancellation, and subprocess completion do not. Branch navigation cancels the review. Original session entries remain intact.
 
@@ -28,7 +28,7 @@ The opt-in anchor session-search mode keeps its existing explicit Markdown inter
 
 ## Patch lifecycle
 
-The patch supports Hermes 0.9.11 and 0.10.0 only, with a separate reviewed source-hash manifest for each. All eight patched upstream source files are byte-identical between these versions. The 0.10.0 port keeps the same behavior and rejects other releases or source drift. It records the actual package version in the marker. `pi-memory-hardening` validates the package version and reviewed source hashes without writing. Application needs explicit approval and stopped affected Pi sessions:
+The patch supports Hermes 0.9.11 and 0.10.0 only, with a separate reviewed source-hash manifest for each. The eight essential upstream transforms remain. Revision `hermes-evidence-scope-v2` adds two reviewed child-lifecycle targets and rejects newer npm versions. Legacy `hermes-evidence-scope-v1` validation remains read-only. Do not mutate a rolling copy, even with `--approved`. `pi-memory-hardening` validates the selected package without writing. For a non-rolling package, application needs explicit approval and stopped affected Pi sessions:
 
 ```sh
 pi-memory-hardening --approved
@@ -48,9 +48,9 @@ node scripts/test-hermes-rolling.mjs
 node scripts/activate-hermes-rolling.mjs --approved
 ```
 
-The copy lives at `~/.pi/agent/packages/pi-hermes-memory/0.10.0-evidence-v1`. Preparation copies runtime dependencies and patches only that copy. The rolling test also prepares the copy if missing, so run it only during an approved rollout. A source manifest rejects drift when preparation runs again. It is not a continuous runtime guard; Pi does not check it on normal loading. The npm package stays installed and unchanged, but its resources are disabled in settings. New sessions load the local package. Existing sessions keep their loaded npm code until they restart or explicitly reload while idle. Do not reload another worker.
+The new copy lives at `~/.pi/agent/packages/pi-hermes-memory/0.10.0-evidence-v2`. Active `0.10.0-evidence-v1` stays unchanged. Preparation verifies an existing destination before checking installed npm, so a later inactive npm upgrade does not break idempotence. If v2 is missing, preparation restores reviewed baseline files only inside a new private copy of v1 and applies v2 there. An unsupported npm release is never upgraded or patched implicitly. Source manifests check all package source files and reject drift or unexpected files. Verification is not a continuous runtime guard. Tests use private copies and never prepare in the live agent directory. Runtime dependencies are copied, not linked to stores or credentials.
 
-Trusted central HelloFresh intake disables both package sources. Its implementation repos keep the local package enabled. Memory locations, retention, providers, and session history remain unchanged. Old and new sessions can use the existing shared memory stores; the package rollout does not repair or delete those stores.
+Trusted central HelloFresh intake must disable npm, v1 and v2 before activation. Activation fails closed if that separately owned override is missing. Implementation repos keep the selected local package enabled. Activation resolves the managed `current-version` runtime, not a hardcoded release or stale symlink. It holds Pi's global settings lock, replaces only known Hermes source entries, preserves custom scope filters by refusing to overwrite them, and retains a revision-specific settings backup. Existing sessions are not reloaded. Memory locations, retention, providers and history stay unchanged. The rollout does not repair or delete stores.
 
 The local package is pinned and does not auto-update. Run preparation before restoring these settings on a new machine. An npm update does not update this local copy. A newer Hermes release needs a new reviewed versioned copy and matching central override, not silent mutation of the active path.
 
@@ -58,17 +58,55 @@ Activation uses Pi's settings lock and changes only the Hermes package entries. 
 
 Rollback changes the two Hermes package entries back to the original npm source. Keep the versioned copy while any session may still use it. Do not delete stores to roll back code.
 
+## Child lifecycle and repair
+
+The POSIX watchdog uses a live shell group anchor and a control pipe. A valid root exit status triggers immediate cleanup of the still-owned group, then drains queued output. Normal and nonzero exits do not wait for the cancellation grace period. Timeout and cancellation retain TERM cleanup and the 500 ms KILL escalation, even if descendants replace themselves or close output streams. Watchdog death closes the anchor pipe, which kills its own group. A private host-owned Unix socket detects Pi host death without PID polling. Both primary and fallback child invocations use it. The workload cannot inherit the control pipe or status fd. INT and QUIT dispositions reset before workload exec. Self-detaching descendants that create new groups are outside this ownership boundary. Windows fallback fails closed because this pinned POSIX design is not a Windows job object.
+
+`pi-memory-repair.sh` keeps its public command but defaults to read-only integrity and count checks. It never edits npm or rolling source and never deletes backups, corrupt databases or forget snapshots. A checkpoint requires `--checkpoint --approved --backup-dir NEW_DIRECTORY`. Stop writers first. The command retains a verified SQLite backup, fails on corrupt input, and reports a busy checkpoint. It does not promise to repair corruption. Example:
+
+```sh
+pi-memory-repair.sh
+pi-memory-repair.sh --checkpoint --approved --backup-dir "$HOME/retained-hermes-checkpoint"
+```
+
 ## Verification
 
 ```sh
 bun scripts/test-resource-budget.ts
 node scripts/test-hermes-hardening.mjs
+node scripts/test-hermes-fixes.mjs
 node scripts/test-hermes-patch-recovery.mjs
+node scripts/test-hermes-rolling.mjs
 node scripts/test-hermes-interactive.mjs
-node scripts/bench-hermes-hardening.mjs
+node scripts/bench-hermes-hardening.mjs --validate-only
 ```
 
-The hardening suite uses private package copies and memory stores. The interactive check uses a bounded agent-owned tmux session and a fixed local provider. The benchmark alternates seven measured baseline and candidate pairs after warm-up, with identical package layouts and private settings.
+The hardening suite uses private package copies and stores. The interactive check uses the maintained private Rex driver and a fixed local provider on Pi 1.6.0. The v2 checks reproduce v1 overflow and surviving descendants before asserting the fix. They cover timeout, cancellation, root exit, descendant turnover, watchdog death, host death, nonzero status, stdin EOF, signal reset, recovery and rollout guards.
+
+The benchmark compares active hardened v1 with private candidate v2 on the same current Pi 1.6.0. It uses one discarded warmup pair and at least seven rotated measured pairs. Reports include raw samples, medians, MAD, paired deltas, source manifests, CLI and report hashes. Startup, five foreground turns, two-second idle CPU and RSS, and ordinary and escape-heavy evidence collection have separate results. Stores and settings are private. There are no API calls. Background review and large-index search costs are not measured.
+
+Run sequentially after integration, with no concurrent performance tests. Preserve two new reports:
+
+```sh
+node scripts/bench-hermes-hardening.mjs --pairs 7 --output /tmp/hermes-v2-baseline-first.json
+node scripts/bench-hermes-hardening.mjs --pairs 7 --candidate-first --output /tmp/hermes-v2-candidate-first.json
+```
+
+The child-latency benchmark compares the active v1 watchdog with candidate v2. It measures success, nonzero exit and buffered output separately. Each workload gets one discarded warmup pair and at least seven sequential rotated pairs. Reports preserve exact source hashes, raw samples, medians, MAD, paired deltas and output integrity checks. It uses private fixtures and no credentials or model calls:
+
+```sh
+node scripts/bench-hermes-child.mjs --validate-only
+node scripts/bench-hermes-child.mjs --pairs 7 --output /tmp/hermes-child-v2-baseline-first.json
+node scripts/bench-hermes-child.mjs --pairs 7 --candidate-first --output /tmp/hermes-child-v2-candidate-first.json
+```
+
+Recovery preflight includes the complete staged marker bytes, including version, revision and file hashes. Unknown marker bytes preserve all source staging and the owner lock. A known interrupted marker publication can retry without an `EEXIST` collision.
+
+Investigate median latency growth above 5%, timing MAD above 5% of baseline, paired RSS growth above 10 MiB, or measured candidate idle CPU. A noisy run is inconclusive, not proof of zero cost. The repair and rollout work is tracked at [issue 111](https://github.com/luiul/dotfiles/issues/111), evidence and lifecycle at [issue 110](https://github.com/luiul/dotfiles/issues/110), and combined review at [issue 112](https://github.com/luiul/dotfiles/issues/112).
+
+The 24 November 2026 sequential check on Pi 1.6.0 compared active hardened v1 with candidate v2. Seven rotated pairs after warmup gave startup medians of 763 ms (MAD 8 ms) and 783 ms (MAD 24 ms). The paired startup delta median was minus 0.6 ms, so this does not establish a startup regression or win. Foreground medians were 2.31 ms and 2.29 ms. Candidate RSS was about 0.6 MiB higher. Two-second idle samples were below the 10 ms CPU resolution. These fixtures disable background review and do not measure large-index searches.
+
+The child path has a measured safety cost. Two reversed-order runs measured a normal v1 child at about 141 ms and v2 at about 165 ms. The new anchor and signal-reset shim add about 20 to 25 ms at subprocess start. Root completion-to-close stayed near 5 to 6 ms, rather than waiting for the 500 ms cancellation grace. Success, nonzero status and 3 MiB buffered output preserved their output. This is not a zero-overhead result. Accept that cost before live rollout. Ordinary evidence collection stayed near its baseline; escaping-heavy evidence costs more to enforce the serialized bound. Reports and fixture limits belong to [the combined review](https://github.com/luiul/dotfiles/issues/112).
 
 ## Hermes 0.10.0 port checks
 

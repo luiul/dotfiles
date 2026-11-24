@@ -1,0 +1,11 @@
+{
+  "version": "1.0.169",
+  "revision": "context-mode-resources-v2",
+  "files": {
+    "build/adapters/pi/mcp-bridge.js": "8b74b8953fe848bd44c155140d871c79c9eb859dfba9afe1d4369151af6ccb2e",
+    "build/executor.js": "e87e296fe9053ba051b4a42f2f738e1538e9d9b482380b40bc25592504861431",
+    "build/server.js": "2de8b2ff88da3c02601e612bd54b3102334af46acbe73aa41c6c46765bdfd4eb",
+    "build/lifecycle.js": "90b3d6c07e0b419ed971426941fa3adcd5532d92fd11eaad63f80269f89f6604",
+    "server.bundle.mjs": "0bdae90524baf36fd55fdd7ef12a212a3778abf892138ae6df1c00bf1fcda295"
+  }
+}

@@ -10,11 +10,12 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { RexTestDriver } from './rex-test-driver.mjs';
+import { cli as currentCli } from './test-status-bar-runtime.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -39,7 +40,7 @@ assert(options.baseline, 'Supply --baseline PATH, normally extracted from HEAD:p
 const baseline = resolve(options.baseline);
 const candidate = resolve(options.candidate ?? join(repo, 'pi/.pi/agent/extensions/status-bar.ts'));
 const extraExtension = options['candidate-extension'] ? resolve(options['candidate-extension']) : undefined;
-const cli = resolve(options['pi-cli'] ?? join(homedir(), '.pi/agent/install/current/node_modules/@earendil-works/pi-coding-agent/dist/cli.js'));
+const cli = resolve(options['pi-cli'] ?? currentCli);
 const fixture = join(repo, 'scripts/fixtures/status-bar-live.ts');
 const preload = join(repo, 'scripts/fixtures/status-bar-clipboard.cjs');
 const output = options.output && options.output !== '-' ? resolve(options.output) : undefined;
@@ -291,10 +292,8 @@ try {
   const head = run('git', ['-C', repo, 'rev-parse', 'HEAD']).trim();
   const headSource = run('git', ['-C', repo, 'show', 'HEAD:pi/.pi/agent/extensions/status-bar.ts']);
   report.baseline_provenance = { head, matches_head: createHash('sha256').update(headSource).digest('hex') === sources[baseline] };
-  // Parent verified managed Pi 1.5.1 with this same status-bar-live.ts fixture:
-  // test-status-bar-live.mjs passed all 142 checks, plus test-pi-resource-e2e.mjs
-  // passed its 8s run. This proves 1.5.1 only, not later releases.
-  assert(['1.4.0', '1.5.0', '1.5.1'].includes(piVersion), 'The local fixture supports Pi 1.4.0, 1.5.0 and verified 1.5.1');
+  // Pi 1.6 is validated by test-status-bar-live.mjs against this exact fixture.
+  assert(['1.4.0', '1.5.0', '1.5.1', '1.6.0'].includes(piVersion), 'Unsupported Pi release for this exact fixture');
   const realGit = run('/usr/bin/which', ['git']).trim();
   assert(realGit.startsWith('/'), 'Real Git path must be absolute');
   report.git_executable = realGit;

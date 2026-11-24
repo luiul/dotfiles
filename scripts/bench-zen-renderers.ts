@@ -1,7 +1,8 @@
 // Actual Pi renderer comparison under its Node runtime.
 // ZEN_BENCH_BASELINE=/path/to/zen.ts node scripts/bench-zen-renderers.ts 150 7
 // ZEN_BENCH_JSON=1 emits all rotated trial measurements.
-import { readFileSync, realpathSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -96,7 +97,19 @@ for (let trial = 0; trial < trials; trial++) {
 	}
 }
 const median = (a: number[]) => a.sort((a, b) => a - b)[Math.floor(a.length / 2)];
-if (process.env.ZEN_BENCH_JSON) console.log(JSON.stringify({ runtime: process.version, pi: version, iterations, trials, rows }));
+const hash = (file: string) => createHash('sha256').update(readFileSync(file)).digest('hex');
+const summary = [];
+for (const fixture of fixtures) for (const mode of modes) for (const phase of phases) for (const variant of variants) {
+	const selected = rows.filter(r => r.fixture === fixture.id && r.variant === variant.id && r.mode === mode && r.phase === phase);
+	const med = median(selected.map(r => r.us));
+	summary.push({ fixture: fixture.id, mode, phase, variant: variant.id, medianUs: med,
+		madUs: median(selected.map(r => Math.abs(r.us - med))), n: selected.length });
+}
+const report = { runtime: process.version, pi: version, iterations, trials,
+	hashes: { candidate: hash(join(root, 'pi/.pi/agent/extensions/zen.ts')),
+		...(process.env.ZEN_BENCH_BASELINE ? { baseline: hash(process.env.ZEN_BENCH_BASELINE) } : {}) }, summary, rows };
+if (process.env.ZEN_BENCH_REPORT) writeFileSync(process.env.ZEN_BENCH_REPORT, JSON.stringify(report, null, 2));
+if (process.env.ZEN_BENCH_JSON) console.log(JSON.stringify(report));
 else {
 	console.log(`Pi ${version}, ${process.version}, width 80, ${iterations} iterations, ${trials} rotated trials`);
 	console.log("fixture       variant    mode       phase         median µs    MAD µs   rows");

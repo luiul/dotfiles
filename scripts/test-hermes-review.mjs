@@ -74,7 +74,7 @@ async function supervise() {
   for (const path of [candidatePath, join(runtime, 'dist/cli.js'), join(hermes, 'src/handlers/background-review.ts')]) {
     assert(existsSync(path), `Missing dependency: ${path}. Install Pi 1.4.0 and pi-hermes-memory before running.`);
   }
-  assert(['1.4.0', '1.5.0', '1.5.1'].includes(JSON.parse(readFileSync(join(runtime, 'package.json'))).version), 'Unsupported Pi fixture API');
+  assert(['1.4.0', '1.5.0', '1.5.1', '1.6.0'].includes(JSON.parse(readFileSync(join(runtime, 'package.json'))).version), 'Unsupported Pi fixture API');
   const before = readFileSync(candidatePath);
   const root = mkdtempSync(join(tmpdir(), 'hermes-review-test-'));
   assert.equal(statSync(root).mode & 0o777, 0o700, 'Temporary root must be private');

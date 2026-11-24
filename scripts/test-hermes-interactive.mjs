@@ -7,10 +7,11 @@ import { dirname, join } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { applyPatch, preparePatch } from './patch-hermes-memory.mjs';
+import { activeHermes, copyHermesCandidate } from './test-hermes-fixture.mjs';
 import { RexTestDriver } from './rex-test-driver.mjs';
 assert(!process.versions.bun, 'Run this live harness with native Node');
 const root=mkdtempSync(join(tmpdir(),'hermes-interactive-'));
-const pkg=join(root,'package'), installed=join(homedir(),'.pi/agent/npm/node_modules/pi-hermes-memory');
+const pkg=join(root,'package'), installed=activeHermes;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const deadline=Date.now()+90_000;
 let driver,host,pid,failure,report,cancelled=false;
@@ -23,17 +24,13 @@ try {
   // Read the managed marker, not a stale current link. Unknown fixture APIs fail closed.
   const install=join(homedir(),'.pi/agent/install');
   const version=readFileSync(join(install,'current-version'),'utf8').trim();
-  assert(['1.5.0','1.5.1'].includes(version),'Unsupported Pi fixture API');
+  assert(['1.5.0','1.5.1','1.6.0'].includes(version),'Unsupported Pi fixture API');
   const runtime=join(install,'releases',version,'node_modules/@earendil-works/pi-coding-agent');
   assert.equal(JSON.parse(readFileSync(join(runtime,'package.json'),'utf8')).version,version,'Managed Pi package mismatch');
   assert(existsSync(join(runtime,'dist/cli.js')),'Managed Pi CLI missing');
   // This is a read-only source-pin check. Apply the reviewed patch only to our copy.
   const source=preparePatch(installed);
-  cpSync(installed,pkg,{recursive:true,filter:p=>!p.slice(installed.length).includes('/node_modules')});
-  cpSync(join(installed,'node_modules'),join(pkg,'node_modules'),{recursive:true});
-  const req=createRequire(join(installed,'package.json'));
-  for(const dep of ['strip-ansi','ansi-regex'])cpSync(dirname(req.resolve(dep)),join(pkg,'node_modules',dep),{recursive:true});
-  applyPatch(pkg,true);
+  copyHermesCandidate(pkg);
   const home=join(root,'home'),agent=join(home,'.pi/agent');mkdirSync(agent,{recursive:true});
   writeFileSync(join(agent,'settings.json'),JSON.stringify({packages:[],compaction:{enabled:false},retry:{enabled:false},cacheWarming:'off',enableInstallTelemetry:false,defaultProjectTrust:'never'}));
   writeFileSync(join(agent,'hermes-memory-config.json'),JSON.stringify({memoryDir:join(root,'memory'),projectsMemoryDir:join(root,'projects-memory'),reviewEnabled:false,correctionDetection:false,flushOnShutdown:false,flushOnCompact:false,autoConsolidate:false,quickCheckOnOpen:false}));

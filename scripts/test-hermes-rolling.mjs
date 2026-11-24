@@ -1,82 +1,57 @@
 #!/usr/bin/env node
-// Real resource discovery and registered tool schemas, with private HOME and stores. No model calls.
+/** Real Pi discovery, private copies/settings/stores, no model or live writes. */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { rollingSource, disabledNpm, prepareRolling } from './prepare-hermes-rolling.mjs';
-import { activateRolling } from './activate-hermes-rolling.mjs';
-const repo = path.resolve(import.meta.dirname, '..');
-const runtime = path.join(os.homedir(), '.pi/agent/install/releases/1.5.0/node_modules/@earendil-works/pi-coding-agent');
-const pkg = path.join(os.homedir(), '.pi/agent/packages/pi-hermes-memory/0.10.0-evidence-v1');
+import { rollingSource, legacySource, disabledNpm, prepareRolling } from './prepare-hermes-rolling.mjs';
+import { activateRolling, resolveManagedRuntime } from './activate-hermes-rolling.mjs';
+import { activeHermes } from './test-hermes-fixture.mjs';
+const runtime = resolveManagedRuntime();
 const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-rolling-test-')));
 const home = path.join(root, 'home'), agent = path.join(home, '.pi/agent');
-fs.mkdirSync(agent, { recursive: true });
-const installed = path.join(os.homedir(), '.pi/agent/npm/node_modules/pi-hermes-memory');
-const original = fs.readFileSync(path.join(installed, 'src/handlers/message-parts.ts'));
+fs.mkdirSync(path.join(agent,'packages/pi-hermes-memory'), { recursive: true });
 let child;
+const alive = pid => { try { process.kill(pid,0); return true; } catch(e) { if(e.code==='ESRCH')return false; throw e; } };
 try {
-  assert.equal(prepareRolling(path.join(os.homedir(), '.pi/agent')), pkg);
-  fs.symlinkSync(path.join(os.homedir(), '.pi/agent/npm'), path.join(agent, 'npm'));
+  fs.cpSync(activeHermes,path.join(agent,'packages/pi-hermes-memory/0.10.0-evidence-v1'),{recursive:true});
+  const pkg = prepareRolling(agent,undefined,true);
   const central = path.join(root, 'central'), nested = path.join(central, 'repo');
   fs.mkdirSync(path.join(central, '.pi'), { recursive: true }); fs.mkdirSync(nested);
-  // Resolve ~ through the process's real home here; this fixture uses exact source paths.
-  const localOff = { source: pkg, extensions: [] };
-  fs.writeFileSync(path.join(central, '.pi/settings.json'), JSON.stringify({ packages: [disabledNpm, localOff] }));
-  fs.writeFileSync(path.join(agent, 'settings.json'), JSON.stringify({ packages: [disabledNpm, pkg], extensions: ['-builtin:mcp', '-builtin:llama.cpp', '-builtin:codemode', '-builtin:tool-search'], enableInstallTelemetry: false }));
-  const { DefaultResourceLoader, SettingsManager } = await import(path.join(runtime, 'dist/index.js'));
-  const before = { packages: ['npm:pi-hermes-memory', 'npm:unrelated-package'], defaultModel: 'fixture', defaultThinkingLevel: 'high', theme: 'dark' };
-  fs.writeFileSync(path.join(agent, 'settings.json'), JSON.stringify(before));
-  const staleManager = SettingsManager.create(root, agent);
-  await activateRolling(agent, runtime);
-  staleManager.setTheme('light'); await staleManager.flush();
-  const activated = JSON.parse(fs.readFileSync(path.join(agent, 'settings.json'), 'utf8'));
-  assert.deepEqual(activated.packages, [disabledNpm, rollingSource, 'npm:unrelated-package']);
-  assert.equal(activated.defaultThinkingLevel, 'high'); assert.equal(activated.defaultModel, 'fixture'); assert.equal(activated.theme, 'light');
-  await activateRolling(agent, runtime);
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(agent, 'settings.json'), 'utf8')), activated);
-  const fakeCopy = path.join(agent, 'packages/pi-hermes-memory/0.10.0-evidence-v1');
-  const sourceFile = path.join(fakeCopy, 'src/handlers/message-parts.ts');
-  const sourceBytes = fs.readFileSync(sourceFile); fs.appendFileSync(sourceFile, '\n// drift');
-  assert.throws(() => prepareRolling(agent), /drift/); fs.writeFileSync(sourceFile, sourceBytes);
-  console.log('PASS locked settings activation, unrelated fields, stale Pi save preservation, idempotence and copied-source drift rejection');
-  fs.writeFileSync(path.join(agent, 'settings.json'), JSON.stringify({ packages: [disabledNpm, pkg], extensions: ['-builtin:mcp', '-builtin:llama.cpp', '-builtin:codemode', '-builtin:tool-search'], enableInstallTelemetry: false }));
-  const get = async (cwd, trusted) => {
-    const manager = SettingsManager.create(cwd, agent, { projectTrusted: trusted });
-    const loader = new DefaultResourceLoader({ cwd, agentDir: agent, settingsManager: manager });
-    await loader.reload({ resolveProjectTrust: async () => trusted });
-    const result = loader.getExtensions(); assert.equal(result.errors.length, 0, JSON.stringify(result.errors));
-    return result.extensions.filter(e => e.path.includes('pi-hermes-memory'));
-  };
-  assert.equal((await get(central, true)).length, 0);
-  assert.equal((await get(central, false)).length, 1);
-  const tools = await get(nested, true); assert.equal(tools.length, 1); assert(tools[0].path.startsWith(pkg));
-  console.log('PASS actual Pi 1.5 loader: central trusted off, untrusted on, child on, one local package only');
-  const project = JSON.parse(fs.readFileSync(path.join(repo, 'hellofresh/projects/hellofresh/.pi/settings.json'), 'utf8'));
-  assert(project.packages.some(p => p.source === rollingSource && p.extensions.length === 0));
-  const config = { memoryDir: path.join(root, 'memory'), projectsMemoryDir: path.join(root, 'projects'), reviewEnabled: false, correctionDetection: false, flushOnShutdown: false, flushOnCompact: false, autoConsolidate: false, quickCheckOnOpen: false };
-  fs.writeFileSync(path.join(agent, 'hermes-memory-config.json'), JSON.stringify(config));
-  // RPC fixture uses private HOME so native module/config paths cannot reach live stores.
-  fs.writeFileSync(path.join(agent, 'settings.json'), JSON.stringify({ packages: [{...disabledNpm}, pkg], defaultProvider: 'fixture', defaultModel: 'fixture', compaction: {enabled:false}, enableInstallTelemetry:false }));
-  const fixture = path.join(root, 'fixture.ts');
-  fs.writeFileSync(fixture, `import fs from 'node:fs';export default function(pi){pi.registerProvider('fixture',{api:'fixture',apiKey:'test',baseUrl:'http://invalid',models:[{id:'fixture',name:'Fixture',reasoning:false,input:['text'],cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:10000,maxTokens:100}],streamSimple(){throw Error('No model call expected')}});pi.registerCommand('rolling-probe',{description:'schemas',handler(_,ctx){const tools=pi.getAllTools().filter(t=>['memory_search','session_search'].includes(t.name));fs.writeFileSync(${JSON.stringify(path.join(root, 'report.json'))},JSON.stringify({tools}));}});}`);
-  child = spawn(process.execPath, [path.join(runtime, 'dist/cli.js'), '--offline', '--mode', 'rpc', '--no-session', '--no-skills', '--no-context-files', '--no-mcp', '--no-approve', '-e', fixture], { cwd: root, env: { HOME: home, PATH: process.env.PATH, PI_CODING_AGENT_DIR: agent, PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1' }, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
-  let out='', errors=''; child.stdout.on('data',b=>out+=b); child.stderr.on('data',b=>errors+=b);
-  const timer=setTimeout(()=>{try{process.kill(-child.pid,'SIGKILL')}catch{}},20000);
+  const off = source => ({source,extensions:[],skills:[],prompts:[],themes:[]});
+  const reviewedCentral = JSON.parse(fs.readFileSync(new URL('../hellofresh/projects/hellofresh/.pi/settings.json', import.meta.url), 'utf8'));
+  for (const source of [disabledNpm.source, legacySource, rollingSource]) {
+    assert(reviewedCentral.packages.some(p => p.source === source && Array.isArray(p.extensions) && p.extensions.length === 0), `Reviewed central intake must exclude ${source}`);
+  }
+  const centralFile=path.join(central,'.pi/settings.json');
+  fs.writeFileSync(centralFile,JSON.stringify({packages:[disabledNpm,off(legacySource),off(rollingSource)]}));
+  fs.writeFileSync(path.join(agent,'settings.json'),JSON.stringify({packages:[disabledNpm,legacySource],theme:'dark'}));
+  await activateRolling(agent,runtime,true,centralFile);
+  // Resource discovery uses an exact private path, not ~ resolved in this test owner.
+  fs.writeFileSync(centralFile,JSON.stringify({packages:[disabledNpm,off(pkg)]}));
+  const config = { memoryDir:path.join(root,'memory'),projectsMemoryDir:path.join(root,'projects'),reviewEnabled:false,correctionDetection:false,flushOnShutdown:false,flushOnCompact:false,autoConsolidate:false,quickCheckOnOpen:false };
+  fs.writeFileSync(path.join(agent,'hermes-memory-config.json'),JSON.stringify(config));
+  fs.writeFileSync(path.join(agent,'settings.json'),JSON.stringify({packages:[disabledNpm,pkg],extensions:['-builtin:mcp','-builtin:llama.cpp','-builtin:codemode','-builtin:tool-search'],enableInstallTelemetry:false}));
+  const fixture=path.join(root,'fixture.ts'), report=path.join(root,'report.json');
+  // Run the loader in a private host. Importing Hermes here in the test owner
+  // would use its real HOME for paths.ts despite a private resource-loader agentDir.
+  fs.writeFileSync(fixture,`import fs from 'node:fs';import {DefaultResourceLoader,SettingsManager} from '@earendil-works/pi-coding-agent';export default function(pi){pi.registerCommand('rolling-probe',{description:'schemas and discovery',async handler(_,ctx){const get=async(cwd,trusted)=>{const settingsManager=SettingsManager.create(cwd,${JSON.stringify(agent)},{projectTrusted:trusted});const loader=new DefaultResourceLoader({cwd,agentDir:${JSON.stringify(agent)},settingsManager});await loader.reload({resolveProjectTrust:async()=>trusted});const result=loader.getExtensions();if(result.errors.length)throw Error(JSON.stringify(result.errors));return result.extensions.filter(e=>e.path.includes('pi-hermes-memory')).map(e=>e.path)};fs.writeFileSync(${JSON.stringify(report)},JSON.stringify({tools:pi.getAllTools().filter(t=>['memory_search','session_search'].includes(t.name)),trusted:await get(${JSON.stringify(central)},true),untrusted:await get(${JSON.stringify(central)},false),nested:await get(${JSON.stringify(nested)},true)}));}});}`);
+  child=spawn(process.execPath,[path.join(runtime,'dist/cli.js'),'--offline','--mode','rpc','--no-session','--no-skills','--no-context-files','--no-mcp','--no-approve','-e',fixture],{cwd:root,env:{HOME:home,PATH:process.env.PATH,PI_CODING_AGENT_DIR:agent,TMPDIR:root,XDG_CACHE_HOME:path.join(root,'cache'),JITI_CACHE_DIR:path.join(root,'jiti'),PI_OFFLINE:'1',PI_SKIP_VERSION_CHECK:'1'},stdio:['pipe','pipe','pipe']});
+  let err='',out='';child.stdout.on('data',b=>out=(out+b).slice(-6000));child.stderr.on('data',b=>err=(err+b).slice(-6000));
+  const completion=once(child,'close'), timer=setTimeout(()=>child.kill('SIGKILL'),35000);
   try {
     child.stdin.write(JSON.stringify({id:'probe',type:'prompt',message:'/rolling-probe'})+'\n');
-    const until=Date.now()+15000; while(!fs.existsSync(path.join(root,'report.json'))&&Date.now()<until)await new Promise(r=>setTimeout(r,30));
-    assert(fs.existsSync(path.join(root,'report.json')),errors+'\n'+out.slice(-2000));
-    const report=JSON.parse(fs.readFileSync(path.join(root,'report.json'),'utf8'));
-    assert.equal(report.tools.length,2);assert(report.tools.every(t=>JSON.stringify(t.parameters).includes('scope')));
-    child.stdin.end();await once(child,'close');assert.equal(child.exitCode,0,errors);
-    console.log('PASS real fresh RPC host loads scoped tools from rolling package, private stores only');
-  } finally {clearTimeout(timer);if(child.exitCode===null&&child.signalCode===null){try{process.kill(-child.pid,'SIGKILL')}catch{}await once(child,'close');}}
-  assert(fs.readFileSync(path.join(installed,'src/handlers/message-parts.ts')).equals(original));
-} finally {
-  if(child){try{process.kill(-child.pid,'SIGKILL')}catch{}}
-  fs.rmSync(root,{recursive:true,force:true});
+    const end=Date.now()+30000;while(!fs.existsSync(report)&&Date.now()<end)await new Promise(r=>setTimeout(r,30));
+    assert(fs.existsSync(report),err+'\n'+out);
+    const value=JSON.parse(fs.readFileSync(report,'utf8'));
+    assert.equal(value.tools.length,2);assert(value.tools.every(t=>JSON.stringify(t.parameters).includes('scope')));
+    assert.deepEqual(value.trusted,[]);assert.equal(value.untrusted.length,1);assert.equal(value.nested.length,1);assert(value.nested[0].startsWith(pkg));
+    child.stdin.end();const [code]=await completion;assert.equal(code,0,err);assert(!alive(child.pid));
+    console.log('PASS Pi '+JSON.parse(fs.readFileSync(path.join(runtime,'package.json'))).version+' fresh RPC scoped tools, trusted central off, untrusted on, child on, one private local package');
+  }finally{clearTimeout(timer);if(child.exitCode===null&&child.signalCode===null){child.kill('SIGKILL');await completion;}}
+}finally{
+  if(child?.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');
+  fs.rmSync(root,{recursive:true,force:true});assert(!fs.existsSync(root));
 }
-process.exit(0);

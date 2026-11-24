@@ -7,7 +7,11 @@ if [ "${1:-}" = "--rolling" ]; then
   shift
   exec node "$base/scripts/activate-hermes-rolling.mjs" "$@"
 fi
-package_dir=$(node -e 'const fs=require("node:fs"),p=require("node:path");const a=process.argv[1],s=JSON.parse(fs.readFileSync(p.join(a,"settings.json"),"utf8"));const local=s.packages?.find(x=>typeof x==="string"&&x.includes("packages/pi-hermes-memory/0.10.0-evidence-v1"));process.stdout.write(local?p.join(a,"packages/pi-hermes-memory/0.10.0-evidence-v1"):p.join(a,"npm/node_modules/pi-hermes-memory"))' "$agent")
+package_dir=$(node -e 'const fs=require("node:fs"),p=require("node:path"),os=require("node:os");const a=process.argv[1],s=JSON.parse(fs.readFileSync(p.join(a,"settings.json"),"utf8"));const locals=(s.packages||[]).map(x=>typeof x==="string"?x:x.source).filter(x=>typeof x==="string"&&/\/packages\/pi-hermes-memory\/0\.10\.0-evidence-v[12]$/.test(x));if(locals.length>1)throw Error("Multiple Hermes sources");const local=locals[0];process.stdout.write(local?(local.startsWith("~/")?p.join(os.homedir(),local.slice(2)):p.resolve(local)):p.join(a,"npm/node_modules/pi-hermes-memory"))' "$agent")
+if [ "$package_dir" != "$agent/npm/node_modules/pi-hermes-memory" ] && printf '%s\n' "$*" | grep -q -- --approved; then
+  echo 'Selected rolling packages are immutable. Use --rolling --approved to prepare a new destination.' >&2
+  exit 1
+fi
 if [ "$package_dir" = "$agent/npm/node_modules/pi-hermes-memory" ] && printf '%s\n' "$*" | grep -q -- --approved; then
   if pgrep -x pi >/dev/null 2>&1; then
     echo 'Pi sessions are running. Use pi-memory-hardening --rolling --approved.' >&2

@@ -9,6 +9,9 @@ import { performance } from 'node:perf_hooks';
 import { repo, cli, version, fixtures, tui } from './fixtures/code-blocks-runtime.mjs';
 import { RexTestDriver } from './rex-test-driver.mjs';
 assert(!process.versions.bun, 'Run this live harness with native Node');
+const trials = Number(process.env.CODEBLOCK_LIVE_TRIALS ?? 1);
+assert(Number.isInteger(trials) && (trials === 1 || trials >= 8 && trials <= 15), 'Use one verification trial, or 8 to 15 trials for one warmup and at least seven measured pairs');
+const measured = trials > 1;
 const root = mkdtempSync('/tmp/pi-codeblocks-live-');
 const deadline = Date.now() + 8 * 60_000;
 const sleep = ms => new Promise(done => setTimeout(done, ms));
@@ -16,7 +19,7 @@ const owned = new Map();
 let driver;
 const baselinePath = process.env.CODEBLOCK_LIVE_BASELINE;
 const baselineVariant = baselinePath ? 'baseline' : 'native';
-const trials = Number(process.env.CODEBLOCK_LIVE_TRIALS ?? 5);
+
 const report = { root, pi: version, baselinePath, trials, checks: [], hosts: [], bench: [],
   backend: 'private Rex', startupMeasurement: 'terminal creation, login, registration, PID discovery and first captured paint',
   comparability: 'same-run Rex variants only; not comparable with historic tmux startup measurements' };
@@ -75,7 +78,7 @@ async function start(variant, mode, trial) {
   const pidDeadline = Math.min(Date.now() + 10_000, deadline);
   while (!(host.pid = driver.pid(host)) && Date.now() < pidDeadline) await sleep(100);
   assert(Number.isSafeInteger(host.pid) && host.pid > 1, `Target PID missing for ${host.name}`);
-  const screen = await wait(host, (text, list) => list.some(x => x.type === 'ready') && text.includes('CODEBLOCK_SEED_READY') && (variant === 'native' || text.includes('╭─ typescript')), 'first paint');
+  const screen = await wait(host, (text, list) => list.some(x => x.type === 'ready') && text.includes('CODEBLOCK_SEED_READY') && (variant === 'native' || variant === 'baseline' || text.includes('╭─ typescript')), 'first paint');
   host.startupMs = performance.now() - start;
   assert.equal(events(host).find(x => x.type === 'ready').pid, host.pid, 'Driver PID must name the Pi target');
   writeFileSync(join(area, 'seed-96.txt'), screen);
@@ -132,6 +135,11 @@ function stats(host) {
 }
 try {
   driver = await RexTestDriver.start({ deadlineMs: Math.max(1000, deadline - Date.now()) });
+  // Equal warmup work for both variants. Trial zero remains unmeasured.
+  if (measured) {
+    const warmup = await start('candidate', 'fullscreen', 'warmup'); await stop(warmup);
+    const warmupBaseline = await start(baselineVariant, 'fullscreen', 'warmup'); await stop(warmupBaseline);
+  }
   for (let trial = 0; trial < trials; trial++) for (const variant of trial % 2 ? ['candidate', baselineVariant] : [baselineVariant, 'candidate']) {
     const host = await start(variant, 'fullscreen', trial);
     if (trial === 0) {
@@ -148,7 +156,7 @@ try {
       await command(host, 'Stream the fixture reply');
       const screen = await wait(host, (text, list) => text.includes('CODEBLOCK_REVIEW_READY') && list.some(x => x.type === 'settled'), 'streaming settlement');
       assert(screen.includes('│ Pi reply │'));
-      assert.equal(screen.includes('╭─ typescript'), variant !== 'native');
+      assert.equal(screen.includes('╭─ typescript'), variant === 'candidate');
       const records = readFileSync(events(host).filter(x => x.type === 'ready').at(-1).session, 'utf8');
       assert(records.includes('```typescript example.ts'), 'Session source changed');
       if (variant === 'candidate') assert(events(host).find(x => x.type === 'guidance').rules.some(x => x.includes('top-level Mermaid')));

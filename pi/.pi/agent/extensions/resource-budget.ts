@@ -4,23 +4,23 @@ import { readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import approved from "../patches/context-mode/approved-files.json";
 
 export const DEFAULT_EXEC_TIMEOUT_MS = 120_000;
 const EXEC_TOOLS = new Set(["ctx_execute", "ctx_execute_file", "ctx_batch_execute"]);
-const PATCH_VERSION = "1.0.169";
+const PATCH_VERSION = approved.version;
 
 export function verifyResourcePatch(packageDir: string): string | undefined {
 	try {
 		const root = realpathSync(packageDir);
 		const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 		const manifest = JSON.parse(readFileSync(join(root, ".pi-resource-patch.json"), "utf8"));
-		if (pkg.version !== PATCH_VERSION || manifest.version !== PATCH_VERSION || manifest.revision !== "context-mode-resources-v2" || manifest.patchVersion !== 1) {
+		if (pkg.name !== "context-mode" || pkg.version !== PATCH_VERSION || manifest.version !== PATCH_VERSION || manifest.revision !== approved.revision || manifest.patchVersion !== 1) {
 			return "context-mode resource patch version does not match";
 		}
-		const required = ["build/adapters/pi/mcp-bridge.js", "build/executor.js", "build/server.js", "build/lifecycle.js", "server.bundle.mjs"];
-		for (const file of required) {
-			const expected = manifest.files?.[file];
-			if (typeof expected !== "string" || !/^[a-f0-9]{64}$/.test(expected)) return `context-mode patch lacks ${file}`;
+		// The package marker cannot approve its own replacement bytes.
+		for (const [file, expected] of Object.entries(approved.files)) {
+			if (manifest.files?.[file] !== expected) return `context-mode patch does not match reviewed ${file}`;
 			const path = realpathSync(resolve(root, file));
 			if (!path.startsWith(root + sep)) return "context-mode patch path escapes package";
 			const hash = createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -51,11 +51,9 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		const error = check();
 		if (error) {
-			pi.logger?.warn?.(`[resource-budget] ${error}. Run pi-resources-patch, then /reload.`);
 			if (ctx.hasUI) ctx.ui.notify(`${error}. Run pi-resources-patch, then /reload.`, "warning");
 		}
 	});
-	pi.on("before_agent_start", async () => { check(); });
 	pi.on("tool_call", async (event) => {
 		if (!event.toolName.startsWith("ctx_")) return;
 		// A package update or bridge respawn can happen during a long run.

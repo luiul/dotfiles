@@ -35,14 +35,23 @@ pi-extensions-audit-fix() {
 	emulate -L zsh
 	_pi_npm_dir_check || return 1
 	print -P "%F{blue}==>%f npm audit fix in $PI_NPM_DIR"
-	(cd "$PI_NPM_DIR" && npm audit fix "$@") || return
-	pi-resources-patch
+	local operation_exit=0 patch_exit=0
+	(cd "$PI_NPM_DIR" && npm audit fix "$@") || operation_exit=$?
+	# npm can replace package files before reporting unresolved vulnerabilities.
+	pi-resources-patch || patch_exit=$?
+	if (( operation_exit != 0 )); then
+		(( patch_exit == 0 )) || print -u2 -- "Resource patch recovery also failed ($patch_exit). ctx tools remain blocked."
+		return "$operation_exit"
+	fi
+	return "$patch_exit"
 }
 
-# Reapply the version-checked resource patch after a package reinstall.
+# Reapply and verify the version-checked patch after any reinstall attempt.
 pi-resources-patch() {
 	emulate -L zsh
-	command node "$HOME/dotfiles/scripts/patch-context-mode.mjs" --apply --package-dir "$PI_NPM_DIR/node_modules/context-mode"
+	local patcher="$HOME/dotfiles/scripts/patch-context-mode.mjs"
+	command node "$patcher" --apply --package-dir "$PI_NPM_DIR/node_modules/context-mode" || return
+	command node "$patcher" --check --package-dir "$PI_NPM_DIR/node_modules/context-mode"
 }
 
 # Update pi's extensions, then immediately audit-fix the result -- the
@@ -52,6 +61,13 @@ pi-resources-patch() {
 pi-extensions-upgrade() {
 	emulate -L zsh
 	command -v pi &>/dev/null || { print -P "%F{red}✗%f pi not found"; return 1 }
-	pi update --extensions || return
+	local update_exit=0 patch_exit=0
+	pi update --extensions || update_exit=$?
+	if (( update_exit != 0 )); then
+		# A partial update can replace the patch even when another package fails.
+		pi-resources-patch || patch_exit=$?
+		(( patch_exit == 0 )) || print -u2 -- "Resource patch recovery also failed ($patch_exit). ctx tools remain blocked."
+		return "$update_exit"
+	fi
 	pi-extensions-audit-fix
 }

@@ -32,7 +32,7 @@
  * (session_info_changed). Observed on a heavy extension set, that
  * write lands ~2s after launch, so any single re-assert loses the
  * race. The extension therefore re-asserts on a short bounded retry
- * schedule after those two events (300ms to 10s), letting pi's write
+ * schedule after those two events (300ms to 15s), letting pi's write
  * land and then having the last word. Every agent turn re-asserts
  * synchronously too (agent_start/agent_settled), so the title is
  * path-bearing from the first prompt onward regardless.
@@ -68,14 +68,14 @@ let ttyCache: string | undefined;
  * `ps -o tty=` reports and canopy resolves for every agent), resolved
  * once per process: the tty never changes during a session. Appended to
  * the title so two agents side by side in the same repo on the same
- * branch — same root, same branch, identical path component — stay
+ * branch (same root, same branch, identical path component) stay
  * distinguishable. "" when it can't be resolved (no tty segment).
  */
 function surfaceTty(): string {
 	if (ttyCache === undefined) {
 		ttyCache = "";
 		try {
-			const out = spawnSync("ps", ["-o", "tty=", "-p", String(process.pid)], { encoding: "utf8" });
+			const out = spawnSync("ps", ["-o", "tty=", "-p", String(process.pid)], { encoding: "utf8", timeout: 1000 });
 			const tty = (out.stdout ?? "").trim();
 			if (/^ttys\d+$/.test(tty)) ttyCache = tty;
 		} catch {
@@ -141,10 +141,16 @@ export default function (pi: ExtensionAPI) {
 	// current generation and bumps it, so the previous session's pending
 	// timers retire quietly instead of touching their now-stale ctx
 	// (pi forbids captured ctxs after newSession/fork/switchSession/
-	// reload, and throws on use — that exact throw crashed pi here
+	// reload, and throws on use, that exact throw crashed pi here
 	// before). The replacement session's own session_start schedules a
 	// fresh batch.
 	let generation = 0;
+	const retries = new Set<ReturnType<typeof setTimeout>>();
+	const cancelRetries = () => {
+		generation++;
+		for (const timer of retries) clearTimeout(timer);
+		retries.clear();
+	};
 
 	const set = (ctx: ExtensionContext) => {
 		// The whole call is guarded, hasUI access included: a timer that
@@ -152,7 +158,7 @@ export default function (pi: ExtensionAPI) {
 		// follow-up session_start) still degrades to a quiet no-op
 		// instead of an uncaughtException.
 		try {
-			if (!ctx.hasUI) return;
+			if (ctx.mode !== "tui" || !ctx.hasUI) return;
 			ctx.ui.setTitle(sessionTitle());
 		} catch {
 			// A stale or non-interactive ctx: nothing to title.
@@ -164,15 +170,20 @@ export default function (pi: ExtensionAPI) {
 	// re-assert on a dense bounded schedule and have the last word.
 	const retriesMs = [300, 1000, 2000, 3000, 4000, 5000, 7000, 10000, 15000];
 	const reassertAfterPi = (ctx: ExtensionContext) => {
-		if (!ctx.hasUI) return;
-		const gen = ++generation;
+		cancelRetries();
+		if (ctx.mode !== "tui" || !ctx.hasUI) return;
+		const gen = generation;
 		for (const ms of retriesMs) {
-			setTimeout(() => {
+			const timer = setTimeout(() => {
+				retries.delete(timer);
 				if (gen === generation) set(ctx);
 			}, ms);
+			timer.unref();
+			retries.add(timer);
 		}
 	};
 
+	pi.on("session_shutdown", () => cancelRetries());
 	pi.on("session_start", async (_event, ctx) => reassertAfterPi(ctx));
 	pi.on("session_info_changed", async (_event, ctx) => reassertAfterPi(ctx));
 	pi.on("agent_start", async (_event, ctx) => set(ctx));

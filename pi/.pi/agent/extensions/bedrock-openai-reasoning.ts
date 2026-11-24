@@ -1,9 +1,9 @@
 /**
- * Pass pi thinking levels to OpenAI GPT 5.6 models on Bedrock.
+ * Preserve explicit thinking off for OpenAI GPT 5.6 on Bedrock.
  *
- * pi-ai's Bedrock adapter currently builds reasoning fields only for Claude.
- * GPT 5.6 accepts the Converse API extension:
- *   additionalModelRequestFields: { reasoning: { effort } }
+ * Pi 1.6 sends native GPT reasoning fields for enabled thinking levels.
+ * With thinking off it omits them. Keep the legacy explicit "none" field
+ * until that provider behavior has been verified without this extension.
  *
  * Model id and thinking level are tracked in plain closure state, not read
  * from ctx inside before_provider_request. After session replacement or
@@ -23,39 +23,17 @@ type ProviderPayload = {
 	[key: string]: unknown;
 };
 
-function isGpt56Model(modelId: string | undefined): boolean {
-	return modelId?.includes("openai.gpt-5.6-") ?? false;
-}
-
-function effortFor(level: ThinkingLevel | undefined): string | undefined {
-	switch (level) {
-		case "off":
-			return "none";
-		case "minimal":
-		case "low":
-			return "low";
-		case "medium":
-			return "medium";
-		case "high":
-		case "xhigh":
-		case "max":
-			return level;
-		case undefined:
-			return undefined;
-	}
-}
-
 export default function (pi: ExtensionAPI) {
-	let modelId: string | undefined;
+	let matchesBedrockGpt = false;
 	let thinkingLevel: ThinkingLevel | undefined;
 
 	pi.on("session_start", (_event, ctx) => {
-		modelId = ctx.model?.id;
+		matchesBedrockGpt = ctx.model?.api === "bedrock-converse-stream" && ctx.model.id.includes("openai.gpt-5.6-");
 		thinkingLevel = ctx.thinkingLevel;
 	});
 
 	pi.on("model_select", (event) => {
-		modelId = event.model?.id;
+		matchesBedrockGpt = event.model?.api === "bedrock-converse-stream" && event.model.id.includes("openai.gpt-5.6-");
 	});
 
 	pi.on("thinking_level_select", (event) => {
@@ -63,14 +41,12 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("before_provider_request", (event) => {
-		if (!isGpt56Model(modelId)) return;
+		if (!matchesBedrockGpt || thinkingLevel !== "off") return;
 
 		const payload = event.payload;
 		if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
 
 		const providerPayload = payload as ProviderPayload;
-		const effort = effortFor(thinkingLevel);
-		if (!effort) return;
 
 		return {
 			...providerPayload,
@@ -78,7 +54,7 @@ export default function (pi: ExtensionAPI) {
 				...providerPayload.additionalModelRequestFields,
 				reasoning: {
 					...(providerPayload.additionalModelRequestFields?.reasoning as Record<string, unknown> | undefined),
-					effort,
+					effort: "none",
 				},
 			},
 		};

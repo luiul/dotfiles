@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import approved from "../pi/.pi/agent/patches/context-mode/approved-files.json";
 import { join } from "node:path";
 import extension, { DEFAULT_EXEC_TIMEOUT_MS, enforceExecutionBudget, verifyResourcePatch } from "../pi/.pi/agent/extensions/resource-budget.ts";
 
@@ -11,12 +12,15 @@ const dir = mkdtempSync(join(tmpdir(), "resource-budget-test-"));
 try {
 	check("missing patch fails closed", () => assert.match(verifyResourcePatch(dir)!, /missing/));
 	const files: Record<string, string> = {};
-	for (const file of ["build/adapters/pi/mcp-bridge.js", "build/executor.js", "build/server.js", "build/lifecycle.js", "server.bundle.mjs"]) {
+	const installed = join(homedir(), ".pi/agent/npm/node_modules/context-mode");
+	for (const file of Object.keys(approved.files)) {
 		mkdirSync(join(dir, file, ".."), { recursive: true });
-		writeFileSync(join(dir, file), "fixture");
-		files[file] = createHash("sha256").update("fixture").digest("hex");
+		const bytes = readFileSync(join(installed, file));
+		assert.equal(createHash("sha256").update(bytes).digest("hex"), approved.files[file as keyof typeof approved.files], "Installed patch must match reviewed hashes");
+		writeFileSync(join(dir, file), bytes);
+		files[file] = createHash("sha256").update(bytes).digest("hex");
 	}
-	writeFileSync(join(dir, "package.json"), JSON.stringify({ version: "1.0.169" }));
+	writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "context-mode", version: "1.0.169" }));
 	const manifestPath = join(dir, ".pi-resource-patch.json");
 	const manifest = { revision: "context-mode-resources-v2", patchVersion: 1, version: "1.0.169", files };
 	writeFileSync(manifestPath, JSON.stringify(manifest));
@@ -26,6 +30,9 @@ try {
 	writeFileSync(manifestPath, JSON.stringify(manifest));
 	writeFileSync(join(dir, "build/executor.js"), "drift");
 	check("source drift rejected", () => assert.match(verifyResourcePatch(dir)!, /drift/));
+	writeFileSync(manifestPath, JSON.stringify({ ...manifest, files: { ...files, "build/executor.js": createHash("sha256").update("drift").digest("hex") } }));
+	check("changed source and forged marker rejected", () => assert.match(verifyResourcePatch(dir)!, /reviewed|drift/));
+	writeFileSync(manifestPath, JSON.stringify(manifest));
 	for (const tool of ["ctx_execute", "ctx_execute_file", "ctx_batch_execute"]) {
 		const input: Record<string, unknown> = {};
 		check(`${tool} default deadline`, () => { assert.equal(enforceExecutionBudget(tool, input), undefined); assert.equal(input.timeout, DEFAULT_EXEC_TIMEOUT_MS); });
@@ -48,6 +55,7 @@ try {
 		try {
 			const handlers = new Map<string, Function>();
 			extension({ on: (name: string, fn: Function) => handlers.set(name, fn) } as any);
+			assert.equal(handlers.has("before_agent_start"), false, "No discarded hash check at the run boundary");
 			assert.equal(await handlers.get("tool_call")!({ toolName: "bash", input: {} }), undefined);
 			const result = await handlers.get("tool_call")!({ toolName: "ctx_execute", input: {} });
 			assert.equal(result.block, true);

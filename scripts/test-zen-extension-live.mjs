@@ -14,6 +14,7 @@ import { performance } from 'node:perf_hooks';
 import { RexTestDriver } from './rex-test-driver.mjs';
 
 export const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+export const baseline = process.env.ZEN_STARTUP_BASELINE;
 export const candidate = join(repo, 'pi/.pi/agent/extensions/zen.ts');
 const install = join(homedir(), '.pi/agent/install');
 export const version = readFileSync(join(install, 'current-version'), 'utf8').trim();
@@ -102,7 +103,8 @@ export function command(driver, host, text) {
   driver.key(host, 'ctrl+u'); driver.text(host, text); driver.key(host, 'enter');
 }
 export async function start(driver, { variant = 'zen', mode = 'seeded', sequence = 1, deadline, paid } = {}) {
-  assert(['bare', 'off', 'zen', 'zen1', 'zen2'].includes(variant), `Unknown variant: ${variant}`);
+  assert(['bare', 'off', 'zen', 'zen1', 'zen2', 'baseline'].includes(variant), `Unknown variant: ${variant}`);
+  if (variant === 'baseline') assert(baseline && existsSync(baseline), 'Baseline extension must exist');
   assert(['startup', 'seeded'].includes(mode), `Unknown mode: ${mode}`);
   const area = join(driver.root, `zen-${sequence}`), home = join(area, 'home');
   const agent = join(home, '.pi/agent'), sessions = join(agent, 'sessions');
@@ -122,7 +124,7 @@ export async function start(driver, { variant = 'zen', mode = 'seeded', sequence
     '--no-context-files', '--no-approve', '--no-mcp', '--no-themes', '--use-theme', 'dark', '--tui-mode', 'fullscreen',
     '--provider', paid?.provider ?? fixtureProvider, '--model', paid?.model ?? 'fixture', '--session-dir', sessions,
     ...(mode === 'seeded' ? ['--session', seedFile] : []), '-e', probe,
-    ...(variant === 'bare' ? [] : ['-e', candidate, variant === 'off' ? '--no-zen' : '--zen'])];
+    ...(variant === 'bare' ? [] : ['-e', variant === 'baseline' ? baseline : candidate, variant === 'off' ? '--no-zen' : '--zen'])];
   const launched = performance.now();
   const host = { area, home, config, events: eventFile, paid: !!paid, variant, mode,
     ...driver.create({ name: `ag-zen-seed-${process.pid}-${sequence}`, command: args, cwd, columns: 120, rows: 44,

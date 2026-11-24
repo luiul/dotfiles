@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { Script, createContext } from "node:vm";
 
 const require = createRequire(import.meta.url);
+const { tui, SettingsManager } = await import("./test-status-bar-runtime.mjs");
 const sourcePath = resolve(import.meta.dir, "../pi/.pi/agent/extensions/status-bar.ts");
 const flush = async () => {
 	for (let i = 0; i < 12; i++) await Promise.resolve();
@@ -72,6 +73,8 @@ function harness(code: string) {
 	let saved = true;
 	let gitIdentity = "/repo/one\n/repo/one/.git\n/repo/one/.git\n";
 	let compactionEnabled = true;
+	let thinking = "high";
+	let settings: any = { compaction: { reserveTokens: 16384 } };
 	let holdGit = false;
 	let running = 0;
 	let maxRunning = 0;
@@ -109,7 +112,8 @@ function harness(code: string) {
 		setInterval, clearInterval: clearTimer, setTimeout, clearTimeout: clearTimer,
 		require: (name: string) => {
 			if (name === "node:child_process") return { execFile };
-			if (name === "@earendil-works/pi-coding-agent") return { copyToClipboard: async (text: string) => {
+			if (name === "@earendil-works/pi-tui") return tui;
+			if (name === "@earendil-works/pi-coding-agent") return { SettingsManager, copyToClipboard: async (text: string) => {
 				if (copyError) throw new Error("Clipboard unavailable");
 				copies.push(text);
 			} };
@@ -123,7 +127,8 @@ function harness(code: string) {
 	module.exports.default({
 		on: (name: string, fn: Function) => { handlers.set(name, fn); },
 		registerCommand: (name: string, command: any) => { commands.set(name, command); },
-		getThinkingLevel: () => "high",
+		getThinkingLevel: () => thinking,
+		getSettings: () => structuredClone({ ...settings, compaction: { ...settings.compaction, enabled: compactionEnabled } }),
 	});
 
 	const context = (mode = "tui", hasUI = true, cwd = "/repo/one") => {
@@ -134,6 +139,12 @@ function harness(code: string) {
 		let renders = 0;
 		let footerSets = 0;
 		const statuses = new Map([["meter", "plain status"]]);
+		let leaf = "active-leaf";
+		let branchReads = 0;
+		let entries: any[] = [{ type: "message", id: leaf, message: {
+			role: "assistant", stopReason: "stop",
+			usage: { input: 1000, output: 2000, cacheRead: 4000, cacheWrite: 100, cost: { total: 0.123 } },
+		} }];
 		const theme = {
 			fg: colorText,
 			bold: (text: string) => `\x1b[1m${text}\x1b[22m`,
@@ -161,14 +172,12 @@ function harness(code: string) {
 					notify: (text: string) => { notices.push(text); },
 				},
 				sessionManager: {
-					getLeafId: () => "active-leaf",
+					getLeafId: () => leaf,
+					getLeafEntry: () => entries.at(-1),
 					getSessionId: () => "12345678-abcd-4321-8765-0123456789ab",
 					getSessionFile: (): string | undefined => "/sessions/test.jsonl",
 					getSessionName: () => "test session",
-					getBranch: () => [{ type: "message", message: {
-						role: "assistant", stopReason: "stop",
-						usage: { input: 1000, output: 2000, cacheRead: 4000, cacheWrite: 100, cost: { total: 0.123 } },
-					} }],
+					getBranch: () => { branchReads++; return entries; },
 				},
 				model: { id: "model-id", name: "Model Name", provider: "router" },
 				getContextUsage: () => ({ tokens: 30000, contextWindow: 128000, percent: 23.4375 }),
@@ -177,6 +186,9 @@ function harness(code: string) {
 			get footer() { return footer; },
 			get renders() { return renders; },
 			get footerSets() { return footerSets; },
+			get branchReads() { return branchReads; },
+			get entries() { return entries; },
+			set entries(value: any[]) { entries = value; leaf = value.at(-1)?.id ?? null; },
 			branch: () => { for (const fn of subscribers) fn(); },
 		};
 		return state;
@@ -187,6 +199,8 @@ function harness(code: string) {
 		set saved(value: boolean) { saved = value; },
 		set identity(value: string) { gitIdentity = value; },
 		set compactionEnabled(value: boolean) { compactionEnabled = value; },
+		set settings(value: any) { settings = value; },
+		set thinking(value: string) { thinking = value; },
 		set hold(value: boolean) { holdGit = value; },
 		set output(value: string) { gitOutput = value; },
 		get maxRunning() { return maxRunning; },
@@ -213,7 +227,7 @@ function harness(code: string) {
 	};
 }
 
-const { visibleWidth } = require("@earendil-works/pi-tui");
+const { visibleWidth } = tui;
 const strip = (text: string) => text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
 const code = await compile(sourcePath);
 const baselineArg = process.argv.indexOf("--baseline");
@@ -268,8 +282,8 @@ for (const [mode, hasUI] of [["sdk", false], ["rpc", true], ["json", false], ["p
 	const state = h.context();
 	check("factory creates no timers or git calls", () => { assert.equal(h.timers.size, 0); assert.equal(h.calls.length, 0); });
 	await h.fire("session_start", state);
-	check("TUI startup reads settings and uses only one 4s timer", () => {
-		assert.equal(h.reads.length, 2);
+	check("TUI startup uses public settings and only one 4s timer", () => {
+		assert.equal(h.reads.length, 0);
 		assert.deepEqual(h.intervals(), [4000]);
 		assert.equal(state.subscribers.size, 1);
 		assert.equal(state.renders, 1);
@@ -441,7 +455,7 @@ if (baselineCode) {
 	check("layout changes keep row counts and preserve core identity and cost", () => {
 		assert.equal(c.footer.render(120).length, 3);
 		assert.equal(c.footer.render(60).length, 4);
-		// Without a closing report, the established footer must remain byte-identical.
+		// Compaction and cache semantics agree when only assistant usage is present.
 		assert.equal(JSON.stringify(c.footer.render(120)), JSON.stringify(b.footer.render(120)));
 		for (const width of [36, 44, 60, 79, 80, 100, 139, 140, 160, 200]) {
 			const rows = c.footer.render(width).map(strip);
@@ -964,6 +978,172 @@ for (const identity of ["/repo/one\n/repo/one/.git\n/repo/one/.git\n", "/repo/li
 		const rows = state.footer.render(120).map(strip);
 		assert.ok(rows[0].includes("working 0s"));
 		assert.ok(!rows.join("\n").includes("WORKING"));
+	});
+	await h.fire("session_shutdown", state);
+}
+// Cache only the last displayed footer, never the effective settings snapshot.
+{
+	const h = harness(code), state = h.context();
+	await h.fire("session_start", state);
+	let previous = state.footer.render(200);
+	check("unchanged display reuses the same read-only rendered rows", () => {
+		assert.equal(state.footer.render(200), previous);
+	});
+	const changed = (name: string, mutate: () => void) => check(name, () => {
+		mutate();
+		const next = state.footer.render(200);
+		assert.notEqual(next, previous);
+		assert.notEqual(next.join("\n"), previous.join("\n"));
+		assert.equal(state.footer.render(200), next);
+		previous = next;
+	});
+	changed("render cache follows immediate reserve changes", () => { h.settings = { compaction: { reserveTokens: 0 } }; });
+	changed("render cache follows immediate enabled changes", () => { h.compactionEnabled = false; });
+	changed("render cache follows mutable model display names", () => { state.ctx.model.name = "Changed model"; });
+	changed("render cache follows thinking level changes", () => { h.thinking = "low"; });
+	changed("render cache follows session names", () => { state.ctx.sessionManager.getSessionName = () => "Changed session"; });
+	changed("render cache follows UUID changes", () => { state.ctx.sessionManager.getSessionId = () => "87654321-1234-4321-abcd-112233445566"; });
+	changed("render cache follows Git branch labels", () => { state.branchLabel = "next-branch"; });
+	changed("render cache follows same-map status replacement", () => { state.statuses.set("meter", "next status"); });
+	changed("render cache follows status insertion", () => { state.statuses.set("another", "inserted"); });
+	changed("render cache follows status deletion", () => { state.statuses.delete("another"); });
+	changed("render cache follows closing safety", () => { state.statuses.set("close-status", "KEEP OPEN"); });
+	changed("render cache follows same-id entry replacement", () => {
+		state.entries = [{ ...state.entries[0], message: { ...state.entries[0].message,
+			usage: { ...state.entries[0].message.usage, cost: { total: 1 } } } }];
+	});
+	check("render cache follows resize and explicit theme invalidation", () => {
+		assert.notEqual(state.footer.render(60), previous);
+		state.theme.fg = (_color, text) => `\x1b[38;5;123m${text}\x1b[0m`;
+		state.footer.invalidate();
+		const next = state.footer.render(200);
+		assert.notEqual(next, previous);
+		assert.notEqual(next.join("\n"), previous.join("\n"));
+	});
+	await h.fire("before_agent_start", state);
+	previous = state.footer.render(200);
+	h.output = "# branch.ab +7 -8\n? next\n";
+	state.branch();
+	await flush();
+	check("render cache follows refreshed Git counts", () => {
+		const next = state.footer.render(200);
+		assert.notEqual(next, previous);
+		assert.ok(strip(next[0]).includes("ahead 7") && strip(next[0]).includes("behind 8"));
+		previous = next;
+	});
+	await h.advance(1000);
+	check("render cache follows displayed timer age", () => {
+		const next = state.footer.render(200);
+		assert.notEqual(next, previous);
+		assert.ok(strip(next[0]).includes("working 1s"));
+		previous = next;
+	});
+	await h.fire("agent_settled", state);
+	check("render cache drops settled timer state", () => {
+		const next = state.footer.render(200);
+		assert.notEqual(next, previous);
+		assert.ok(!strip(next[0]).includes("working"));
+	});
+	await h.fire("session_shutdown", state);
+}
+// Pi 1.6 native usage sources, selected branch, and settings contracts.
+{
+	const h = harness(code), state = h.context();
+	await h.fire("session_start", state);
+	const text = () => strip(state.footer.render(240).join("\n"));
+	check("effective settings respect exact model override, including zero reserve", () => {
+		h.settings = { compaction: { reserveTokens: 20000, modelOverrides: { "router/model-id": { reserveTokens: 0 } } } };
+		assert.ok(text().includes("until compact 98k"));
+		state.ctx.model = { id: "other", name: "Other", provider: "router" };
+		assert.ok(text().includes("until compact 78k"));
+		h.settings = { compaction: { reserveTokens: 0 } };
+		assert.ok(text().includes("until compact 98k"));
+		h.settings = {};
+		assert.ok(text().includes("until compact 82k"));
+		h.compactionEnabled = false;
+		assert.ok(text().includes("auto compact off"));
+		h.compactionEnabled = true;
+	});
+	check("invalid compaction settings retain the native resolver's errors", () => {
+		state.ctx.model = { id: "model-id", name: "Model Name", provider: "router" };
+		for (const compaction of [
+			{ reserveTokens: -1 }, { reserveTokens: 0.5 }, { reserveTokens: "123" },
+			{ reserveTokens: -1, modelOverrides: { "router/model-id": { reserveTokens: 0 } } },
+			{ modelOverrides: { "router/model-id": { reserveTokens: -1 } } },
+			{ modelOverrides: { "router/model-id": null } },
+		]) {
+			h.settings = { compaction };
+			assert.throws(text, /Invalid compaction/);
+		}
+		h.settings = {};
+	});
+	const usage = { input: 1000, output: 2000, cacheRead: 4000, cacheWrite: 100, cost: { total: 0.123 } };
+	for (const entry of [
+		{ type: "usage", kind: "cache_warm", usage },
+		{ type: "message", message: { role: "toolResult", usage } },
+		{ type: "compaction", usage },
+		{ type: "branch_summary", usage },
+	]) {
+		state.entries = [...state.entries, { ...entry, id: `entry-${state.entries.length}` }];
+		check(`selected branch includes ${entry.type}/${entry.kind ?? entry.message?.role ?? "summary"} usage without changing last-turn hit`, () => {
+			assert.ok(text().includes(`$${(state.entries.length * 0.123).toFixed(3)}`));
+			assert.ok(text().includes("hit 80%"));
+		});
+	}
+	check("native usage sources add input, output, cache reads and cache writes once", () => {
+		const rendered = text();
+		for (const value of ["in 5.0k", "out 10k", "cache 21k", "$0.615", "hit 80%"]) assert.ok(rendered.includes(value), value);
+	});
+	check("unchanged branch reuses tally and context across repaints", () => {
+		text();
+		const before = state.branchReads;
+		for (let i = 0; i < 50; i++) text();
+		assert.equal(state.branchReads, before);
+	});
+	check("tree selection excludes abandoned branch usage and survives re-selection", () => {
+		const original = state.entries;
+		state.entries = [original[0]];
+		assert.ok(text().includes("$0.123"));
+		state.entries = original;
+		assert.ok(text().includes("$0.615"));
+	});
+	check("same-id replacement and explicit invalidation do not retain old totals", () => {
+		state.entries = [...state.entries.slice(0, -1), { ...state.entries.at(-1), usage: { ...usage, cost: { total: 1 } } }];
+		assert.ok(text().includes("$1.492"));
+		state.entries[0].message.usage.cost.total = 2;
+		state.footer.invalidate();
+		assert.ok(text().includes("$3.369"));
+	});
+	check("error and aborted usage count without replacing the last real assistant hit", () => {
+		state.entries = [...state.entries, ...["error", "aborted"].map((stopReason, i) => ({ type: "message", id: `failed-${i}`,
+			message: { role: "assistant", stopReason, usage: { ...usage, input: 9999, cacheRead: 0 } } }))];
+		assert.ok(text().includes("$3.615"));
+		assert.ok(text().includes("hit 80%"));
+	});
+	check("non-usage metadata and context edits do not fabricate cost or alter the assistant hit", () => {
+		state.entries = [...state.entries,
+			{ type: "custom", id: "metadata", data: { usage: { ...usage, cost: { total: 999 } } } },
+			{ type: "custom_message", id: "notice", customType: "test", content: "notice", display: false },
+			{ type: "context_edit", id: "edit", targetId: state.entries[0].id, replacement: null },
+			{ type: "message", id: "empty-result", message: { role: "toolResult" } },
+			{ type: "compaction", id: "legacy-summary" },
+		];
+		assert.ok(text().includes("$3.615") && text().includes("hit 80%"));
+	});
+	check("model changes and mutable context limits invalidate context accounting", () => {
+		let reads = 0;
+		state.ctx.getContextUsage = () => { reads++; return { tokens: 1000, contextWindow: (state.ctx.model as any).contextWindow, percent: 1 }; };
+		(state.ctx.model as any).contextWindow = 64000;
+		assert.ok(text().includes("context 1.0k/64k"));
+		const oldReads = reads;
+		text();
+		assert.equal(reads, oldReads);
+		(state.ctx.model as any).contextWindow = 96000;
+		assert.ok(text().includes("context 1.0k/96k"));
+		assert.equal(reads, oldReads + 1);
+		state.ctx.model = { id: "alternate", name: "Alternate", provider: "router" };
+		text();
+		assert.equal(reads, oldReads + 2);
 	});
 	await h.fire("session_shutdown", state);
 }

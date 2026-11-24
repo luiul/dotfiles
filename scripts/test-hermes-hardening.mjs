@@ -7,6 +7,8 @@ import { homedir, tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
+import { activeHermes, copyHermesBaseline } from './test-hermes-fixture.mjs';
+import { resolveManagedRuntime } from './activate-hermes-rolling.mjs';
 import { applyPatch, preparePatch } from './patch-hermes-memory.mjs';
 
 if (!process.argv.includes('--isolated')) {
@@ -18,22 +20,15 @@ if (!process.argv.includes('--isolated')) {
   process.exit(0);
 }
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const installed = join(homedir(), '.pi/agent/npm/node_modules/pi-hermes-memory');
-const runtime = join(homedir(), '.pi/agent/install/releases/1.5.0/node_modules/@earendil-works/pi-coding-agent');
+const installed = activeHermes;
+const runtime = resolveManagedRuntime();
 const root = mkdtempSync(join(tmpdir(), 'hermes-hardening-'));
 const pkg = join(root, 'package');
 const originals = new Map(Object.keys(JSON.parse(readFileSync(join(repo, 'pi/.pi/agent/patches/hermes-memory/baseline.json'), 'utf8'))).map(file => [file, readFileSync(join(installed, file))]));
 const checks = [];
 const check = async (name, fn) => { await fn(); checks.push(name); console.log(`PASS ${name}`); };
 try {
-  cpSync(installed, pkg, { recursive: true, filter: p => !p.slice(installed.length).includes('/node_modules') });
-  // Only immutable runtime dependencies are shared, never a live memory directory.
-  cpSync(join(installed, 'node_modules'), join(pkg, 'node_modules'), { recursive: true });
-  const { createRequire } = await import('node:module');
-  const depRequire = createRequire(join(installed, 'package.json'));
-  const ansiRoot = dirname(depRequire.resolve('strip-ansi'));
-  cpSync(ansiRoot, join(pkg, 'node_modules/strip-ansi'), { recursive: true });
-  cpSync(dirname(depRequire.resolve('ansi-regex')), join(pkg, 'node_modules/ansi-regex'), { recursive: true });
+  copyHermesBaseline(pkg, true);
   await check('version and source shape preflight, explicit approval', () => {
     assert.equal(preparePatch(pkg).alreadyApplied, false);
     assert.throws(() => applyPatch(pkg), /approved/);
@@ -50,12 +45,14 @@ try {
   await check('interrupted marker publication can resume from verified baseline bytes',()=>{
     const marker=join(pkg,'.pi-memory-hardening.json');rmSync(marker);
     assert.equal(preparePatch(pkg).alreadyApplied,true);
-    assert.equal(applyPatch(pkg,true).applied,false);
+    assert.equal(applyPatch(pkg,true).applied,true);
   });
+  const originalParts = join(root, 'original/src/handlers/message-parts.ts');
+  copyHermesBaseline(join(root, 'original'));
   const bridge = join(root, 'bridge.ts');
   writeFileSync(bridge, `
 import * as parts from ${JSON.stringify(join(pkg, 'src/handlers/message-parts.ts'))};
-import * as originalParts from ${JSON.stringify(join(installed, 'src/handlers/message-parts.ts'))};
+import * as originalParts from ${JSON.stringify(originalParts)};
 import { setupBackgroundReview } from ${JSON.stringify(join(pkg, 'src/handlers/background-review.ts'))};
 import { registerMemorySearchTool } from ${JSON.stringify(join(pkg, 'src/tools/memory-search-tool.ts'))};
 import { registerSessionSearchTool } from ${JSON.stringify(join(pkg, 'src/tools/session-search-tool.ts'))};
@@ -187,7 +184,7 @@ export default function(pi) { pi.registerTool({name:'bridge',label:'bridge',desc
   });
   await check('full existing review regression against candidate package', async () => {
     const { execFileSync } = await import('node:child_process');
-    const output=execFileSync(process.execPath,[join(repo,'scripts/test-hermes-review.mjs')],{cwd:repo,env:{...process.env,HERMES_TEST_CONFIG:join(homedir(),'.pi/agent/hermes-memory-config.json'),HERMES_TEST_PACKAGE:pkg},encoding:'utf8',timeout:95000,maxBuffer:1_000_000});
+    const output=execFileSync(process.execPath,[join(repo,'scripts/test-hermes-review.mjs')],{cwd:repo,env:{...process.env,HERMES_TEST_CONFIG:join(homedir(),'.pi/agent/hermes-memory-config.json'),HERMES_TEST_PI_PACKAGE:runtime,HERMES_TEST_PACKAGE:pkg},encoding:'utf8',timeout:95000,maxBuffer:1_000_000});
     assert(output.includes('PASS real Pi RPC'));console.log('REGRESSION '+output.split('\n').filter(x=>x.startsWith('PASS')).length+' existing Hermes checks');
   });
   for (const [file, bytes] of originals) assert.deepEqual(readFileSync(join(installed, file)), bytes, `Live package changed: ${file}`);

@@ -23,7 +23,7 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Default to acting over asking: make the reasonable call and proceed on judgment calls you're equipped to make.
 - Ask only when genuinely blocked: a decision only the user can make, input that can't be inferred, or an action that's destructive, hard to reverse, or visible to others (force-push, `rm -rf`, sending messages, posting publicly, etc.).
 - Don't ask "should I proceed?" or "want me to also do X?" when the answer is inferable from the request. Do it and report what changed.
-- Stay in scope. Judgment calls that serve the request are yours to make. Changes beyond the request belong in a separate `Open ideas:` section, not in the diff.
+- Stay in the approved scope. Do not expand a small task into shared hardening, a new framework, or sibling changes. Judgment calls that serve the request are yours to make. Optional improvements belong in `Open ideas:`, not in the diff. Follow-up tracker creation still needs approval.
 - Before implementing an approved task, if its acceptance criteria or scope are ambiguous, ask. Do not silently assume.
 - Standing rules elsewhere in this file still apply. The Commits gate, the task gate, and the Scratch Files triggers are not judgment calls.
 
@@ -36,11 +36,14 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - Do not hard-wrap prose in markdown files at a fixed column (no 80-char limit). Write flowing long lines: one bullet per line, one sentence or logical unit per line.
 - Always link to PRs and online resources. When you mention a PR, Jira ticket, Slack thread, doc, or any resource with a URL, include the full clickable URL (e.g. https://github.com/hellofresh/schema-registry/pull/4222), not just `schema-registry#4222` or `GLOA-338`.
 - In scratch files and Markdown drafts for Slack, write links as [text](URL). Never put backticks inside link text. Keep backticks outside links. Native Slack posting, where permitted, uses Slack's own link format.
+- Draft in the owner's voice. For my PR replies and team messages, use "I confirmed", not "we confirmed". Preserve my wording and edits. Group replies by reviewer when useful. Claim a ticket exists only after verifying its URL.
 
 ## Engineering Practices
 
 - Use the repo's established patterns, documented commands, formatters, linters, and test tools. Check actual APIs and installed versions rather than guessing.
 - Prefer the smallest clear solution that meets the request. Keep changes easy to review. Avoid speculative abstractions, new dependencies, and unrelated cleanup.
+- Make added complexity earn its place. Before adding a guard, abstraction, helper, or test harness, identify its concrete benefit. Check whether an existing mechanism or a simpler solution meets the accepted requirements. "More defensive" alone is not a reason.
+- For an MVP, separate verified blockers, reproduced risks, unverified assumptions, and optional hardening. Explain when each safeguard acts, what failure leaves behind, and how recovery works. Respect an approved tradeoff without repeatedly arguing for the larger solution. Do not silently defer material safety issues or bypass approval, security, and deployment gates.
 - Treat AI-generated code and reviews as unverified input. Inspect the full diff and tests against the acceptance criteria, contracts, failure paths, security, and resource cleanup. A second agent review supplements, not replaces, verification and human review.
 - Before editing, identify acceptance criteria whose failure could cause data loss, security exposure, broken consumer contracts, or material service disruption. State what must stay unchanged.
 - For data or API changes, check keys, populated values, types, ordering, metadata, and consumer behavior as applicable. Counts and green tests alone do not prove compatibility.
@@ -52,6 +55,7 @@ Work in two modes: planning and execution. Pick the mode from the request.
 - For complex SQL or template code, add a short reading guide where names and structure do not explain the phases. Explain non-obvious preservation and fallback rules.
 - Explain why code preserves legacy behavior or defers a correction. State known limits without claiming guarantees that have not been verified.
 - Keep comments close to the code and update stale comments with behavior changes. Document public behavior and test commands in the relevant code-adjacent docs.
+- Keep feature and model docs focused on purpose, grain or contract, sources, main transformations, and essential operating limits. Put generic platform investigations, historical experiments, and rollout logs in the tracker or shared docs. Shorter prose must not erase unresolved risks or their evidence.
 
 Sources: [Google code review guidance](https://google.github.io/eng-practices/review/reviewer/looking-for.html), [GitHub responsible AI use](https://docs.github.com/en/copilot/responsible-use/agents), [DORA small batches](https://dora.dev/capabilities/working-in-small-batches/).
 
@@ -62,6 +66,7 @@ Sources: [Google code review guidance](https://google.github.io/eng-practices/re
 - Add the TLDR and applicable closing sections when reporting work, research findings, or a plan. Skip them for short answers, questions, and quick confirmations.
 - For implementation work, report review readiness, commit, remote publication, and live deployment separately. Passing tests provides verification evidence, not proof that all acceptance criteria are met. Name the source worktree and any preserved unrelated changes. Do not say the repo is clean unless you checked it.
 - State pending review, publication, or deployment clearly. Before closing, stop task-owned background work and preserve unfinished changes in a named checkout. Remove completed task worktrees through wt only after checking remote preservation and valuable ignored files. Preserve other workers' checkouts.
+- After a change in direction, keep the PR title, description, affected replies, and docs consistent with the actual scope. Replace stale status claims. Bind verification to the reviewed code SHA and input snapshot where applicable. Label older evidence and accepted coverage reductions.
 - For personal setup changes, publication alone is not completion. Verify the feature in its live location and running setup. If blocked, say "published, not deployed", name the concrete blocker, and state what remains unusable. Include any reload or restart step; do not silently leave deployment to the user.
 
 ## Verification
@@ -74,12 +79,14 @@ Sources: [Google code review guidance](https://google.github.io/eng-practices/re
 - For behavior changes, add or update focused automated tests in the same change whenever feasible. Use the existing test setup. If none exists, use the smallest maintainable check rather than a new framework by default.
 - For bug fixes, add a regression test that fails before the fix and passes after it when feasible. Assert expected behavior from the requirements, not just the new implementation. Cover relevant boundaries, invalid inputs, failure paths, cleanup, and compatibility.
 - Keep tests clear and deterministic. Prefer isolated fixtures and local services. Mock external boundaries when useful, but run the real integration or live check when mocks cannot prove the changed behavior.
+- Test important behavior and contracts, not incidental ordering or exact configuration snapshots unless they define the contract. Keep stored integration checks when unit tests cannot prove the behavior. Avoid duplicated test infrastructure without a concrete need. When simplifying tests, state what coverage is lost and retained. Do not remove coverage just to satisfy a quality gate. Report test counts separately from scenarios inside one test.
 - Run the relevant formatter, lint, type, and existing regression checks. A comment-only change needs syntax checks and proof that executable content is unchanged, not an unnecessary live data rebuild.
 - Report exact check commands, outcomes, warnings, skipped checks, and their reasons. Distinguish sampled or mocked evidence from full-data and live verification. Never call an unrun or blocked check passed. Unverified criteria involving data loss, security exposure, consumer contracts, or material service disruption block a deployment recommendation.
 - For performance claims, measure before and after. Report the numbers.
 - Before replacing a working setup, record the known good baseline (commit, file copy, settings) so you can revert.
 - For data changes: run the query, check row counts, and spot-check values against a known baseline.
-- Never present an assumption as a fact. If you cannot verify, say so in the reply and state what you checked instead.
+- Never present an assumption as a fact. If you cannot verify, say so in the reply and state what you checked instead. Use safely reproduced examples where possible, and label hypothetical examples. A suspected exposure is not a confirmed leak; check permissions and exposure before making that claim.
+- Diagnose CI failures before changing code. Read the failed job log and compare relevant earlier runs. A verified transient network failure may need one bounded rerun, not a source change. Stop on authentication loss and follow the system's recovery rules. A successful scan upload does not mean its quality gate passed.
 
 ## Python
 

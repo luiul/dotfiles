@@ -149,6 +149,11 @@ The year-end review harvests these blocks programmatically (the tooling is harve
 - Green PR checks do not prove a deploy. After a merge, check the deploy workflow run before reporting done (PR #378 passed its checks, then the staging deploy failed in the dbt-docs job, 2026-10-01).
 - Before blaming your change for a deploy failure, compare prior runs: the same dbt-docs job failed on earlier merges.
 
+### dbt changes
+
+- Distinguish unit tests, model data tests, and stored incremental regressions. Model data tests run after materialization; they do not undo writes. `dbt build` can skip downstream models after failed upstream tests; `dbt run` does not execute data tests. Verify the selected graph and document retained invalid rows and recovery.
+- For dbt model pairs, compare existing validation conventions and explain intentional differences. Keep sibling-model alignment outside the current PR unless approved, and track agreed alignment separately. Do not add a shared validation framework by default.
+
 ## Schemachange (us-ops-analytics-schemachange)
 
 This repo uses the schemachange tool to manage Snowflake objects.

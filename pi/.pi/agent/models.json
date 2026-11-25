@@ -616,7 +616,7 @@
         },
         {
           "id": "GPT-6.1 Sol",
-          "name": "GPT-6.1 Sol",
+          "name": "Think | Hard problems and advice",
           "reasoning": true,
           "input": ["text", "image"],
           "cost": {
@@ -644,7 +644,7 @@
         },
         {
           "id": "GPT-6.2 Sol",
-          "name": "Think | Hard problems and advice",
+          "name": "GPT-6.2 Sol",
           "reasoning": true,
           "input": ["text", "image"],
           "cost": {
@@ -711,7 +711,7 @@
     }
   },
   "grove": {
-    "generatedAt": "2026-11-20T21:58:18Z",
+    "generatedAt": "2026-11-24T12:23:42Z",
     "bedrock": {
       "defaultRegion": "eu-west-1",
       "regions": {

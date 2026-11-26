@@ -62,12 +62,30 @@ case "{{ branch }}" in
   main|master|live) echo "refusing to remove protected branch: {{ branch }}" >&2; exit 1 ;;
 esac
 '''
-# wt remove deletes <owner>/<branch>/<repo> but leaves the empty <branch> parent dir behind
-# (e.g. ~/worktrees/hellofresh/fix-thing/). Prune it. rmdir only removes EMPTY dirs, so a
-# branch dir that still holds another repo's worktree is left alone; the error is swallowed
-# (macOS rmdir has no --ignore-fail-on-non-empty).
+# Default removal briefly recreates the caller's directory for shell navigation.
+# Wait for that placeholder to disappear before pruning parents under ~/worktrees.
+# rmdir preserves files and other checkouts. Never prune outside the managed root.
 [post-remove]
-prune-empty-branch-dir = 'rmdir "{{ worktree_path | dirname }}" 2>/dev/null || true'
+prune-empty-branch-dir = '''
+checkout={{ worktree_path }}
+root="$HOME/worktrees"
+case "$checkout" in
+  "$root"/*/*/*) ;;
+  *) exit 0 ;;
+esac
+# Bound the wait so a failed removal cannot leave a hook running indefinitely.
+attempt=0
+while [ -e "$checkout" ] || [ -L "$checkout" ]; do
+  [ "$attempt" -lt 100 ] || exit 0
+  sleep 0.1
+  attempt=$((attempt + 1))
+done
+parent={{ worktree_path | dirname }}
+while [ "$parent" != "$root" ]; do
+  rmdir "$parent" 2>/dev/null || break
+  parent=${parent%/*}
+done
+'''
 # Tardis has independent dbt projects. Worktree setup must not run dbt deps
 # across them because dependency resolution rewrites tracked package locks.
 # Existing ignored package caches are copied above. Install missing dependencies

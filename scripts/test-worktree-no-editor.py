@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import tomllib
 from pathlib import Path
@@ -97,8 +98,16 @@ def main() -> None:
         for name in ("AGENTS.md", "CLAUDE.md"):
             (parent / name).write_text("Fixture instructions.\n")
 
-        def run(*args: str, ok: bool = True) -> subprocess.CompletedProcess[str]:
-            result = subprocess.run(args, cwd=repo, env=env, capture_output=True, text=True, timeout=45, check=False)
+        def run(*args: str, ok: bool = True, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+            result = subprocess.run(
+                args,
+                cwd=cwd or repo,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=45,
+                check=False,
+            )
             if ok and result.returncode:
                 message = f"{args[0]} failed ({result.returncode}): {result.stderr}"
                 raise AssertionError(message)
@@ -178,13 +187,48 @@ def main() -> None:
         assert run("git", "rev-parse", "HEAD").stdout.strip() == main_before
         assert (repo / "parallel-main.txt").read_text() == "unrelated live work\n"
         assert run("git", "-C", str(remote_path), "rev-parse", "HEAD").stdout.strip() == remote_head
-        run(wt, "remove", "wt-fixture", "--no-delete-branch", "--foreground", "--yes")
+        run(
+            "zsh",
+            "-f",
+            "-c",
+            'eval "$(command wt config shell init zsh)"; wt remove --no-delete-branch --yes',
+            cwd=wt_path,
+        )
         wait_for(lambda: not wt_path.parent.exists(), "default wt removal cleanup")
         run(cop, "remove", "cop-fixture", "--repo", str(repo), "--yes")
         wait_for(lambda: not (home / "worktrees/local/cop-fixture").exists(), "default cop removal cleanup")
         run(wt, "remove", "remote-base-fixture", "--no-delete-branch", "--foreground", "--yes")
         wait_for(lambda: not remote_path.parent.exists(), "remote-base removal cleanup")
+        wait_for(lambda: not (home / "worktrees/local").exists(), "empty owner cleanup")
+        assert (home / "worktrees").is_dir(), "Cleanup removed the managed root"
+        # Model a hook that starts before background removal finishes.
+        delayed_path = home / "worktrees/local/delayed fixture/demo"
+        delayed_path.mkdir(parents=True)
+        timer = threading.Timer(0.5, delayed_path.rmdir)
+        timer.start()
+        try:
+            run(wt, "hook", "post-remove", "--foreground", "--yes", f"--worktree-path={delayed_path}")
+        finally:
+            timer.join()
+        assert not delayed_path.parent.exists(), "Hook left an empty parent after delayed removal"
+        shared_path = home / "worktrees/local/shared/demo"
+        sibling = shared_path.parent / "other-repo"
+        sibling.mkdir(parents=True)
+        (sibling / "keep.txt").write_text("preserve other work\n")
+        run(wt, "hook", "post-remove", "--foreground", "--yes", f"--worktree-path={shared_path}")
+        assert (sibling / "keep.txt").read_text() == "preserve other work\n"
+        retained = home / "worktrees/local/retained/demo"
+        retained.mkdir(parents=True)
+        (retained / "keep.txt").write_text("unfinished removal\n")
+        run(wt, "hook", "post-remove", "--foreground", "--yes", f"--worktree-path={retained}")
+        assert (retained / "keep.txt").read_text() == "unfinished removal\n"
+        outside = home / "outside/checkout"
+        outside.parent.mkdir()
+        run(wt, "hook", "post-remove", "--foreground", "--yes", f"--worktree-path={outside}")
+        assert outside.parent.exists(), "Cleanup escaped the managed worktree root"
         assert not calls.exists(), "An editor or orchestrator was launched"
+        print("PASS: caller background removal, empty owner cleanup, delayed cleanup, and bounded unfinished removal")
+        print("PASS: sibling work, outside paths, and the managed root are preserved")
         print("PASS: real wt and cop create/reuse without editor gates or editor calls")
         print("PASS: lifecycle hooks and real wt and cop removal do not call an orchestrator")
         print("PASS: protected branches and native dirty-work refusal remain without a publication gate")

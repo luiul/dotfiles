@@ -22,6 +22,10 @@ After the last tab closes, the same Rex client checks for remaining windows and 
 
 Worktrunk still owns removal and its safety checks. `command wt remove` and `command cop remove` bypass the Zsh wrappers and leave the tab open.
 
+## Empty directory cleanup
+
+Default removal briefly keeps an empty checkout directory so the caller's shell can move out. The post-remove hook waits up to ten seconds for that directory to disappear. It then removes empty branch and owner directories, stopping at `~/worktrees` or the first non-empty directory. Files, sibling checkouts, and paths outside this root stay unchanged. A removal that takes longer than ten seconds can still leave empty parents.
+
 ## Deployment and checks
 
 Stow this package from the live `~/dotfiles` checkout after review and publication:

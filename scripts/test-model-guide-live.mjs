@@ -69,7 +69,7 @@ function json(on, n) {
   assert.equal(r.status, 0, r.stderr || r.error?.message || `signal ${r.signal}`); assert(!/Failed to load|Extension error/.test(r.stderr ?? ''));
   const notes = parse(log), provider = notes.find(e => e.type === 'provider'); assert(provider);
   const ready = notes.find(e => e.type === 'ready');
-  assert.equal(ready.model, 'GPT-6.2 Sol'); assert.equal(ready.effort, 'medium');
+  assert.equal(ready.model, 'GPT-6.1 Sol'); assert.equal(ready.effort, 'medium');
   return { ms: performance.now() - start, provider };
 }
 const timings = { baseline: [], guide: [] };
@@ -142,14 +142,14 @@ try {
   assert(screen.includes('Unknown at high'));
   assert(!parse(log).some(e => e.type === 'provider'), 'Guide caused provider request');
   driver.key(host, 'right'); driver.key(host, 'down');
-  await wait(() => capture().includes('GPT-6.2 Sol'));
+  await wait(() => capture().includes('GPT-6.1 Sol'));
   assert(capture().includes('GPT-6.1 Terra')); assert(!capture().includes('Kimi K3.1 Pro'));
   driver.key(host, 'left'); driver.key(host, 'down');
   await wait(() => capture().includes('Kimi K3.1 Pro'));
-  assert(capture().includes('GPT-6.2 Sol'));
+  assert(capture().includes('GPT-6.1 Sol'));
   driver.key(host, 'right'); driver.text(host, '/'); driver.text(host, 'budget'); await delay(150); driver.key(host, 'enter');
   await wait(() => capture().includes('GLM 5.3'));
-  assert(capture().includes('Kimi K3.1 Pro')); assert(!capture().includes('GPT-6.2 Sol'));
+  assert(capture().includes('Kimi K3.1 Pro')); assert(!capture().includes('GPT-6.1 Sol'));
   await pageUntil(host, 'Grove spend/pass');
   assert(capture().includes('$0.06405') && capture().includes('$0.04981'));
   driver.text(host, 'd'); await wait(() => capture().includes('Technical evidence'));
@@ -174,11 +174,11 @@ try {
   assert.equal(parse(log).filter(e => e.type === 'state')[1].model, 'Kimi K3.1 Pro');
   assert.equal(parse(log).filter(e => e.type === 'state')[1].effort, 'high');
   screen = capture(); assert(screen.includes('Kimi K3.1 Pro')); assert(!screen.includes('Code | Hard coding'));
-  // The Think model must resolve to router Sol 6.2 and use its configured effort.
-  await send('/model ai-model-router/GPT-6.2 Sol'); await wait(() => capture().includes('GPT-6.2 Sol'));
+  // The Think model must resolve to router Sol 6.1 and use its configured effort.
+  await send('/model ai-model-router/GPT-6.1 Sol'); await wait(() => capture().includes('GPT-6.1 Sol'));
   if (capture().includes('Scope:') || capture().includes('Model Name:')) { driver.key(host, 'enter'); await delay(300); }
   await send('/fixture-state'); await wait(() => parse(log).filter(e => e.type === 'state').length === 3).catch(error => { console.error(capture()); throw error; });
-  assert.equal(parse(log).filter(e => e.type === 'state')[2].model, 'GPT-6.2 Sol');
+  assert.equal(parse(log).filter(e => e.type === 'state')[2].model, 'GPT-6.1 Sol');
   assert.equal(parse(log).filter(e => e.type === 'state')[2].effort, 'medium');
   await send('/model-guide'); await wait(() => capture().includes('Compare two scoped models')); driver.key(host, 'enter');
   assert(!parse(log).some(e => e.type === 'provider'));
@@ -191,7 +191,7 @@ try {
   console.log('PASS real Pi pair matrix, independent columns, search, narrow resize, metric paging, cancel, native scope toggle, Kimi effort and footer identity');
 
   const lightLog = join(root, 'light.jsonl');
-  const light = driver.create({ command: [process.execPath, ...common, '-e', extension, '--use-theme', 'light', '--models', 'ai-model-router/GPT-6.2 Sol:high'],
+  const light = driver.create({ command: [process.execPath, ...common, '-e', extension, '--use-theme', 'light', '--models', 'ai-model-router/GPT-6.1 Sol:high'],
     cwd: root, env: { ...env, GUIDE_LOG: lightLog }, columns: 80, rows: 30 });
   await wait(() => parse(lightLog).some(e => e.type === 'ready')); await delay(300);
   driver.text(light, '/model-guide'); driver.key(light, 'enter');

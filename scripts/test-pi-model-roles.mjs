@@ -14,6 +14,7 @@ const router=models.providers['ai-model-router'];
 const roles={
  Daily:['GPT-6.1 Terra','high','Coding and admin'],
  Code:['Kimi K3.1 Pro','high','Hard coding and debugging'],
+ Think:['GPT-6.1 Sol','medium','Hard problems and advice'],
  Budget:['GLM 5.3','high','Lower-cost coding'],
  Quick:['GPT-6 Luna','low','Lookups and simple tasks'],
  Helper:['GLM 5.3 Flash','off','Summaries and memory checks'],
@@ -21,14 +22,14 @@ const roles={
 const scope=[
  'ai-model-router/GPT-6.1 Terra',
  'ai-model-router/Kimi K3.1 Pro',
- 'ai-model-router/GPT-6.2 Sol',
+ 'ai-model-router/GPT-6.1 Sol',
  'ai-model-router/GLM 5.3',
  'ai-model-router/GPT-6 Luna',
  'google-vertex/gemini-4-argon',
  'ai-model-router/GLM 5.3 Flash',
 ];
 assert.equal(settings.defaultProvider,'ai-model-router');
-assert.equal(settings.defaultModel,'GPT-6.2 Sol');
+assert.equal(settings.defaultModel,'GPT-6.1 Sol');
 // Git intentionally strips the session-wide defaultThinkingLevel. Model pins persist.
 assert(settings.defaultThinkingLevel===undefined||settings.defaultThinkingLevel==='medium');
 assert.equal(settings.modelThinkingLevels[settings.defaultProvider+'/'+settings.defaultModel],'medium');
@@ -41,11 +42,8 @@ for(const [role,[id,thinking,description]] of Object.entries(roles)){
  assert.equal(router.models.filter(m=>m.name?.startsWith(role+' | ')).length,1,`Ambiguous ${role}`);
  assert.equal(settings.modelThinkingLevels['ai-model-router/'+id],thinking);
 }
-assert.equal(models.providers['ai-model-router'].models.find(m=>m.id==='GPT-6.2 Sol').name,'Think | Hard problems and advice');
-assert.equal(router.models.filter(m=>m.name?.startsWith('Think | ')).length,1,'Ambiguous Think');
-assert.equal(settings.modelThinkingLevels['ai-model-router/GPT-6.2 Sol'],'medium');
-assert.equal(router.models.find(m=>m.id==='GPT-6.1 Sol').name,'GPT-6.1 Sol');
-assert(!settings.enabledModels.includes('ai-model-router/GPT-6.1 Sol'),'Sol 6.1 stays outside favorites');
+assert.equal(router.models.find(m=>m.id==='GPT-6.2 Sol').name,'GPT-6.2 Sol');
+assert(!settings.enabledModels.includes('ai-model-router/GPT-6.2 Sol'),'Sol 6.2 stays outside favorites');
 assert.equal(models.providers['google-vertex'].modelOverrides['gemini-4-argon'].name,'Vision | Images, scans and floorplans');
 assert.equal(settings.modelThinkingLevels['google-vertex/gemini-4-argon'],'high');
 assert(router.models.some(m=>m.id==='Kimi K3'),'All-model catalog must preserve Kimi');
@@ -75,7 +73,6 @@ if(process.argv[2]){
  assert.equal(merged.getDefaultProvider(),'google-vertex');
  assert.equal(merged.getDefaultModel(),'gemini-4-argon');
  for(const [role,[id,thinking]]of Object.entries(roles))assert.equal(merged.getModelThinkingLevel('ai-model-router',id),thinking,role);
- assert.equal(merged.getModelThinkingLevel('ai-model-router','GPT-6.2 Sol'),'medium');
 }
 
 const hermes=json('hermes-memory-config.json');
@@ -97,4 +94,4 @@ for(const role of ['observer','reflector','dropper']){
  assert.equal(blackhole[role+'Model'].id,'DeepSeek V4 Flash');
  assert.equal(blackhole[role+'FallbackModels'][0].id,'GLM 5.3 Flash');
 }
-console.log('PASS seven-model scope, Sol 6.2 medium default, short roles, effort levels, helper availability and unchanged Blackhole routing');
+console.log('PASS seven-model scope, Sol 6.1 medium default, short roles, effort levels, helper availability and unchanged Blackhole routing');

@@ -1,10 +1,10 @@
 {
   "defaultProvider": "ai-model-router",
-  "defaultModel": "GPT-6.2 Sol",
+  "defaultModel": "GPT-6.1 Sol",
   "enabledModels": [
     "ai-model-router/GPT-6.1 Terra",
     "ai-model-router/Kimi K3.1 Pro",
-    "ai-model-router/GPT-6.2 Sol",
+    "ai-model-router/GPT-6.1 Sol",
     "ai-model-router/GLM 5.3",
     "ai-model-router/GPT-6 Luna",
     "google-vertex/gemini-4-argon",
@@ -14,7 +14,7 @@
   "enableAnalytics": false,
   "quietStartup": true,
   "fullscreenCopyOnSelect": false,
-  "lastChangelogVersion": "1.5.1",
+  "lastChangelogVersion": "1.6.0",
   "theme": "dark",
   "outputPad": 0,
   "packages": [
@@ -44,7 +44,7 @@
     "ai-model-router/GLM 5.3": "high",
     "ai-model-router/GPT-6.1 Terra": "high",
     "ai-model-router/Kimi K3.1 Pro": "high",
-    "ai-model-router/GPT-6.2 Sol": "medium",
+    "ai-model-router/GPT-6.1 Sol": "medium",
     "ai-model-router/GPT-6 Luna": "low",
     "ai-model-router/GLM 5.3 Flash": "off",
     "google-vertex/gemini-4-argon": "high"
@@ -55,9 +55,9 @@
   "tuiMode": "fullscreen",
   "hideThinkingBlock": true,
   "extensionChangelogVersions": {
-    "{\"source\":\"npm:@tintinweb/pi-subagents\",\"scope\":\"user\"}": "0.23.2",
-    "{\"source\":\"npm:pi-web-access\",\"scope\":\"user\"}": "0.47.0",
+    "{\"source\":\"npm:@tintinweb/pi-subagents\",\"scope\":\"user\"}": "0.26.3",
+    "{\"source\":\"npm:pi-web-access\",\"scope\":\"user\"}": "0.48.0",
     "{\"source\":\"npm:pi-mcp-adapter\",\"scope\":\"user\"}": "7.0.1",
-    "{\"source\":\"npm:pi-blackhole\",\"scope\":\"user\"}": "0.5.17"
+    "{\"source\":\"npm:pi-blackhole\",\"scope\":\"user\"}": "0.5.19"
   }
 }

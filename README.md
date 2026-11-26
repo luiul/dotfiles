@@ -124,7 +124,7 @@ The AWS SSO refresh extension remains available to isolated child calls. Review 
 
 ## Pi Subagents
 
-`pi/.pi/agent/agents/Explore.md` overrides the built-in Explore helper from [pi-subagents](https://github.com/tintinweb/pi-subagents). It uses `ai-model-router/GPT-6 Luna` with low thinking for narrow read-only file and symbol searches. General-purpose and Plan inherit the main session model, now `GPT-6.2 Sol` with medium thinking. Delegate independent lookups, not the main decision or duplicate work. A manual model override is available for difficult tasks.
+`pi/.pi/agent/agents/Explore.md` overrides the built-in Explore helper from [pi-subagents](https://github.com/tintinweb/pi-subagents). It uses `ai-model-router/GPT-6 Luna` with low thinking for narrow read-only file and symbol searches. General-purpose and Plan inherit the main session model, now `GPT-6.1 Sol` with medium thinking. Delegate independent lookups, not the main decision or duplicate work. A manual model override is available for difficult tasks.
 
 The helper excludes `canopy-status`, since SDK subagents share their parent's process ID and must not publish its dashboard status. The [Canopy extension](https://github.com/luiul/canopy/blob/main/extensions/canopy-status.ts) also accepts only interactive sessions. Apply the helper with `stow --no-folding pi`.
 
@@ -138,13 +138,13 @@ Roles are short display names on existing model records. Pi shows each role and 
 | --- | --- | --- | --- |
 | Router GPT-6.1 Terra | Daily | Coding and admin | High |
 | Router Kimi K3.1 Pro | Code | Hard coding and debugging | High |
-| Router GPT-6.2 Sol | Think | Hard problems and advice | Medium |
+| Router GPT-6.1 Sol | Think | Hard problems and advice | Medium |
 | Router GLM 5.3 | Budget | Lower-cost coding | High |
 | Router GPT-6 Luna | Quick | Lookups and simple tasks | Low |
 | Vertex Gemini 4 Argon | Vision | Images, scans and floorplans | High |
 | Router GLM 5.3 Flash | Helper | Summaries and memory checks | Off |
 
-Sol 6.2 medium is the chosen startup model and Think favorite, replacing Sol 6.1 by user choice. Terra high remains the Daily alternative. GLM remains the measured budget alternative, and Luna is for bounded work. Helper is not a deep code reviewer. Other specialists remain under Tab → all. Use exact provider/model IDs to select a specific route. If editor autocomplete expands a filter before submission, press Escape before Enter.
+Sol 6.1 medium is the startup model and Think favorite. Terra high remains the Daily alternative. GLM remains the measured budget alternative, and Luna is for bounded work. Helper is not a deep code reviewer. Other specialists remain under Tab → all. Use exact provider/model IDs to select a specific route. If editor autocomplete expands a filter before submission, press Escape before Enter.
 
 Grove owns router display names through its `overlay.json`. Bedrock and Vertex names use `modelOverrides` entries. The Sol global Bedrock profile can route requests worldwide. Check data residency rules before using it for work. Keep canonical IDs in settings and worker config. Direct Bedrock Sonnet remains a manual independent reviewer, not an automatic extra call. See [model value checks](docs/pi-model-value.md) for matched costs, acceptance checks, and limits.
 

@@ -403,7 +403,7 @@ def main(
         return 0
     except PermissionError:
         print(
-            "mail-repair: Access blocked. Grant Full Disk Access to your terminal app or Herdr Core, then retry.",
+            "mail-repair: Access blocked. Grant Full Disk Access to Ghostty or Rex, then retry.",
             file=sys.stderr,
         )
     except (

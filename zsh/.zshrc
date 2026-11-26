@@ -338,7 +338,10 @@ fi
 # above). 60s keeps the dashboard fresh enough while cutting that load 4x.
 alias understory='understory --interval 60'
 
-if command -v coppice >/dev/null 2>&1; then znap eval coppice 'command coppice shell init zsh'; fi
+if command -v coppice >/dev/null 2>&1; then
+  znap eval coppice 'command coppice shell init zsh'
+  _wt_rex_wrap_coppice
+fi
 
 # zoxide must be the last thing initialized
 znap eval zoxide 'zoxide init --cmd cd zsh'

@@ -8,6 +8,43 @@ _wt_rex_checkout() {
   print -r -- "${root:A}"
 }
 
+# Coppice runs the wt binary, so its parent shell must finish caller navigation.
+# Keep this lifecycle policy with the Worktrunk integration, not in Coppice.
+_wt_rex_wrap_coppice() {
+  (( $+functions[coppice] )) || return 0
+  [[ $functions[coppice] == *'_wt_coppice_shell_orig "$@"'* ]] && return 0
+  functions[_wt_coppice_shell_orig]=$functions[coppice]
+  coppice() {
+    local checkout= destination= entry
+    if [[ ${1-} == remove && -n ${REX_BLOCK-} && -o interactive && -t 0 && -t 1 && $ZSH_SUBSHELL == 0 ]]; then
+      checkout=$(_wt_rex_checkout) || checkout=
+      if [[ -n $checkout ]]; then
+        entry=$(command git worktree list --porcelain 2>/dev/null) || checkout=
+        entry=${entry%%$'\n'*}
+        if [[ $entry == 'worktree '* ]]; then
+          destination=${entry#worktree }
+          [[ -d $destination && ${destination:A} != "$checkout" ]] || checkout=
+        else
+          checkout=
+        fi
+      fi
+    fi
+    _wt_coppice_shell_orig "$@"
+    local -i result=$?
+    if [[ -n $checkout && ! -e $checkout && ! -L $checkout ]]; then
+      # Move out even after a partial batch failure, but close only on success.
+      if builtin cd -- "$destination"; then
+        if (( result == 0 )); then
+          _wt_rex_close_removed_tab "$checkout" || print -u2 'Worktree removed, but the Rex tab could not be closed.'
+        fi
+      else
+        print -u2 'Worktree removed, but the shell could not enter the main worktree.'
+      fi
+    fi
+    return $result
+  }
+}
+
 _wt_rex_close_removed_tab() {
   local checkout=$1
   # Worktrunk can return success for an unrelated checkout or for a branch alone.
@@ -57,5 +94,57 @@ _wt_rex_close_removed_tab() {
     | select(length == 1) | .[0].window_id | select(startswith("window:"))
   ' <<< "$inventory") || return 0
   [[ ! -e $checkout && ! -L $checkout ]] || return 0
-  command "${rex_cli[@]}" block close -s "$REX_SESSION" -w "$window" "$REX_BLOCK"
+  local args
+  args=$(command jq -cn --arg session "$REX_SESSION" --arg block "$REX_BLOCK" '{session: $session, block: $block}') || return 0
+  # The close hangs up this shell. One bounded client must survive HUP to finish
+  # empty-session cleanup. It checks detached blocks as well as visible tabs.
+  # Rex has no conditional destroy. Luis accepts a concurrent-create race here.
+  (
+    trap '' HUP
+    # Terminal teardown can kill the caller process group, not just send HUP.
+    # A fork lets setsid move the bounded supervisor out of that group.
+    command /usr/bin/perl -e '
+      use POSIX qw(WNOHANG setsid);
+      my $supervisor = fork(); defined $supervisor or die "Cannot fork cleanup: $!";
+      if ($supervisor) {
+        waitpid($supervisor, 0);
+        exit(($? & 127) ? 1 : ($? >> 8));
+      }
+      defined setsid() or die "Cannot detach cleanup: $!";
+      my $pid = fork(); defined $pid or die "Cannot fork Rex: $!";
+      if (!$pid) { exec @ARGV; die "Cannot start Rex: $!"; }
+      $SIG{ALRM} = sub {
+        # Only an unreaped child still owns this PID at the signal boundary.
+        if (waitpid($pid, WNOHANG) == 0) {
+          kill "TERM", $pid;
+          sleep 1;
+          if (waitpid($pid, WNOHANG) == 0) {
+            kill "KILL", $pid;
+            waitpid($pid, 0);
+          }
+        }
+        exit 124;
+      };
+      alarm 10;
+      waitpid($pid, 0);
+      alarm 0;
+      exit(($? & 127) ? 1 : ($? >> 8));
+    ' -- "${rex_cli[@]}" do -s "$REX_SESSION" --args "$args" -e '
+      local function call(method, args)
+        local value, err = rex.call(method, args)
+        if value == nil then
+          rex.log("error", err)
+          rex.stop(1)
+        end
+        return value
+      end
+      local id = rex.args.session
+      call("block.close", {session_id=id, block_id=rex.args.block})
+      local view = call("session.view", {session_id=id})
+      if view.session_id ~= id or (view.windows ~= nil and #view.windows ~= 0) then return end
+      local remaining = call("session.list_blocks", {session_id=id})
+      if remaining.blocks ~= nil and #remaining.blocks ~= 0 then return end
+      call("session.destroy", {session_id=id})
+    '
+  )
 }

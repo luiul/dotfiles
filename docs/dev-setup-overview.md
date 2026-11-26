@@ -4,7 +4,7 @@
 
 Source repos live under `~/projects/hellofresh/<repo>` and `~/projects/personal/<repo>`. Dotfiles live at `~/dotfiles`.
 
-[Worktrunk](https://worktrunk.dev) owns worktree creation and removal. [Coppice](https://github.com/luiul/coppice) provides the daily commands. Orca and Herdr run agents in wt-managed checkouts. They do not own their deletion.
+[Worktrunk](https://worktrunk.dev) owns worktree creation and removal. [Coppice](https://github.com/luiul/coppice) provides the daily commands. Orca runs agents in wt-managed checkouts. It does not own their deletion.
 
 Worktrees use `~/worktrees/<owner>/<branch>/<repo>`. The repo is the leaf directory. Identity comes from Git metadata, never from parsing that path. Repo-wide Pi memory follows the main checkout through linked-worktree metadata.
 
@@ -14,8 +14,6 @@ cop orca /path/to/repo --branch task-name --base origin/main
 ```
 
 Replace `origin/main` with the repo's verified remote default branch. `cop new` creates or reuses a worktree and enters it without opening an orchestrator. `cop orca` finishes setup, opens or reuses Pi, focuses the workspace, and enters its worktree. Cmd+E opens VS Code when needed. There is no global hook to open an orchestrator.
-
-For Herdr app/Core, create or reuse a worktree with Worktrunk first. Then pass the repo and worktree roots to `wt-herdr open`. The helper opens or reuses Pi and focuses it without changing your shell directory. See the [standalone Herdr workflow](../herdr/README.md#explicit-worktrunk-integration). The Herdr package tracks only proven symlink-safe personal settings, not app/Core runtime state.
 
 HelloFresh branches use `type/TICKET-description` from the start. Personal task branches can use short names. Temporary branches do not change the personal publication rule: the remote default branch receives approved work without a PR.
 

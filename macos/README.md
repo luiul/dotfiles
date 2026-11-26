@@ -54,7 +54,7 @@ Each backup goes in a new private directory under `~/Library/Application Support
 
 Messages, accounts, and rules stay unchanged. SQLite may create temporary WAL coordination files even during `--dry-run`; it does not change message or queue rows during inspection. A removed pending move or copy may not finish. Unlike the one-time diagnosis, this command does not disable the GitHub Notifications rule or any other rule. It never rebuilds mailboxes, restores backups, or opens or quits Mail.
 
-Full Disk Access is needed for the terminal app or Herdr Core that runs the command. If access is blocked, enable it in System Settings, Privacy & Security, Full Disk Access.
+Run the command in Ghostty or Rex. Grant Full Disk Access to that app in System Settings, Privacy & Security, Full Disk Access.
 
 After repair, open Mail and check syncing. If Mail asks about restoring windows after a crash, choose **Don’t Reopen** for a fresh window. Keep the backup. Do not restore it over newer mail changes without checking those changes first. The backup is local Mail state, not an export of all message files or a backup of server mail.
 
